@@ -1,16 +1,10 @@
-import { Configuration } from '@crawlee/core';
+import { PlaywrightCrawlerOptions } from '@crawlee/playwright';
 
-export const DEFAULT_CRAWLER_CONFIG: Configuration = {
-    // 最大并发请求数
+export const DEFAULT_CRAWLER_CONFIG: PlaywrightCrawlerOptions = {
     maxConcurrency: 10,
-    // 请求间隔(ms)
     maxRequestRetries: 3,
-    // 请求超时时间(ms)
     requestHandlerTimeoutSecs: 30,
-    // 是否遵循robots.txt
-    respectRobotsTxt: true,
-    // 默认等待时间(ms)
-    minDelayBetweenRequestsMillis: 500,
+    navigationTimeoutSecs: 30,
 };
 
 // 浏览器配置

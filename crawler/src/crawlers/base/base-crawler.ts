@@ -6,22 +6,25 @@ import {
     LoginConfig,
     CrawlResult,
     CrawlerError,
-    CrawlerErrorType 
+    CrawlerErrorType,
+    ExtractRule 
 } from '../../types/crawler';
 import { TaskStatus, TaskProgress } from '../../types/utils';
 import { DEFAULT_CRAWLER_CONFIG, BROWSER_CONFIG } from '../../config/crawler.config';
 import { LoginHandler } from './login-handler';
 import { DataHandler } from './data-handler';
+import { BrowserPool } from 'crawlee';
 
 export abstract class BaseCrawler {
-    protected crawler: PlaywrightCrawler;
-    protected dataset: Dataset;
-    protected keyValueStore: KeyValueStore;
+    protected crawler!: PlaywrightCrawler;
+    protected dataset!: Dataset;
+    protected keyValueStore!: KeyValueStore;
     protected taskConfig: CrawlerTaskConfig;
     protected progress: TaskProgress;
     protected log: Log;
-    protected loginHandler: LoginHandler;
-    protected dataHandler: DataHandler;
+    protected loginHandler!: LoginHandler;
+    protected dataHandler!: DataHandler;
+    protected browserPool!: BrowserPool;
 
     constructor(taskConfig: CrawlerTaskConfig) {
         this.taskConfig = taskConfig;
@@ -35,48 +38,59 @@ export abstract class BaseCrawler {
             timestamp: Date.now()
         };
 
+        // 立即初始化
+        this.initializeAsync().catch(error => {
+            this.log.error('Initialization failed', { 
+                error: error instanceof Error ? error.message : String(error) 
+            });
+        });
+    }
+
+    /**
+     * 异步初始化
+     */
+    private async initializeAsync(): Promise<void> {
+        // 初始化存储
+        this.dataset = await Dataset.open(`task-${this.taskConfig.taskId}`);
+        this.keyValueStore = await KeyValueStore.open(`state-${this.taskConfig.taskId}`);
+        
+        // 初始化处理器
         this.loginHandler = new LoginHandler(this.keyValueStore, this.log);
         this.dataHandler = new DataHandler(
             this.dataset,
             this.keyValueStore,
             this.log,
-            taskConfig.taskId
+            this.taskConfig.taskId
         );
-    }
-
-    /**
-     * 初始化爬虫
-     */
-    protected async initialize(): Promise<void> {
-        // 初始化存储
-        this.dataset = await Dataset.open(`task-${this.taskConfig.taskId}`);
-        this.keyValueStore = await KeyValueStore.open(`state-${this.taskConfig.taskId}`);
 
         // 创建爬虫实例
         this.crawler = new PlaywrightCrawler({
             ...DEFAULT_CRAWLER_CONFIG,
             browserPoolOptions: {
-                useFingerprints: true, // 使用浏览器指纹
-                browserPlugins: [], // 可以添加自定义插件
+                useFingerprints: true,
             },
             preNavigationHooks: [
-                // 请求拦截和处理
-                async ({ page, request }) => {
-                    await this.preNavigationHook(page, request);
+                async (crawlingContext) => {
+                    await this.preNavigationHook(
+                        crawlingContext.page,
+                        crawlingContext.request
+                    );
                 },
             ],
             postNavigationHooks: [
-                // 页面加载后的处理
-                async ({ page, request }) => {
-                    await this.postNavigationHook(page, request);
+                async (crawlingContext) => {
+                    await this.postNavigationHook(
+                        crawlingContext.page,
+                        crawlingContext.request
+                    );
                 },
             ],
-            // 请求处理器
-            requestHandler: async (context) => {
-                await this.handleRequest(context);
-            },
-            // 失败处理器
-            failedRequestHandler: async ({ request, error }) => {
+            requestHandler: this.handleRequest.bind(this),
+            failedRequestHandler: async ({ request, error: crawlerError }) => {
+                // 确保错误是 Error 类型
+                const error = crawlerError instanceof Error 
+                    ? crawlerError 
+                    : new Error(String(crawlerError));
                 await this.handleFailedRequest(request, error);
             },
         });
@@ -87,7 +101,7 @@ export abstract class BaseCrawler {
      */
     public async start(): Promise<void> {
         try {
-            await this.initialize();
+            await this.initializeAsync();
             
             // 如果需要登录,先进行登录
             if (this.taskConfig.loginConfig) {
@@ -108,7 +122,11 @@ export abstract class BaseCrawler {
             
         } catch (error) {
             this.progress.status = TaskStatus.FAILED;
-            this.progress.error = error.message;
+            if (error instanceof Error) {
+                this.progress.error = error.message;
+            } else {
+                this.progress.error = String(error);
+            }
             throw error;
         } finally {
             await this.keyValueStore.setValue('progress', this.progress);
@@ -120,16 +138,30 @@ export abstract class BaseCrawler {
      */
     protected async login(loginConfig: LoginConfig): Promise<void> {
         try {
-            // 创建新的页面进行登录
-            const browser = await this.crawler.browserPool?.getBrowser();
-            const page = await browser.newPage(BROWSER_CONFIG);
+            // 使用 browserPool 获取页面
+            const browserController = this.crawler.browserPool;
+            if (!browserController) {
+                throw new Error('Browser pool not initialized');
+            }
+
+            // 创建一个新的浏览器实例
+            const browser = await browserController.newPage();
+            if (!browser) {
+                throw new Error('Failed to get browser instance');
+            }
             
-            // 使用登录处理器执行登录
-            await this.loginHandler.performLogin(page, loginConfig);
-            
-            await page.close();
+            try {
+                // 使用登录处理器执行登录
+                await this.loginHandler.performLogin(browser, loginConfig);
+            } finally {
+                // 确保关闭页面
+                await browser.close();
+            }
         } catch (error) {
-            this.log.error('Login failed', { error: error.message });
+            const errorMessage = error instanceof Error 
+                ? error.message 
+                : 'Unknown login error';
+            this.log.error('Login failed', { error: errorMessage });
             throw error;
         }
     }
@@ -147,13 +179,13 @@ export abstract class BaseCrawler {
      */
     private async restoreState(page: Page): Promise<void> {
         // 恢复 cookies
-        const cookies = await this.keyValueStore.getValue('cookies');
-        if (cookies) {
+        const cookies = await this.keyValueStore.getValue<any[]>('cookies');
+        if (cookies && Array.isArray(cookies)) {
             await page.context().addCookies(cookies);
         }
 
         // 恢复 localStorage
-        const localStorage = await this.keyValueStore.getValue('localStorage');
+        const localStorage = await this.keyValueStore.getValue<Record<string, string>>('localStorage');
         if (localStorage) {
             await page.evaluate((storage) => {
                 for (const [key, value] of Object.entries(storage)) {
@@ -163,7 +195,7 @@ export abstract class BaseCrawler {
         }
 
         // 恢复 sessionStorage
-        const sessionStorage = await this.keyValueStore.getValue('sessionStorage');
+        const sessionStorage = await this.keyValueStore.getValue<Record<string, string>>('sessionStorage');
         if (sessionStorage) {
             await page.evaluate((storage) => {
                 for (const [key, value] of Object.entries(storage)) {
@@ -204,7 +236,7 @@ export abstract class BaseCrawler {
      * 保存数据
      */
     protected async saveData(result: CrawlResult): Promise<void> {
-        await this.dataHandler.saveData(result);
+        await this.dataset.pushData(result);
         
         // 更新进度
         this.progress.timestamp = Date.now();
@@ -227,5 +259,15 @@ export abstract class BaseCrawler {
      */
     public async getProgress(): Promise<TaskProgress> {
         return this.progress;
+    }
+
+    /**
+     * 获取爬取的数据
+     */
+    public async getCrawledData(): Promise<any> {
+        if (!this.dataset) {
+            throw new Error('Dataset not initialized');
+        }
+        return this.dataset.getData();
     }
 } 

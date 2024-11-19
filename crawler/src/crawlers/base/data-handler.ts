@@ -36,11 +36,15 @@ export class DataHandler {
                     errors.push(`No data found for rule: ${rule.name}`);
                 }
             } catch (error) {
+                const errorMessage = error instanceof Error 
+                    ? error.message 
+                    : 'Unknown extraction error';
+                    
                 this.log.error('Extraction error', { 
                     rule: rule.name, 
-                    error: error.message 
+                    error: errorMessage 
                 });
-                errors.push(`${rule.name}: ${error.message}`);
+                errors.push(`${rule.name}: ${errorMessage}`);
             }
         }
 
@@ -49,17 +53,13 @@ export class DataHandler {
             throw new Error(`Data extraction failed: ${errors.join('; ')}`);
         }
 
-        const result: CrawlResult = {
+        return {
             url,
             data,
             timestamp: Date.now(),
             taskId: this.taskId,
-            // 添加部分失败的错误信息
             errors: errors.length > 0 ? errors : undefined
         };
-
-        await this.saveData(result);
-        return result;
     }
 
     /**
@@ -98,12 +98,16 @@ export class DataHandler {
                 try {
                     return rule.transform(value);
                 } catch (error) {
+                    const errorMessage = error instanceof Error 
+                        ? error.message 
+                        : 'Unknown transform error';
+                        
                     this.log.error('Transform error', { 
                         rule: rule.name, 
                         value, 
-                        error: error.message 
+                        error: errorMessage 
                     });
-                    throw error;
+                    throw new Error(errorMessage);
                 }
             }
 
@@ -115,40 +119,6 @@ export class DataHandler {
         
         // 根据提取到的元素数量返回单个值或数组
         return filteredValues.length === 1 ? filteredValues[0] : filteredValues;
-    }
-
-    /**
-     * 保存数据
-     */
-    private async saveData(result: CrawlResult): Promise<void> {
-        try {
-            // 保存到Dataset
-            await this.dataset.pushData(result);
-
-            // 保存原始HTML快照（可选）
-            if (result.saveSnapshot) {
-                await this.keyValueStore.setValue(
-                    `snapshot-${result.taskId}-${Date.now()}`,
-                    result.snapshot
-                );
-            }
-
-            this.log.info('Data saved successfully', { 
-                url: result.url,
-                fields: Object.keys(result.data)
-            });
-
-        } catch (error) {
-            const crawlerError: CrawlerError = {
-                type: CrawlerErrorType.STORAGE_ERROR,
-                message: error.message,
-                url: result.url,
-                timestamp: Date.now(),
-                stack: error.stack,
-            };
-            await this.keyValueStore.setValue(`storage-error-${Date.now()}`, crawlerError);
-            throw error;
-        }
     }
 
     /**
@@ -169,7 +139,10 @@ export class DataHandler {
                         errors.push(`Validation failed for field: ${rule.name}`);
                     }
                 } catch (error) {
-                    errors.push(`Validation error for ${rule.name}: ${error.message}`);
+                    const errorMessage = error instanceof Error 
+                        ? error.message 
+                        : 'Unknown validation error';
+                    errors.push(`Validation error for ${rule.name}: ${errorMessage}`);
                 }
             }
         }

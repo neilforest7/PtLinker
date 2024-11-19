@@ -32,6 +32,20 @@ export interface LoginConfig {
         // 期望的文本内容(可选)
         expectedText?: string;
     };
+    // 验证码配置
+    captcha?: {
+        // 验证码图片选择器
+        imageSelector: string;
+        // 验证码输入框选择器
+        inputSelector: string;
+        // 验证码处理方式：'manual' | 'ocr' | 'api'
+        handleMethod: string;
+        // 验证码服务配置（如果使用第三方服务）
+        serviceConfig?: {
+            apiKey?: string;
+            apiUrl?: string;
+        };
+    };
 }
 
 // 数据提取规则
