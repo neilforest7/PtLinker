@@ -1,4 +1,4 @@
 **__pycache__
-**.venv
-**.vscode
-crawler.db
+.venv
+.vscode
+node_modules

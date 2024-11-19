@@ -1,0 +1,23 @@
+# Web Framework
+fastapi
+uvicorn[standard]
+
+# Database
+sqlalchemy
+alembic
+aiosqlite
+
+# Data Validation
+pydantic
+pydantic-settings
+
+# Utils
+python-multipart
+python-jose[cryptography]
+passlib[bcrypt]
+python-dotenv
+
+# Development
+pytest
+httpx
+pytest-asyncio
