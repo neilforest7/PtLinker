@@ -1,0 +1,35 @@
+# Web 框架
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+python-multipart>=0.0.6
+pydantic>=2.4.2
+pydantic-settings>=2.0.3
+
+# 数据库
+sqlalchemy>=2.0.23
+aiosqlite>=0.19.0
+alembic>=1.12.1
+
+# 爬虫相关
+playwright>=1.39.0
+beautifulsoup4>=4.12.2
+lxml>=4.9.3
+
+# 数据处理
+pandas>=2.1.2
+openpyxl>=3.1.2  # Excel支持
+xlrd>=2.0.1      # Excel读取支持
+
+# 工具库
+python-dateutil>=2.8.2
+aiofiles>=23.2.1
+python-jose[cryptography]>=3.3.0  # JWT支持
+passlib[bcrypt]>=1.7.4           # 密码哈希
+
+# 开发工具
+pytest>=7.4.3
+pytest-asyncio>=0.21.1
+httpx>=0.25.1    # 异步HTTP客户端，用于测试
+black>=23.10.1   # 代码格式化
+isort>=5.12.0    # import排序
+flake8>=6.1.0    # 代码检查 
