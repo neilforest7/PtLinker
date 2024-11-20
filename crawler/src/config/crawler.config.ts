@@ -36,8 +36,4 @@ export const BROWSER_CONFIG = {
 export const STORAGE_CONFIG = {
     // 存储根目录
     storageDir: './storage',
-    // 数据集目录
-    datasetsDir: './storage/datasets',
-    // Key-Value存储目录
-    kvStoreDir: './storage/key_value',
 }; 

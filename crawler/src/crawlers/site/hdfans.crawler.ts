@@ -1,6 +1,7 @@
 import { PlaywrightCrawlingContext } from '@crawlee/playwright';
+import { Dataset } from '@crawlee/core';
 import { BaseCrawler } from '../base/base-crawler';
-import { CrawlerTaskConfig } from '../../types/crawler';
+import { CrawlerTaskConfig, CrawlResult } from '../../types/crawler';
 import { env } from '../../config/env.config';
 
 export class HDFansCrawler extends BaseCrawler {
@@ -16,6 +17,16 @@ export class HDFansCrawler extends BaseCrawler {
                     type: 'attribute',
                     attribute: 'href',
                     required: true
+                },
+                {
+                    name: 'uid',
+                    selector: 'td.rowhead:has-text("用户ID/UID") + td.rowfollow',
+                    type: 'text',
+                    transform: (value: string) => {
+                        const match = value.match(/(\d+)/);
+                        if (!match) return null;
+                        return parseInt(match[1]);
+                    }
                 },
                 {
                     name: 'ratio',
@@ -90,6 +101,45 @@ export class HDFansCrawler extends BaseCrawler {
                         if (!match) return null;
                         return parseFloat(match[1].replace(/,/g, ''));
                     }
+                },
+                {
+                    name: 'bonus',
+                    selector: 'td.rowhead:has-text("做种积分") + td.rowfollow',
+                    type: 'text',
+                    transform: (value: string) => {
+                        const match = value.match(/([\d,]+\.?\d*)/);
+                        if (!match) return null;
+                        return parseFloat(match[1].replace(/,/g, ''));
+                    }
+                },
+                {
+                    name: 'joinDate',
+                    selector: 'td.rowhead:has-text("加入日期") + td.rowfollow',
+                    type: 'text',
+                    transform: (value: string) => {
+                        // 匹配日期格式 YYYY-MM-DD HH:mm:ss
+                        const match = value.match(/(\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2})/);
+                        if (!match) return null;
+
+                        try {
+                            // 解析日期字符串
+                            const date = new Date(match[1]);
+                            
+                            // 返回 ISO 格式的时间戳
+                            return date.toISOString();
+                        } catch (error) {
+                            return null;
+                        }
+                    }
+                },
+                {
+                    name: 'ip',
+                    selector: 'td.rowhead:has-text("当前IP") + td.rowfollow',
+                    type: 'text',
+                    transform: (value: string) => {
+                        // 直接返回清理后的文本
+                        return value.trim();
+                    }
                 }
             ],
             loginConfig: {
@@ -118,6 +168,43 @@ export class HDFansCrawler extends BaseCrawler {
         super(taskConfig);
     }
 
+    // 实现从 BaseCrawler 继承的方法
+    public async getProgress(): Promise<any> {
+        try {
+            const dataset = await Dataset.open(this.taskConfig.taskId);
+            const info = await dataset.getInfo();
+            
+            return {
+                itemCount: info?.itemCount ?? 0,  // 使用可选链和空值合并
+                timestamp: Date.now(),
+                datasetId: info?.id ?? this.taskConfig.taskId
+            };
+        } catch (error) {
+            this.log.error('Failed to get progress', {
+                error: error instanceof Error ? error.message : String(error)
+            });
+            return {
+                itemCount: 0,
+                timestamp: Date.now(),
+                error: error instanceof Error ? error.message : 'Unknown error'
+            };
+        }
+    }
+
+    public async getCrawledData(): Promise<{ items: any[] }> {
+        const dataset = await Dataset.open(this.taskConfig.taskId);
+        const { items } = await dataset.getData();
+        return { items };
+    }
+
+    protected async saveData(data: CrawlResult): Promise<void> {
+        await this.dataHandler.saveData(data);
+    }
+
+    protected async extractData(page: any, rules: any[], url: string): Promise<CrawlResult> {
+        return this.dataHandler.extractData(page, rules, url);
+    }
+
     protected async handleRequest(context: PlaywrightCrawlingContext): Promise<void> {
         const { page, request } = context;
         
@@ -136,13 +223,64 @@ export class HDFansCrawler extends BaseCrawler {
                     });
                 }
             } else {
+                // 先提取基本数据
                 const result = await this.extractData(
                     page,
                     this.taskConfig.extractRules.filter(rule => rule.name !== 'userProfileUrl'),
                     request.loadedUrl || request.url
                 );
+
+                // 在用户主页，点击显示按钮获取做种统计
+                await page.click('a[href*="getusertorrentlistajax"][href*="seeding"]');
                 
-                await this.saveData(result);
+                // 等待数据加载
+                await page.waitForSelector('#ka1[data-type="seeding"]', { 
+                    state: 'visible',
+                    timeout: 10000 
+                });
+
+                // 提取做种统计数据
+                const seedingStats = await page.$eval('#ka1[data-type="seeding"]', (el) => {
+                    const text = el.textContent || '';
+                    const countMatch = text.match(/(\d+)\s*条记录/);
+                    const sizeMatch = text.match(/总大小：([\d.]+)\s*(TB|GB|MB)/);
+                    
+                    return {
+                        count: countMatch ? parseInt(countMatch[1]) : 0,
+                        size: sizeMatch ? {
+                            value: parseFloat(sizeMatch[1]),
+                            unit: sizeMatch[2]
+                        } : null
+                    };
+                });
+
+                // 转换大小为 GB
+                let totalSizeGB = 0;
+                if (seedingStats.size) {
+                    switch (seedingStats.size.unit) {
+                        case 'TB':
+                            totalSizeGB = seedingStats.size.value * 1024;
+                            break;
+                        case 'GB':
+                            totalSizeGB = seedingStats.size.value;
+                            break;
+                        case 'MB':
+                            totalSizeGB = seedingStats.size.value / 1024;
+                            break;
+                    }
+                }
+
+                // 合并所有数据
+                const enrichedData = {
+                    ...result,
+                    data: {
+                        ...result.data,  // 包含了 uid 和其他基本数据
+                        seedingTotalCount: seedingStats.count,
+                        seedingTotalSize: totalSizeGB
+                    }
+                };
+                
+                await this.saveData(enrichedData);
             }
             
             this.log.info('Data extracted successfully', { 
