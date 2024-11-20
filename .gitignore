@@ -10,3 +10,4 @@ node_modules
 
 crawler/storage/*
 crawler/*.png
+crawler/debug/*.png

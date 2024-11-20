@@ -3,6 +3,7 @@ import { Dataset } from '@crawlee/core';
 import { BaseCrawler } from '../base/base-crawler';
 import { CrawlerTaskConfig, CrawlResult } from '../../types/crawler';
 import { env } from '../../config/env.config';
+import { Page } from 'playwright';
 
 export class HDFansCrawler extends BaseCrawler {
     constructor() {
@@ -51,6 +52,7 @@ export class HDFansCrawler extends BaseCrawler {
                             case 'TB': return num * 1024;
                             case 'GB': return num;
                             case 'MB': return num / 1024;
+                            case 'KB': return num / (1024 * 1024);
                             default: return num;
                         }
                     }
@@ -60,7 +62,7 @@ export class HDFansCrawler extends BaseCrawler {
                     selector: 'td.rowfollow',
                     type: 'text',
                     transform: (value: string) => {
-                        const match = value.match(/下载量.*?(\d+\.?\d*)\s*(TB|GB|MB)/);
+                        const match = value.match(/下载量.*?(\d+\.?\d*)\s*(TB|GB|MB|KB)/);
                         if (!match) return null;
                         const [, size, unit] = match;
                         const num = parseFloat(size);
@@ -68,6 +70,7 @@ export class HDFansCrawler extends BaseCrawler {
                             case 'TB': return num * 1024;
                             case 'GB': return num;
                             case 'MB': return num / 1024;
+                            case 'KB': return num / (1024 * 1024);
                             default: return num;
                         }
                     }
@@ -145,22 +148,114 @@ export class HDFansCrawler extends BaseCrawler {
             loginConfig: {
                 loginUrl: 'https://hdfans.org/login.php',
                 formSelector: 'form[action="takelogin.php"]',
-                credentials: {
-                    username: env.LOGIN_USERNAME,
-                    password: env.LOGIN_PASSWORD
+                fields: {
+                    username: {
+                        name: 'username',
+                        type: 'text',
+                        selector: 'input[name="username"]',
+                        value: env.LOGIN_USERNAME,
+                        required: true
+                    },
+                    password: {
+                        name: 'password',
+                        type: 'password',
+                        selector: 'input[name="password"]',
+                        value: env.LOGIN_PASSWORD,
+                        required: true
+                    },
+                    captcha: {
+                        type: 'custom',
+                        element: {
+                            selector: 'img[src*="image.php?action=regimage"]',
+                            type: 'img'
+                        },
+                        input: {
+                            name: 'imagestring',
+                            type: 'text',
+                            selector: 'input[name="imagestring"]',
+                            required: true
+                        },
+                        hash: {
+                            selector: 'input[name="imagehash"]',
+                            targetField: 'imagehash'
+                        },
+                        solver: {
+                            type: env.CAPTCHA_SKIP_SITES.includes('hdfans') ? 'skip' : env.CAPTCHA_HANDLE_METHOD,
+                            config: {
+                                apiKey: env.CAPTCHA_API_KEY,
+                                apiUrl: env.CAPTCHA_API_URL,
+                                timeout: 30000,
+                                retries: 3
+                            }
+                        },
+                        // 添加自定义的验证码获取方法
+                        getCaptchaImage: async (page: Page): Promise<Buffer | null> => {
+                            const imgElement = await page.$('img[src*="image.php?action=regimage"]');
+                            if (!imgElement) {
+                                throw new Error('Captcha image not found');
+                            }
+
+                            // 获取图片的 src 属性
+                            const imgSrc = await imgElement.getAttribute('src');
+                            if (!imgSrc) {
+                                throw new Error('Image src not found');
+                            }
+
+                            // 将相对路径转换为完整 URL
+                            const captchaUrl = new URL(imgSrc, page.url()).toString();
+
+                            try {
+                                // 使用 request 获取图片
+                                const response = await page.context().request.get(captchaUrl);
+                                const buffer = Buffer.from(await response.body());
+
+                                // 记录验证码获取日志
+                                this.log.debug('Captcha image downloaded', {
+                                    url: captchaUrl,
+                                    size: buffer.length,
+                                    contentType: response.headers()['content-type']
+                                });
+
+                                return buffer;
+                            } catch (error) {
+                                this.log.error('Failed to download captcha image', {
+                                    url: captchaUrl,
+                                    error: error instanceof Error ? error.message : String(error)
+                                });
+                                throw error;
+                            }
+                        }
+                    },
+                    other: [
+                        {
+                            name: 'secret',
+                            type: 'hidden',
+                            selector: 'input[name="secret"]',
+                            value: ''
+                        },
+                        {
+                            name: 'two_step_code',
+                            type: 'text',
+                            selector: 'input[name="two_step_code"]',
+                            value: ''
+                        },
+                        {
+                            name: 'logout',
+                            type: 'checkbox',
+                            selector: 'input[name="logout"]',
+                            value: false
+                        },
+                        {
+                            name: 'securelogin',
+                            type: 'checkbox',
+                            selector: 'input[name="securelogin"]',
+                            value: false
+                        }
+                    ]
                 },
                 successCheck: {
                     selector: 'a.User_Name',
                     expectedText: env.LOGIN_USERNAME
-                },
-                captcha: {
-                    imageSelector: 'img[src*="image.php?action=regimage"]',
-                    inputSelector: 'input[name="imagestring"]',
-                    handleMethod: env.CAPTCHA_HANDLE_METHOD,
-                    serviceConfig: {
-                        apiKey: env.CAPTCHA_API_KEY,
-                        apiUrl: env.CAPTCHA_API_URL
-                    }
                 }
             }
         };

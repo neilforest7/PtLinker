@@ -10,9 +10,10 @@ export interface EnvConfig {
     CRAWLER_MAX_CONCURRENCY: number;
 
     // Captcha Configuration
-    CAPTCHA_HANDLE_METHOD: 'api' | 'ocr' | 'manual';
+    CAPTCHA_HANDLE_METHOD: 'api' | 'ocr' | 'custom' | 'skip';
     CAPTCHA_API_KEY: string;
     CAPTCHA_API_URL: string;
+    CAPTCHA_SKIP_SITES: string[];
 
     // Login Credentials
     LOGIN_USERNAME: string;
@@ -25,9 +26,10 @@ export const env: EnvConfig = {
     CRAWLER_MAX_CONCURRENCY: Number(process.env.CRAWLER_MAX_CONCURRENCY || 10),
 
     // Captcha Configuration
-    CAPTCHA_HANDLE_METHOD: (process.env.CAPTCHA_HANDLE_METHOD || 'manual') as 'api' | 'ocr' | 'manual',
+    CAPTCHA_HANDLE_METHOD: (process.env.CAPTCHA_HANDLE_METHOD || 'custom') as 'api' | 'ocr' | 'custom' | 'skip',
     CAPTCHA_API_KEY: process.env.CAPTCHA_API_KEY || '',
     CAPTCHA_API_URL: process.env.CAPTCHA_API_URL || 'http://api.2captcha.com',
+    CAPTCHA_SKIP_SITES: (process.env.CAPTCHA_SKIP_SITES || 'hdhome').split(','),
 
     // Login Credentials
     LOGIN_USERNAME: process.env.LOGIN_USERNAME || '',

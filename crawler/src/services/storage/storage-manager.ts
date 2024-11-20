@@ -446,33 +446,4 @@ export class StorageManager {
             return null;
         }
     }
-
-    /**
-     * 删除过期的 cookies
-     */
-    async cleanupExpiredCookies(): Promise<void> {
-        try {
-            const cookiesKey = this.getKeyWithPrefix('cookies');
-            const data = await this.keyValueStore.getValue<{
-                cookies: any[];
-                timestamp: number;
-                siteId: string;
-            }>(cookiesKey);
-
-            if (!data) return;
-
-            const maxAge = 7 * 24 * 60 * 60 * 1000; // 7 days
-            if (Date.now() - data.timestamp > maxAge) {
-                await this.keyValueStore.setValue(cookiesKey, null);
-                this.log.info('Expired cookies cleaned up', {
-                    siteId: this.options.siteId
-                });
-            }
-        } catch (error) {
-            this.log.error('Failed to cleanup expired cookies', {
-                siteId: this.options.siteId,
-                error: error instanceof Error ? error.message : String(error)
-            });
-        }
-    }
 } 

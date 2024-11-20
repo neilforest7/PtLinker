@@ -1,8 +1,9 @@
 import { Page } from 'playwright';
-import { LoginConfig, CrawlerError, CrawlerErrorType } from '../../types/crawler';
-import { KeyValueStore } from '@crawlee/core';
-import { Log } from '@crawlee/core';
+import { LoginConfig, CrawlerError, CrawlerErrorType, FormField, CaptchaConfig, StorageState, PreLoginStep } from '../../types/crawler';
+import { KeyValueStore, Log } from '@crawlee/core';
 import { CaptchaServiceFactory } from '../../services/captcha/factory';
+import { CaptchaServiceType } from '../../services/captcha/types';
+import { sleep } from 'crawlee';
 
 export class LoginHandler {
     private readonly keyValueStore: KeyValueStore;
@@ -14,77 +15,238 @@ export class LoginHandler {
     }
 
     /**
+     * 填写表单字段
+     */
+    private async fillFormField(page: Page, field: FormField): Promise<void> {
+        const element = await page.$(field.selector);
+        if (!element) {
+            if (field.required) {
+                throw new Error(`Required field not found: ${field.name}`);
+            }
+            return;
+        }
+
+        try {
+            switch (field.type) {
+                case 'text':
+                case 'password':
+                    await element.fill(field.value as string);
+                    break;
+                case 'checkbox':
+                    if (field.value) {
+                        await element.check();
+                    } else {
+                        await element.uncheck();
+                    }
+                    break;
+                case 'radio':
+                    await element.check();
+                    break;
+                case 'hidden':
+                    await page.evaluate(
+                        ({ selector, value }: { selector: string; value: string }) => {
+                            const el = document.querySelector(selector) as HTMLInputElement;
+                            if (el) el.value = value;
+                        },
+                        { selector: field.selector, value: field.value as string }
+                    );
+                    break;
+            }
+
+            this.log.debug(`Field filled: ${field.name}`, {
+                type: field.type,
+                selector: field.selector
+            });
+        } catch (error) {
+            throw new Error(`Failed to fill field ${field.name}: ${error instanceof Error ? error.message : String(error)}`);
+        }
+    }
+
+    /**
+     * 处理验证码
+     */
+    private async handleCaptcha(page: Page, captchaConfig?: CaptchaConfig): Promise<void> {
+        if (!captchaConfig) {
+            this.log.debug('No captcha configuration provided, skipping captcha handling');
+            return;
+        }
+
+        // 检查是否需要跳过验证码
+        if (captchaConfig.solver.type === 'skip') {
+            this.log.debug('Captcha handling is configured to be skipped for this site');
+            return;
+        }
+
+        try {
+            // 获取验证码图片
+            let captchaImage: Buffer | null = null;
+
+            if (captchaConfig.getCaptchaImage) {
+                // 使用站点特定的验证码获取方法
+                captchaImage = await captchaConfig.getCaptchaImage(page);
+            } else {
+                // 使用默认的验证码获取逻辑
+                const imgElement = await page.$(captchaConfig.element.selector);
+                if (!imgElement) throw new Error('Captcha image not found');
+            }
+
+            // 验证必需的配置
+            if (!captchaConfig.solver.config?.apiKey) {
+                throw new Error('Captcha API key is required');
+            }
+
+            // 解析验证码
+            const captchaService = CaptchaServiceFactory.createService({
+                type: captchaConfig.solver.type,
+                apiKey: captchaConfig.solver.config.apiKey,
+                apiUrl: captchaConfig.solver.config.apiUrl || undefined,
+                timeout: captchaConfig.solver.config.timeout,
+                retries: captchaConfig.solver.config.retries
+            });
+            
+            if (!captchaImage) {
+                throw new Error('Captcha image not found or failed to download');
+            }
+            
+            const captchaResult = await captchaService.solve(captchaImage);
+
+            // 处理验证码 hash
+            if (captchaConfig.hash) {
+                const hashElement = await page.$(captchaConfig.hash.selector);
+                if (hashElement) {
+                    const hash = await hashElement.getAttribute('value');
+                    if (hash) {
+                        await this.fillFormField(page, {
+                            name: captchaConfig.hash.targetField,
+                            type: 'hidden',
+                            selector: `input[name="${captchaConfig.hash.targetField}"]`,
+                            value: hash
+                        });
+                    }
+                }
+            }
+
+            // 填写验证码
+            await this.fillFormField(page, {
+                ...captchaConfig.input,
+                value: captchaResult
+            });
+
+        } catch (error) {
+            throw new Error(`Captcha handling failed: ${error instanceof Error ? error.message : String(error)}`);
+        }
+    }
+
+    /**
      * 执行登录流程
      */
-    public async performLogin(page: Page, loginConfig: LoginConfig): Promise<void> {
+    public async performLogin(page: Page, config: LoginConfig): Promise<void> {
         try {
-            // 添加页面错误监听
-            page.on('pageerror', error => {
-                this.log.error('Page error', { error: error.message });
-            });
-
-            // 添加请求失败监听
-            page.on('requestfailed', request => {
-                this.log.error('Request failed', { 
-                    url: request.url(),
-                    error: request.failure()?.errorText 
-                });
-            });
-
-            // 添加响应监听
-            page.on('response', response => {
-                const status = response.status();
-                if (status >= 300 && status < 400) {
-                    // 3xx 状态码表示重定向，这是正常的
-                    this.log.info('Response redirect', {
-                        url: response.url(),
-                        status,
-                        statusText: response.statusText(),
-                        location: response.headers()['location']
-                    });
-                } else if (!response.ok()) {
-                    // 其他非成功状态码才报告错误
-                    this.log.error('Response error', {
-                        url: response.url(),
-                        status,
-                        statusText: response.statusText()
-                    });
-                }
-            });
-
-            this.log.info('Starting login process...', { url: loginConfig.loginUrl });
+            this.log.info('Starting login process...', { url: config.loginUrl });
             
             // 导航到登录页面
-            await page.goto(loginConfig.loginUrl, { 
+            await page.goto(config.loginUrl, { 
                 waitUntil: 'networkidle',
                 timeout: 30000 
             });
 
-            // 保存登录页面截图
-            try {
-                const loginPageScreenshot = await page.screenshot({
-                    fullPage: true,
-                    path: `login-page-${Date.now()}.png`
-                });
-                await this.keyValueStore.setValue(
-                    `login-page-screenshot-${Date.now()}`,
-                    loginPageScreenshot
-                );
-                this.log.info('Login page screenshot saved');
-            } catch (screenshotError) {
-                this.log.error('Failed to save login page screenshot', {
-                    error: screenshotError instanceof Error ? screenshotError.message : String(screenshotError)
+            // 首先执行登录前的准备步骤（如点击登录按钮显示表单）
+            if (config.preLoginSteps) {
+                for (const step of config.preLoginSteps) {
+                    await this.executePreLoginStep(page, step);
+                }
+            }
+            // const screenshot = await page.screenshot({
+            //     fullPage: true,
+            //     path: `after-pre-login-steps-${Date.now()}.png`
+            // });
+            // await this.keyValueStore.setValue(
+            //     `after-pre-login-steps-screenshot-${Date.now()}`,
+            //     screenshot
+            // );
+            // 调试表单选择器
+            const formDebugInfo = await page.evaluate((selector) => {
+                const form = document.querySelector(selector);
+                if (!form) return { exists: false };
+                
+                return {
+                    exists: true,
+                    id: form.id,
+                    action: (form as HTMLFormElement).action,
+                    method: (form as HTMLFormElement).method,
+                    classList: Array.from(form.classList),
+                    style: {
+                        display: window.getComputedStyle(form).display,
+                        visibility: window.getComputedStyle(form).visibility,
+                        opacity: window.getComputedStyle(form).opacity
+                    },
+                    html: form.outerHTML
+                };
+            }, config.formSelector);
+
+            this.log.info('Form selector debug info:', formDebugInfo);
+
+            // 使用 locator API 等待表单渲染和可交互
+            const formLocator = page.locator(config.formSelector);
+            await formLocator.waitFor();
+
+            // 确保表单真正可交互
+            await formLocator.evaluate((form) => {
+                const style = window.getComputedStyle(form);
+                if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
+                    throw new Error('Form is not truly visible');
+                }
+            });
+
+            // 获取验证码图片
+            let captchaImage: Buffer | undefined;
+            let captchaUrl: string | undefined;
+            let captchaContentType: string | undefined;
+
+            if (config.fields.captcha && config.fields.captcha.solver.type !== 'skip') {
+                const imgElement = await page.$(config.fields.captcha.element.selector);
+                if (!imgElement) throw new Error('Captcha image not found');
+
+                const captchaImage = config.fields.captcha.getCaptchaImage ? await config.fields.captcha.getCaptchaImage(page) : undefined;
+
+                this.log.info('Captcha image downloaded', {
+                    size: captchaImage?.length,
+                    contentType: captchaContentType,
+                    url: captchaUrl
                 });
             }
-            
-            // 等待并填写表单
-            await this.fillLoginForm(page, loginConfig.formSelector, loginConfig.credentials, loginConfig.captcha);
-            
-            // 处理登录提交
-            await this.handleLoginSubmission(page, loginConfig.formSelector, loginConfig.successCheck);
-            
+
+            // 填写用户名和密码
+            await sleep(1000);
+            await this.fillFormField(page, {
+                ...config.fields.username,
+                value: config.fields.username.value
+            });
+            await sleep(1000);
+            await this.fillFormField(page, {
+                ...config.fields.password,
+                value: config.fields.password.value
+            });
+
+            // 处理验证码
+            if (config.fields.captcha) {
+                await this.handleCaptcha(page, config.fields.captcha);
+            } else {
+                this.log.debug('No captcha configuration in login config, skipping captcha step');
+            }
+
+            // 填写其他字段
+            if (config.fields.other) {
+                for (const field of config.fields.other) {
+                    await this.fillFormField(page, field);
+                }
+            }
+
+            // 提交表单
+            await this.handleLoginSubmission(page, config.formSelector, config.successCheck);
+
             // 保存登录状态
-            await this.saveLoginState(page);
+            await this.saveLoginState(page, config);
             
             this.log.info('Login successful');
             
@@ -137,288 +299,6 @@ export class LoginHandler {
         } catch {
             return false;
         }
-    }
-
-    /**
-     * 处理验证码
-     */
-    private async handleCaptcha(
-        page: Page,
-        captchaImg: any,
-        captchaInput: any,
-        captchaConfig?: LoginConfig['captcha']
-    ): Promise<void> {
-        this.log.info('Captcha detected, handling...');
-        
-        try {
-            // 获取验证码图片的 src 属性
-            const imgSrc = await captchaImg.getAttribute('src');
-            this.log.info('Captcha image src:', { src: imgSrc });
-
-            // 从 URL 中提取 imagehash 参数
-            const imageHashMatch = imgSrc.match(/imagehash=([^&]+)/);
-            const imageHash = imageHashMatch ? imageHashMatch[1] : '';
-            this.log.info('Extracted imagehash:', { imageHash });
-
-            // 使用 JavaScript 直接设置 imagehash 值
-            await page.evaluate((hash) => {
-                const imageHashInput = document.querySelector('input[name="imagehash"]');
-                if (imageHashInput) {
-                    (imageHashInput as HTMLInputElement).value = hash;
-                }
-            }, imageHash);
-            this.log.info('Set imagehash value via JavaScript');
-
-            // 保存验证码图片前的页面状态
-            const beforeCaptchaScreenshot = await page.screenshot({
-                fullPage: true,
-                path: `before-captcha-${Date.now()}.png`
-            });
-            await this.keyValueStore.setValue(
-                `before-captcha-screenshot-${Date.now()}`,
-                beforeCaptchaScreenshot
-            );
-            this.log.info('Before-captcha screenshot saved');
-
-            const buffer = await captchaImg.screenshot({
-                type: 'png'
-            });
-            const captchaBase64 = buffer.toString('base64');
-
-            // 保存验证码图片
-            await this.keyValueStore.setValue(
-                `captcha-image-${Date.now()}`,
-                buffer
-            );
-            this.log.info('Captcha image saved');
-
-            let captchaCode: string;
-
-            if (captchaConfig?.handleMethod !== 'manual') {
-                try {
-                    const captchaService = CaptchaServiceFactory.createService(
-                        captchaConfig?.handleMethod || 'manual',
-                        {
-                            apiKey: captchaConfig?.serviceConfig?.apiKey || '',
-                            apiUrl: captchaConfig?.serviceConfig?.apiUrl
-                        }
-                    );
-
-                    this.log.info(`Using ${captchaConfig?.handleMethod} service to solve captcha...`);
-                    const result = await captchaService.solveCaptcha(captchaBase64);
-                    
-                    if (!result.success || !result.code) {
-                        throw new Error(`Failed to solve captcha: ${result.error}`);
-                    }
-
-                    captchaCode = result.code;
-                    this.log.info('Captcha solved successfully', { code: captchaCode });
-
-                } catch (error) {
-                    this.log.error('Captcha service failed, falling back to manual input', {
-                        error: error instanceof Error ? error.message : String(error)
-                    });
-                    captchaCode = await this.waitForCaptchaInput(captchaBase64);
-                }
-            } else {
-                captchaCode = await this.waitForCaptchaInput(captchaBase64);
-            }
-
-            // 填写验证码前保存页面状态
-            const beforeFillCaptchaScreenshot = await page.screenshot({
-                fullPage: true,
-                path: `before-fill-captcha-${Date.now()}.png`
-            });
-            await this.keyValueStore.setValue(
-                `before-fill-captcha-screenshot-${Date.now()}`,
-                beforeFillCaptchaScreenshot
-            );
-            this.log.info('Before filling captcha screenshot saved');
-
-            // 填写验证码
-            await captchaInput.fill(captchaCode);
-            this.log.info('Captcha filled', { code: captchaCode, imageHash });
-
-            // 保存填写验证码后的页面截图
-            const afterCaptchaScreenshot = await page.screenshot({
-                fullPage: true,
-                path: `after-captcha-${Date.now()}.png`
-            });
-            await this.keyValueStore.setValue(
-                `after-captcha-screenshot-${Date.now()}`,
-                afterCaptchaScreenshot
-            );
-            this.log.info('After-captcha screenshot saved');
-
-        } catch (error) {
-            this.log.error('Error in captcha handling', {
-                error: error instanceof Error ? error.message : String(error)
-            });
-            throw error;
-        }
-    }
-
-    /**
-     * 填写登录表单
-     */
-    private async fillLoginForm(
-        page: Page, 
-        formSelector: string, 
-        credentials: LoginConfig['credentials'],
-        captchaConfig?: LoginConfig['captcha']
-    ): Promise<void> {
-        this.log.info('Waiting for form...', { selector: formSelector });
-        await page.waitForSelector(formSelector, { timeout: 10000 });
-        this.log.info('Form found');
-
-        // 验证输入字段是否存在
-        const usernameInput = await page.$(`${formSelector} input[name="username"]`);
-        const passwordInput = await page.$(`${formSelector} input[name="password"]`);
-        const submitButton = await page.$(`${formSelector} [type="submit"]`);
-        const imageHashInput = await page.$(`${formSelector} input[name="imagehash"]`);
-        const captchaInput = await page.$(`${formSelector} input[name="imagestring"]`);
-        
-        if (!usernameInput || !passwordInput || !submitButton || !imageHashInput || !captchaInput) {
-            throw new Error('Login form elements not found');
-        }
-
-        // 清除可能的现有输入
-        await page.evaluate((selector) => {
-            const form = document.querySelector(selector);
-            const inputs = form?.querySelectorAll('input');
-            inputs?.forEach(input => {
-                if (input.type !== 'submit') input.value = '';
-            });
-        }, formSelector);
-
-        // 填写凭证
-        this.log.info('Filling credentials...', { username: credentials.username });
-        await usernameInput.fill(credentials.username);
-        await passwordInput.fill(credentials.password);
-
-        // 保存填写凭证后的截图
-        const afterCredentialsScreenshot = await page.screenshot({
-            fullPage: true,
-            path: `after-credentials-${Date.now()}.png`
-        });
-        await this.keyValueStore.setValue(
-            `after-credentials-screenshot-${Date.now()}`,
-            afterCredentialsScreenshot
-        );
-        this.log.info('Credentials filled and screenshot saved');
-
-        // 检查并处理验证码
-        if (captchaConfig?.imageSelector && captchaConfig?.inputSelector) {
-            // 添加更多日志来帮助调试
-            this.log.info('Looking for captcha elements...');
-            
-            // 获取页面上所有的图片元素
-            const allImages = await page.$$('img');
-            this.log.info(`Found ${allImages.length} images on page`);
-            
-            // 获取所有图片的信息
-            const imageInfo = await Promise.all(allImages.map(async img => {
-                const src = await img.getAttribute('src');
-                const id = await img.getAttribute('id');
-                const className = await img.getAttribute('class');
-                return { src, id, className };
-            }));
-            this.log.info('Image elements found:', { images: imageInfo });
-
-            // 获取所有输入框
-            const allInputs = await page.$$('input');
-            this.log.info(`Found ${allInputs.length} input elements`);
-            
-            // 获取所有输入框的信息
-            const inputInfo = await Promise.all(allInputs.map(async input => {
-                const name = await input.getAttribute('name');
-                const type = await input.getAttribute('type');
-                const id = await input.getAttribute('id');
-                return { name, type, id };
-            }));
-            this.log.info('Input elements found:', { inputs: inputInfo });
-
-            // 尝试使用多个可能的选择器
-            const possibleImageSelectors = [
-                'img[alt=\"CAPTCHA\"]',
-                'img[src*=\"image.php?action=regimage\"]',
-                'img[src*=\"vcode\"]',
-                'img[src*=\"captcha\"]',
-                'img.captcha',
-                '#captcha_img'
-            ];
-
-            const possibleInputSelectors = [
-                'input[name=\"imagestring\"]',
-                'input[name=\"vcode\"]',
-                'input[name=\"captcha\"]',
-                'input[name=\"verify\"]',
-                '#captcha_input',
-                '.captcha-input'
-            ];
-
-            // 记录当前页面的 HTML 结构
-            const pageHtml = await page.content();
-            await this.keyValueStore.setValue(
-                `page-html-${Date.now()}`,
-                pageHtml
-            );
-
-            // 尝试所有可能的选择器
-            for (const imgSelector of possibleImageSelectors) {
-                const img = await page.$(imgSelector);
-                if (img) {
-                    this.log.info(`Found captcha image with selector: ${imgSelector}`);
-                    for (const inputSelector of possibleInputSelectors) {
-                        const input = await page.$(inputSelector);
-                        if (input) {
-                            this.log.info(`Found captcha input with selector: ${inputSelector}`);
-                            await this.handleCaptcha(page, img, input, {
-                                ...captchaConfig,
-                                imageSelector: imgSelector,
-                                inputSelector: inputSelector
-                            });
-                            return;
-                        }
-                    }
-                }
-            }
-
-            this.log.error('Could not find captcha elements with any known selectors', {
-                imageSelectors: possibleImageSelectors,
-                inputSelectors: possibleInputSelectors
-            });
-        }
-
-        this.log.info('Form filled completely');
-
-        // 保存表单填写完成后的截图
-        const formFilledScreenshot = await page.screenshot({
-            fullPage: true,
-            path: `form-filled-${Date.now()}.png`
-        });
-        await this.keyValueStore.setValue(
-            `form-filled-screenshot-${Date.now()}`,
-            formFilledScreenshot
-        );
-        this.log.info('Final form state screenshot saved');
-    }
-
-    // 等待验证码输入
-    private async waitForCaptchaInput(captchaBase64: string): Promise<string> {
-        // 这里实现等待用户输入的逻辑
-        // 示例使用 readline
-        const readline = require('readline').createInterface({
-            input: process.stdin,
-            output: process.stdout
-        });
-
-        return new Promise((resolve) => {
-            readline.question('请输入验证码: ', (answer: string) => {
-                readline.close();
-                resolve(answer.trim());
-            });
-        });
     }
 
     /**
@@ -661,38 +541,153 @@ export class LoginHandler {
     }
 
     /**
+     * 验证登录状态
+     */
+    private async validateLoginState(page: Page, successCheck: LoginConfig['successCheck']): Promise<boolean> {
+        try {
+            // 等待成功标识出现
+            await page.waitForSelector(successCheck.selector, { timeout: 10000 });
+            
+            // 如果需要验证文本内容
+            if (successCheck.expectedText) {
+                const text = await page.textContent(successCheck.selector);
+                const isValid = text?.includes(successCheck.expectedText);
+                
+                this.log.info('Login state validation', {
+                    selector: successCheck.selector,
+                    expectedText: successCheck.expectedText,
+                    actualText: text,
+                    isValid
+                });
+                
+                return isValid ?? false;
+            }
+
+            this.log.info('Login state validated successfully');
+            return true;
+        } catch (error) {
+            this.log.error('Login state validation failed', {
+                error: error instanceof Error ? error.message : String(error),
+                selector: successCheck.selector
+            });
+            return false;
+        }
+    }
+
+    /**
      * 保存登录状态
      */
-    private async saveLoginState(page: Page): Promise<void> {
-        // 保存cookies
-        const cookies = await page.context().cookies();
-        await this.keyValueStore.setValue('cookies', cookies);
-
-        // 保存localStorage
-        const localStorage = await page.evaluate(() => {
-            const items: Record<string, string> = {};
-            for (let i = 0; i < window.localStorage.length; i++) {
-                const key = window.localStorage.key(i);
-                if (key) {
-                    items[key] = window.localStorage.getItem(key) || '';
+    private async saveLoginState(page: Page, config: LoginConfig): Promise<void> {
+        try {
+            // 获取所有状态数据
+            const state = {
+                cookies: await page.context().cookies(),
+                localStorage: await page.evaluate(() => {
+                    const data: Record<string, string> = {};
+                    for (let i = 0; i < localStorage.length; i++) {
+                        const key = localStorage.key(i);
+                        if (key) {
+                            data[key] = localStorage.getItem(key) || '';
+                        }
+                    }
+                    return data;
+                }),
+                sessionStorage: await page.evaluate(() => {
+                    const data: Record<string, string> = {};
+                    for (let i = 0; i < sessionStorage.length; i++) {
+                        const key = sessionStorage.key(i);
+                        if (key) {
+                            data[key] = sessionStorage.getItem(key) || '';
+                        }
+                    }
+                    return data;
+                }),
+                loginState: {
+                    isLoggedIn: true,
+                    lastLoginTime: Date.now(),
+                    username: config.fields.username.value as string
                 }
-            }
-            return items;
-        });
-        await this.keyValueStore.setValue('localStorage', localStorage);
+            };
 
-        // 保存sessionStorage
-        const sessionStorage = await page.evaluate(() => {
-            const items: Record<string, string> = {};
-            for (let i = 0; i < window.sessionStorage.length; i++) {
-                const key = window.sessionStorage.key(i);
-                if (key) {
-                    items[key] = window.sessionStorage.getItem(key) || '';
-                }
+            // 保存到 KeyValueStore
+            const stateKey = `login-state-${Date.now()}`;
+            await this.keyValueStore.setValue(stateKey, state);
+
+            // 保存成功页面截图
+            const screenshot = await page.screenshot({
+                fullPage: true,
+                path: `login-success-${Date.now()}.png`
+            });
+            await this.keyValueStore.setValue(
+                `${stateKey}-screenshot`,
+                screenshot,
+                { contentType: 'image/png' }
+            );
+
+            // 保存页面 HTML
+            const html = await page.content();
+            await this.keyValueStore.setValue(
+                `${stateKey}-html`,
+                html
+            );
+
+            this.log.info('Login state saved successfully', {
+                stateKey,
+                cookiesCount: state.cookies.length,
+                localStorageKeys: Object.keys(state.localStorage).length,
+                sessionStorageKeys: Object.keys(state.sessionStorage).length
+            });
+        } catch (error) {
+            this.log.error('Failed to save login state', {
+                error: error instanceof Error ? error.message : String(error)
+            });
+            throw error;
+        }
+    }
+
+    /**
+     * 恢复登录状态
+     */
+    private async restoreLoginState(page: Page): Promise<boolean> {
+        try {
+            // 获取最新的登录状态
+            const state = await this.keyValueStore.getValue<StorageState>('login-state');
+            if (!state) {
+                this.log.info('No saved login state found');
+                return false;
             }
-            return items;
-        });
-        await this.keyValueStore.setValue('sessionStorage', sessionStorage);
+
+            // 恢复 cookies
+            await page.context().addCookies(state.cookies);
+
+            // 恢复 localStorage
+            await page.evaluate((data) => {
+                localStorage.clear();
+                for (const [key, value] of Object.entries(data)) {
+                    localStorage.setItem(key, value);
+                }
+            }, state.localStorage);
+
+            // 恢复 sessionStorage
+            await page.evaluate((data) => {
+                sessionStorage.clear();
+                for (const [key, value] of Object.entries(data)) {
+                    sessionStorage.setItem(key, value);
+                }
+            }, state.sessionStorage);
+
+            this.log.info('Login state restored', {
+                username: state.loginState.username,
+                lastLoginTime: new Date(state.loginState.lastLoginTime).toISOString()
+            });
+
+            return true;
+        } catch (error) {
+            this.log.error('Failed to restore login state', {
+                error: error instanceof Error ? error.message : String(error)
+            });
+            return false;
+        }
     }
 
     /**
@@ -707,5 +702,40 @@ export class LoginHandler {
         };
         await this.keyValueStore.setValue('loginError', crawlerError);
         throw error;
+    }
+
+    /**
+     * 执行登录前的准备步骤
+     */
+    private async executePreLoginStep(page: Page, step: PreLoginStep): Promise<void> {
+        try {
+            switch (step.type) {
+                case 'click':
+                    await page.click(step.selector);
+                    if (step.waitForSelector) {
+                        await page.waitForSelector(step.waitForSelector, {
+                            timeout: step.timeout || 5000
+                        });
+                    }
+                    if (step.waitForFunction) {
+                        await page.waitForFunction(step.waitForFunction, {
+                            timeout: step.timeout || 5000
+                        });
+                    }
+                    break;
+                case 'wait':
+                    await page.waitForSelector(step.selector, {
+                        timeout: step.timeout || 5000
+                    });
+                    break;
+                case 'fill':
+                    if (step.value) {
+                        await page.fill(step.selector, step.value);
+                    }
+                    break;
+            }
+        } catch (error) {
+            throw new Error(`Pre-login step failed: ${error instanceof Error ? error.message : String(error)}`);
+        }
     }
 } 

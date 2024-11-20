@@ -78,7 +78,11 @@ export abstract class BaseCrawler {
         const url = this.taskConfig.startUrls[0];
         try {
             const hostname = new URL(url).hostname;
-            return hostname.split('.')[0];  // 例如从 hdfans.org 获取 hdfans
+            const parts = hostname.split('.');
+            
+            // 获取顶级域名之前的部分（倒数第二个部分）
+            return parts[parts.length - 2];
+            
         } catch {
             return 'unknown-site';
         }
@@ -129,7 +133,7 @@ export abstract class BaseCrawler {
                     loginState: {
                         isLoggedIn: true,
                         lastLoginTime: Date.now(),
-                        username: this.taskConfig.loginConfig.credentials.username
+                        username: this.taskConfig.loginConfig.fields.username.name
                     }
                 });
 

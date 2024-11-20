@@ -1,5 +1,7 @@
 import { HDFansCrawler } from './crawlers/site/hdfans.crawler';
+import { QingWaptCrawler } from './crawlers/site/qingwapt.crawler';
 import { validateEnv } from './config/env.config';
+import { HDHomeCrawler } from './crawlers/site/hdhome.crawler';
 
 async function runTest() {
     // 验证环境变量
@@ -7,7 +9,9 @@ async function runTest() {
 
     try {
         console.log('Starting crawler...');
-        const crawler = new HDFansCrawler();
+        // const crawler = new HDFansCrawler();
+        // const crawler = new QingWaptCrawler();
+        const crawler = new HDHomeCrawler();
         
         // 监听进度
         const progressInterval = setInterval(async () => {

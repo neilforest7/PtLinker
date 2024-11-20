@@ -1,4 +1,5 @@
 import { Dictionary } from '@crawlee/utils';
+import { Page } from 'playwright';
 
 // 爬虫任务配置
 export interface CrawlerTaskConfig {
@@ -14,37 +15,38 @@ export interface CrawlerTaskConfig {
     customConfig?: Dictionary;
 }
 
+// 表单字段配置
+export interface FormField {
+    name: string;           // 字段名称
+    type: 'text' | 'password' | 'checkbox' | 'radio' | 'hidden' | 'submit';  // 字段类型
+    selector: string;       // 字段选择器
+    value?: string | boolean;  // 字段值
+    required?: boolean;     // 是否必填
+    validation?: {         // 字段验证规则
+        pattern?: string;   // 正则表达式
+        message?: string;   // 错误消息
+    };
+}
+
 // 登录配置
 export interface LoginConfig {
-    // 登录页面URL
     loginUrl: string;
-    // 登录表单选择器
     formSelector: string;
-    // 登录凭证
-    credentials: {
-        username: string;
-        password: string;
+    // 表单字段映射
+    fields: {
+        // 基础字段
+        username: FormField;     
+        password: FormField;     
+        // 验证码相关字段（可选）
+        captcha?: CaptchaConfig;
+        other?: FormField[];
     };
+    // 登录前的准备步骤
+    preLoginSteps?: PreLoginStep[];
     // 登录成功检查
     successCheck: {
-        // 成功标识选择器
         selector: string;
-        // 期望的文本内容(可选)
         expectedText?: string;
-    };
-    // 验证码配置
-    captcha?: {
-        // 验证码图片选择器
-        imageSelector: string;
-        // 验证码输入框选择器
-        inputSelector: string;
-        // 验证码处理方式：'manual' | 'ocr' | 'api'
-        handleMethod: string;
-        // 验证码服务配置（如果使用第三方服务）
-        serviceConfig?: {
-            apiKey?: string;
-            apiUrl?: string;
-        };
     };
 }
 
@@ -96,4 +98,55 @@ export interface CrawlerError {
     url?: string;
     timestamp: number;
     stack?: string;
+}
+
+// 验证码配置
+export interface CaptchaConfig {
+    // 验证码类型
+    type: 'custom';
+    // 验证码元素配置
+    element: {
+        selector: string;  // 验证码元素选择器
+        type: 'img' | 'div' | 'iframe';  // 元素类型
+        attribute?: string;  // 图片URL属性（如 src, background-image）
+    };
+    // 输入字段配置
+    input: FormField;
+    // 验证码hash配置（如果有）
+    hash?: {
+        selector: string;  // hash元素选择器
+        targetField: string;  // 目标字段名
+    };
+    // 处理方法
+    solver: {
+        type: 'ocr' | 'api' | 'custom' | 'skip';  // 添加 'skip' 类型
+        config?: {
+            apiKey?: string;
+            apiUrl?: string;
+            timeout?: number;
+            retries?: number;
+        };
+    };
+    // 添加自定义验证码获取方法
+    getCaptchaImage?: (page: Page) => Promise<Buffer | null>;
+}
+
+export interface StorageState {
+    cookies: any[];
+    localStorage: Record<string, string>;
+    sessionStorage: Record<string, string>;
+    loginState: {
+        isLoggedIn: boolean;
+        lastLoginTime: number;
+        username: string;
+    };
+}
+
+export interface PreLoginStep {
+    type: 'click' | 'wait' | 'fill';
+    selector: string;
+    value?: string;
+    waitForSelector?: string;
+    waitForFunction?: string;
+    timeout?: number;
 } 
