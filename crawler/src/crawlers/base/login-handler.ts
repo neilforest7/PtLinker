@@ -33,10 +33,20 @@ export class LoginHandler {
 
             // 添加响应监听
             page.on('response', response => {
-                if (!response.ok()) {
+                const status = response.status();
+                if (status >= 300 && status < 400) {
+                    // 3xx 状态码表示重定向，这是正常的
+                    this.log.info('Response redirect', {
+                        url: response.url(),
+                        status,
+                        statusText: response.statusText(),
+                        location: response.headers()['location']
+                    });
+                } else if (!response.ok()) {
+                    // 其他非成功状态码才报告错误
                     this.log.error('Response error', {
                         url: response.url(),
-                        status: response.status(),
+                        status,
                         statusText: response.statusText()
                     });
                 }
@@ -515,6 +525,25 @@ export class LoginHandler {
                 if (!text?.includes(successCheck.expectedText)) {
                     throw new Error(`Login success check failed: expected "${successCheck.expectedText}" but found "${text}"`);
                 }
+
+                // 登录成功，保存页面内容
+                const successPageHtml = await page.content();
+                await this.keyValueStore.setValue(
+                    `login-success-html-${Date.now()}`,
+                    successPageHtml
+                );
+                this.log.info('Login success page saved');
+
+                // 保存成功页面的截图
+                const successScreenshot = await page.screenshot({
+                    fullPage: true,
+                    path: `login-success-${Date.now()}.png`
+                });
+                await this.keyValueStore.setValue(
+                    `login-success-screenshot-${Date.now()}`,
+                    successScreenshot
+                );
+                this.log.info('Login success screenshot saved');
             }
 
             this.log.info('Login submission successful', {

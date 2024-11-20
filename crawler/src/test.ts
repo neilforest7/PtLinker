@@ -1,54 +1,13 @@
-import { ExampleCrawler } from './crawlers/site/example-crawler';
-import { CrawlerTaskConfig } from './types/crawler';
-import { env, validateEnv } from './config/env.config';
+import { HDFansCrawler } from './crawlers/site/hdfans.crawler';
+import { validateEnv } from './config/env.config';
 
 async function runTest() {
     // 验证环境变量
     validateEnv();
 
-    // 测试配置
-    const taskConfig: CrawlerTaskConfig = {
-        taskId: `test-${Date.now()}`,
-        startUrls: ['https://hdfans.org'],
-        extractRules: [
-            {
-                name: 'title',
-                selector: 'h1',
-                type: 'text',
-                required: true
-            },
-            {
-                name: 'content',
-                selector: '.content',
-                type: 'text'
-            }
-        ],
-        loginConfig: {
-            loginUrl: 'https://hdfans.org/login.php',
-            formSelector: 'form[action="takelogin.php"]',
-            credentials: {
-                username: env.LOGIN_USERNAME,
-                password: env.LOGIN_PASSWORD
-            },
-            successCheck: {
-                selector: 'a.User_Name',
-                expectedText: env.LOGIN_USERNAME
-            },
-            captcha: {
-                imageSelector: 'img[src*="image.php?action=regimage"]',
-                inputSelector: 'input[name="imagestring"]',
-                handleMethod: env.CAPTCHA_HANDLE_METHOD,
-                serviceConfig: {
-                    apiKey: env.CAPTCHA_API_KEY,
-                    apiUrl: env.CAPTCHA_API_URL
-                }
-            }
-        }
-    };
-
     try {
         console.log('Starting crawler...');
-        const crawler = new ExampleCrawler(taskConfig);
+        const crawler = new HDFansCrawler();
         
         // 监听进度
         const progressInterval = setInterval(async () => {
