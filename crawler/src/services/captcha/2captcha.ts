@@ -1,44 +1,31 @@
 import axios from 'axios';
 import { BaseCaptchaService } from './base';
-import { CaptchaResult, CaptchaTask, TwoCaptchaConfig } from './types';
+import { CaptchaResult, CaptchaServiceConfig, ICaptchaService } from './types';
 import { Log } from '@crawlee/core';
 
-export class TwoCaptchaService extends BaseCaptchaService {
-    private readonly baseUrl: string;
-    private readonly log: Log;
+export class TwoCaptchaService extends BaseCaptchaService implements ICaptchaService {
+    private readonly log = new Log({ prefix: '2CaptchaService' });
+    private readonly apiKey: string;
 
-    constructor(apiKey: string, config?: Partial<TwoCaptchaConfig>) {
-        super({ apiKey, ...config });
-        this.baseUrl = this.config.apiUrl || 'http://api.2captcha.com';
-        this.log = new Log({ prefix: 'TwoCaptchaService' });
-    }
-
-    async solveCaptcha(imageBase64: string): Promise<CaptchaResult> {
-        try {
-            // 1. 创建任务
-            const taskId = await this.createTask(imageBase64);
-            if (!taskId) {
-                return { success: false, error: 'Failed to create captcha task' };
-            }
-
-            // 2. 获取结果
-            const result = await this.getTaskResult(taskId);
-            return result;
-
-        } catch (error) {
-            return {
-                success: false,
-                error: error instanceof Error ? error.message : 'Unknown error'
-            };
+    constructor(config: CaptchaServiceConfig) {
+        if (!config.apiKey) {
+            throw new Error('2Captcha API key is required');
         }
+        super(config);
+        this.apiKey = config.apiKey;
     }
 
-    private async createTask(imageBase64: string, maxRetries = 5): Promise<string> {
+    async solve(image: Buffer): Promise<string> {
+        const taskId = await this.createTask(image);
+        return this.getTaskResult(taskId);
+    }
+
+    private async createTask(image: Buffer, maxRetries = 5): Promise<string> {
         const requestData = {
-            clientKey: this.config.apiKey,
+            clientKey: this.apiKey,
             task: {
                 type: 'ImageToTextTask',
-                body: imageBase64,
+                body: image.toString('base64'),
                 phrase: false,
                 case: false,
                 numeric: false,
@@ -49,14 +36,14 @@ export class TwoCaptchaService extends BaseCaptchaService {
         };
 
         this.log.info('Creating 2captcha task', {
-            apiUrl: this.baseUrl,
-            imageLength: imageBase64.length
+            apiUrl: this.config.apiUrl,
+            imageLength: image.length,
+            imageBase64Length: image.toString('base64').length
         });
-
         let retryCount = 0;
         while (retryCount < maxRetries) {
             try {
-                const response = await axios.post(`${this.baseUrl}/createTask`, 
+                const response = await axios.post(`${this.config.apiUrl || 'http://api.2captcha.com'}/createTask`, 
                     requestData,
                     {
                         headers: {
@@ -98,10 +85,10 @@ export class TwoCaptchaService extends BaseCaptchaService {
         throw new Error(`Failed to create task after ${maxRetries} retries: Server is overloaded`);
     }
 
-    private async getTaskResult(taskId: string): Promise<CaptchaResult> {
+    private async getTaskResult(taskId: string): Promise<string> {
         const startTime = Date.now();
         const requestData = {
-            clientKey: this.config.apiKey,
+            clientKey: this.apiKey,
             taskId: taskId
         };
         
@@ -118,7 +105,7 @@ export class TwoCaptchaService extends BaseCaptchaService {
                     await new Promise(resolve => setTimeout(resolve, delay));
                 }
 
-                const response = await axios.post(`${this.baseUrl}/getTaskResult`,
+                const response = await axios.post(`${this.config.apiUrl || 'http://api.2captcha.com'}/getTaskResult`,
                     requestData,
                     {
                         headers: {
@@ -148,11 +135,7 @@ export class TwoCaptchaService extends BaseCaptchaService {
                         pollCount,
                         totalTime: Date.now() - startTime
                     });
-                    return {
-                        success: true,
-                        code: response.data.solution.text,
-                        taskId
-                    };
+                    return response.data.solution.text;
                 }
 
                 if (response.data.status === "processing") {
@@ -167,11 +150,7 @@ export class TwoCaptchaService extends BaseCaptchaService {
                         error: response.data.request,
                         pollCount
                     });
-                    return {
-                        success: false,
-                        error: response.data.request,
-                        taskId
-                    };
+                    throw new Error(response.data.request);
                 }
 
                 this.log.info(`Task not ready, waiting for next poll (attempt ${pollCount})...`);
@@ -209,21 +188,17 @@ export class TwoCaptchaService extends BaseCaptchaService {
             totalTime: Date.now() - startTime
         });
 
-        return {
-            success: false,
-            error: 'Timeout waiting for captcha result',
-            taskId
-        };
+        throw new Error('Timeout waiting for captcha result');
     }
 
     async getBalance(): Promise<number> {
         try {
             const formData = new URLSearchParams();
-            formData.append('key', this.config.apiKey);
+            formData.append('key', this.apiKey);
             formData.append('action', 'getbalance');
             formData.append('json', '1');
 
-            const response = await axios.post(`${this.baseUrl}/getBalance`,
+            const response = await axios.post(`${this.config.apiUrl || 'http://api.2captcha.com'}/getBalance`,
                 formData,
                 {
                     headers: {

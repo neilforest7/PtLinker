@@ -1,9 +1,9 @@
 import { createWorker } from 'tesseract.js';
 import { BaseCaptchaService } from './base';
-import { CaptchaResult, CaptchaServiceConfig } from './types';
+import { CaptchaResult, CaptchaServiceConfig, ICaptchaService } from './types';
 import { Log } from '@crawlee/core';
 
-export class TesseractService extends BaseCaptchaService {
+export class TesseractService extends BaseCaptchaService implements ICaptchaService {
     private worker: Tesseract.Worker | null = null;
     private readonly log: Log;
 
@@ -12,7 +12,7 @@ export class TesseractService extends BaseCaptchaService {
         this.log = new Log({ prefix: 'TesseractService' });
     }
 
-    async solveCaptcha(imageBase64: string): Promise<CaptchaResult> {
+    async solve(image: Buffer): Promise<string> {
         try {
             this.log.info('Initializing Tesseract worker...');
             
@@ -23,7 +23,7 @@ export class TesseractService extends BaseCaptchaService {
 
             this.log.info('Starting OCR recognition...');
             const { data: { text, confidence } } = await this.worker.recognize(
-                Buffer.from(imageBase64, 'base64')
+                image
             );
 
             this.log.info('OCR completed', {
@@ -43,18 +43,12 @@ export class TesseractService extends BaseCaptchaService {
                 throw new Error('OCR result is empty after cleaning');
             }
 
-            return {
-                success: true,
-                code: cleanedText,
-            };
+            return cleanedText;
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown OCR error';
             this.log.error('OCR failed', { error: errorMessage });
             
-            return {
-                success: false,
-                error: errorMessage
-            };
+            return errorMessage;
         }
     }
 

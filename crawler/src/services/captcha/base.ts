@@ -1,16 +1,15 @@
-import { CaptchaServiceConfig, CaptchaResult } from './types';
+import { CaptchaServiceConfig, ICaptchaService } from './types';
 
-export abstract class BaseCaptchaService {
+export abstract class BaseCaptchaService implements ICaptchaService {
     protected config: CaptchaServiceConfig;
 
     constructor(config: CaptchaServiceConfig) {
         this.config = {
-            timeout: 120000, // 默认2分钟超时
-            pollingInterval: 5000, // 默认5秒轮询一次
+            timeout: 120000,
+            pollingInterval: 5000,
             ...config
         };
     }
 
-    abstract solveCaptcha(imageBase64: string): Promise<CaptchaResult>;
-    abstract getBalance(): Promise<number>;
+    abstract solve(image: Buffer): Promise<string>;
 } 
