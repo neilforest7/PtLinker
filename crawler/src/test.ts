@@ -2,6 +2,7 @@ import { HDFansCrawler } from './crawlers/site/hdfans.crawler';
 import { QingWaptCrawler } from './crawlers/site/qingwapt.crawler';
 import { validateEnv } from './config/env.config';
 import { HDHomeCrawler } from './crawlers/site/hdhome.crawler';
+import { OurBitsCrawler } from './crawlers/site/ourbits.crawler';
 
 async function runTest() {
     // 验证环境变量
@@ -11,12 +12,13 @@ async function runTest() {
         console.log('Starting crawler...');
         // const crawler = new HDFansCrawler();
         // const crawler = new QingWaptCrawler();
-        const crawler = new HDHomeCrawler();
+        // const crawler = new HDHomeCrawler();
+        const crawler = new OurBitsCrawler();
         
         // 监听进度
         const progressInterval = setInterval(async () => {
             const progress = await crawler.getProgress();
-            console.log('Progress:', progress);
+            // console.log('Progress:', progress);
         }, 1000);
 
         // 开始爬取

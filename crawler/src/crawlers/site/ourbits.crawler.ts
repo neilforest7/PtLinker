@@ -5,12 +5,12 @@ import { CrawlerTaskConfig, CrawlResult } from '../../types/crawler';
 import { env } from '../../config/env.config';
 import { Page } from 'playwright';
 
-export class HDHomeCrawler extends BaseCrawler {
+export class OurBitsCrawler extends BaseCrawler {
     constructor() {
-        // 创建 HDHome 特定的配置
+        // 创建 OurBits 特定的配置
         const taskConfig: CrawlerTaskConfig = {
-            taskId: `hdhome-${Date.now()}`,
-            startUrls: ['https://hdhome.org'],
+            taskId: `ourbits-${Date.now()}`,
+            startUrls: ['https://ourbits.club/'],
             extractRules: [
                 {
                     name: 'userProfileUrl',
@@ -21,36 +21,30 @@ export class HDHomeCrawler extends BaseCrawler {
                 },
                 {
                     name: 'uid',
-                    selector: 'td.bottom span.medium',
+                    selector: 'td.rowhead:has-text("用户ID/UID") + td.rowfollow',
                     type: 'text',
                     transform: (value: string) => {
-                        const match = value.match(/UID:\s*(\d+)/);
+                        const match = value.match(/(\d+)/);
                         if (!match) return null;
                         return parseInt(match[1]);
                     }
                 },
                 {
-                    name: 'joinDate',
-                    selector: 'td.rowhead:has-text("加入日期") + td.rowfollow',
+                    name: 'ratio',
+                    selector: 'td.rowfollow',
                     type: 'text',
                     transform: (value: string) => {
-                        const match = value.match(/(\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2})/);
+                        const match = value.match(/分享率.*?(\d+\.?\d*)/);
                         if (!match) return null;
-                        return new Date(match[1]).toISOString();
+                        return parseFloat(match[1]);
                     }
                 },
                 {
-                    name: 'currentIP',
-                    selector: 'td.rowhead:has-text("当前IP") + td.rowfollow',
-                    type: 'text',
-                    transform: (value: string) => value.trim()
-                },
-                {
                     name: 'uploaded',
-                    selector: 'td.rowhead:has-text("传输") + td.rowfollow td.embedded:has-text("上传量")',
+                    selector: 'td.rowfollow',
                     type: 'text',
                     transform: (value: string) => {
-                        const match = value.match(/上传量.*?(\d+\.?\d*)\s*(TB|GB|MB|KB)/);
+                        const match = value.match(/上传量.*?(\d+\.?\d*)\s*(TB|GB|MB)/);
                         if (!match) return null;
                         const [, size, unit] = match;
                         const num = parseFloat(size);
@@ -65,7 +59,7 @@ export class HDHomeCrawler extends BaseCrawler {
                 },
                 {
                     name: 'downloaded',
-                    selector: 'td.rowhead:has-text("传输") + td.rowfollow td.embedded:has-text("下载量")',
+                    selector: 'td.rowfollow',
                     type: 'text',
                     transform: (value: string) => {
                         const match = value.match(/下载量.*?(\d+\.?\d*)\s*(TB|GB|MB|KB)/);
@@ -82,6 +76,26 @@ export class HDHomeCrawler extends BaseCrawler {
                     }
                 },
                 {
+                    name: 'seeding',
+                    selector: 'td.rowfollow',
+                    type: 'text',
+                    transform: (value: string) => {
+                        const match = value.match(/当前做种.*?(\d+)/);
+                        if (!match) return null;
+                        return parseInt(match[1]);
+                    }
+                },
+                {
+                    name: 'leeching',
+                    selector: 'td.rowfollow',
+                    type: 'text',
+                    transform: (value: string) => {
+                        const match = value.match(/当前下载.*?(\d+)/);
+                        if (!match) return null;
+                        return parseInt(match[1]);
+                    }
+                },
+                {
                     name: 'bonus',
                     selector: 'td.rowhead:has-text("魔力值") + td.rowfollow',
                     type: 'text',
@@ -92,7 +106,7 @@ export class HDHomeCrawler extends BaseCrawler {
                     }
                 },
                 {
-                    name: 'seedBonus',
+                    name: 'bonus',
                     selector: 'td.rowhead:has-text("做种积分") + td.rowfollow',
                     type: 'text',
                     transform: (value: string) => {
@@ -100,10 +114,39 @@ export class HDHomeCrawler extends BaseCrawler {
                         if (!match) return null;
                         return parseFloat(match[1].replace(/,/g, ''));
                     }
+                },
+                {
+                    name: 'joinDate',
+                    selector: 'td.rowhead:has-text("加入日期") + td.rowfollow',
+                    type: 'text',
+                    transform: (value: string) => {
+                        // 匹配日期格式 YYYY-MM-DD HH:mm:ss
+                        const match = value.match(/(\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2})/);
+                        if (!match) return null;
+
+                        try {
+                            // 解析日期字符串
+                            const date = new Date(match[1]);
+                            
+                            // 返回 ISO 格式的时间戳
+                            return date.toISOString();
+                        } catch (error) {
+                            return null;
+                        }
+                    }
+                },
+                {
+                    name: 'ip',
+                    selector: 'td.rowhead:has-text("当前IP") + td.rowfollow',
+                    type: 'text',
+                    transform: (value: string) => {
+                        // 直接返回清理后的文本
+                        return value.trim();
+                    }
                 }
             ],
             loginConfig: {
-                loginUrl: 'https://hdhome.org/login.php',
+                loginUrl: 'https://ourbits.club/login.php',
                 formSelector: 'form[action="takelogin.php"]',
                 fields: {
                     username: {
@@ -137,7 +180,7 @@ export class HDHomeCrawler extends BaseCrawler {
                             targetField: 'imagehash'
                         },
                         solver: {
-                            type: env.CAPTCHA_SKIP_SITES.includes('hdhome') ? 'skip' : env.CAPTCHA_HANDLE_METHOD,
+                            type: env.CAPTCHA_SKIP_SITES.includes('ourbits') ? 'skip' : env.CAPTCHA_HANDLE_METHOD,
                             config: {
                                 apiKey: env.CAPTCHA_API_KEY,
                                 apiUrl: env.CAPTCHA_API_URL,
@@ -261,43 +304,11 @@ export class HDHomeCrawler extends BaseCrawler {
         const { page, request } = context;
         
         try {
-            this.log.info('Starting page processing', { 
-                url: request.url,
-                isStartUrl: request.url === this.taskConfig.startUrls[0]
-            });
-
             await page.waitForLoadState('networkidle');
             
             if (request.url === this.taskConfig.startUrls[0]) {
-                this.log.debug('Processing start URL', { url: request.url });
-                
-                // 检查页面状态
-                const pageTitle = await page.title();
-                const pageContent = await page.content();
-                this.log.debug('Page info', { 
-                    title: pageTitle,
-                    contentLength: pageContent.length,
-                    url: page.url()
-                });
-
-                // 尝试获取用户名链接
-                const userProfileElement = await page.$('a.User_Name');
-                if (!userProfileElement) {
-                    this.log.error('User profile link not found', {
-                        selector: 'a.User_Name',
-                        url: request.url
-                    });
-                    throw new Error('User profile link not found');
-                }
-
-                const userProfilePath = await userProfileElement.getAttribute('href');
-                this.log.info('Found user profile path', { userProfilePath });
-
-                if (userProfilePath) {
-                    // 构建完整的用户资料页面URL
-                    const userProfileUrl = new URL(userProfilePath, this.taskConfig.startUrls[0]).toString();
-                    this.log.info('Constructed full profile URL', { userProfileUrl });
-
+                const userProfileUrl = await page.$eval('a.User_Name', el => el.getAttribute('href'));
+                if (userProfileUrl) {
                     await this.crawler.addRequests([userProfileUrl]);
                     await this.saveData({
                         url: request.url,
@@ -307,36 +318,6 @@ export class HDHomeCrawler extends BaseCrawler {
                     });
                 }
             } else {
-                this.log.debug('Processing user profile page', { url: request.url });
-
-                // 等待页面加载完成
-                try {
-                    await page.waitForSelector('table.main', { timeout: 10000 });
-                } catch (error) {
-                    this.log.error('Failed to find main table', {
-                        error: error instanceof Error ? error.message : String(error),
-                        url: request.url
-                    });
-                    throw error;
-                }
-
-                // 记录页面状态
-                const pageState = {
-                    url: page.url(),
-                    title: await page.title(),
-                    hasMainTable: await page.$('table.main') !== null,
-                    hasUserInfo: await page.$('td.rowhead:has-text("用户ID/UID")') !== null
-                };
-                this.log.debug('Page state before extraction', pageState);
-
-                // 提取数据前记录所有规则
-                this.log.debug('Extraction rules to be applied', {
-                    rules: this.taskConfig.extractRules.map(rule => ({
-                        name: rule.name,
-                        selector: rule.selector
-                    }))
-                });
-
                 // 先提取基本数据
                 const result = await this.extractData(
                     page,
@@ -344,138 +325,72 @@ export class HDHomeCrawler extends BaseCrawler {
                     request.loadedUrl || request.url
                 );
 
-                // 添加 UID 提取验证日志
-                this.log.debug('Extracted UID', { 
-                    uid: result.data.uid,
-                    rawText: await page.$eval('td.bottom span.medium', el => el.textContent)
-                });
-
-                // 记录提取结果
-                this.log.debug('Data extraction result', {
-                    url: request.url,
-                    extractedFields: Object.keys(result.data),
-                    hasErrors: result.errors && result.errors.length > 0,
-                    errors: result.errors
-                });
-
                 // 在用户主页，点击显示按钮获取做种统计
-                try {
-                    await page.click('a[href*="getusertorrentlistajax"][href*="seeding"]');
-                    this.log.debug('Clicked seeding stats button');
+                await page.click('a[href*="getusertorrentlistajax"][href*="seeding"]');
+                
+                // 等待数据加载
+                await page.waitForSelector('#ka1[data-type="seeding"]', { 
+                    state: 'visible',
+                    timeout: 10000 
+                });
+
+                // 提取做种统计数据
+                const seedingStats = await page.$eval('#ka1[data-type="seeding"]', (el) => {
+                    const text = el.textContent || '';
+                    const countMatch = text.match(/(\d+)\s*条记录/);
+                    const sizeMatch = text.match(/总大小：([\d.]+)\s*(TB|GB|MB)/);
                     
-                    // 等待数据加载
-                    await page.waitForSelector('#ka1', { 
-                        state: 'visible',
-                        timeout: 10000 
-                    });
-                    this.log.debug('Seeding stats loaded');
-
-                    // 提取做种统计数据
-                    const seedingStats = await page.$eval('#ka1', (el) => {
-                        const text = el.textContent || '';
-                        
-                        // 提取做种数量
-                        const countMatch = text.match(/^(\d+)条记录/);
-                        
-                        // 提取总大小
-                        const sizeMatch = text.match(/Total:\s*([\d.]+)\s*(TB|GB|MB)/);
-                        
-                        // 提取官种体积
-                        const officialSizeMatch = text.match(/官种体积：([\d.]+)\s*(TB|GB|MB)/);
-                        
-                        return {
-                            count: countMatch ? parseInt(countMatch[1]) : 0,
-                            size: sizeMatch ? {
-                                value: parseFloat(sizeMatch[1]),
-                                unit: sizeMatch[2]
-                            } : null,
-                            officialSize: officialSizeMatch ? {
-                                value: parseFloat(officialSizeMatch[1]),
-                                unit: officialSizeMatch[2]
-                            } : null
-                        };
-                    });
-
-                    this.log.debug('Extracted seeding stats', { seedingStats });
-
-                    // 转换大小为 GB
-                    let totalSizeGB = 0;
-                    if (seedingStats.size) {
-                        switch (seedingStats.size.unit) {
-                            case 'TB':
-                                totalSizeGB = seedingStats.size.value * 1024;
-                                break;
-                            case 'GB':
-                                totalSizeGB = seedingStats.size.value;
-                                break;
-                            case 'MB':
-                                totalSizeGB = seedingStats.size.value / 1024;
-                                break;
-                        }
-                    }
-
-                    // 合并所有数据
-                    const enrichedData = {
-                        ...result,
-                        data: {
-                            ...result.data,
-                            seedingTotalCount: seedingStats.count,  // 129
-                            seedingTotalSize: totalSizeGB,          // 2.306 * 1024 GB
-                            seedingOfficialSize: seedingStats.officialSize ? seedingStats.officialSize.value : null
-                        }
+                    return {
+                        count: countMatch ? parseInt(countMatch[1]) : 0,
+                        size: sizeMatch ? {
+                            value: parseFloat(sizeMatch[1]),
+                            unit: sizeMatch[2]
+                        } : null
                     };
-                    
-                    await this.saveData(enrichedData);
-                    this.log.info('Data saved successfully', { 
-                        url: request.url,
-                        dataFields: Object.keys(enrichedData.data),
-                        seedingStats: {
-                            count: seedingStats.count,
-                            size: `${seedingStats.size?.value} ${seedingStats.size?.unit}`,
-                            sizeInGB: totalSizeGB,
-                            officialSize: seedingStats.officialSize ? `${seedingStats.officialSize.value} ${seedingStats.officialSize.unit}` : null
-                        }
-                    });
-                } catch (error) {
-                    this.log.error('Failed to get seeding stats', {
-                        error: error instanceof Error ? error.message : String(error),
-                        url: request.url
-                    });
-                    // 即使获取做种统计失败，也保存基本数据
-                    await this.saveData(result);
+                });
+
+                // 转换大小为 GB
+                let totalSizeGB = 0;
+                if (seedingStats.size) {
+                    switch (seedingStats.size.unit) {
+                        case 'TB':
+                            totalSizeGB = seedingStats.size.value * 1024;
+                            break;
+                        case 'GB':
+                            totalSizeGB = seedingStats.size.value;
+                            break;
+                        case 'MB':
+                            totalSizeGB = seedingStats.size.value / 1024;
+                            break;
+                    }
                 }
+
+                // 合并所有数据
+                const enrichedData = {
+                    ...result,
+                    data: {
+                        ...result.data,  // 包含了 uid 和其他基本数据
+                        seedingTotalCount: seedingStats.count,
+                        seedingTotalSize: totalSizeGB
+                    }
+                };
+                
+                await this.saveData(enrichedData);
             }
+            
+            this.log.info('Data extracted successfully', { 
+                url: request.url,
+                isProfilePage: request.url !== this.taskConfig.startUrls[0]
+            });
+            
         } catch (error) {
             const errorMessage = error instanceof Error 
                 ? error.message 
                 : 'Unknown error occurred';
 
-            // 保存页面快照
-            try {
-                const screenshot = await page.screenshot({
-                    fullPage: true,
-                    path: `error-screenshot-${Date.now()}.png`
-                });
-                await this.keyValueStore?.setValue(
-                    `error-screenshot-${Date.now()}`,
-                    screenshot
-                );
-
-                const html = await page.content();
-                await this.keyValueStore?.setValue(
-                    `error-html-${Date.now()}`,
-                    html
-                );
-            } catch (screenshotError) {
-                this.log.error('Failed to save error evidence', {
-                    error: screenshotError instanceof Error ? screenshotError.message : String(screenshotError)
-                });
-            }
-
-            this.log.error('Request handling failed', { 
+            this.log.error('Data extraction failed', { 
                 url: request.url,
-                error: errorMessage,
-                stack: error instanceof Error ? error.stack : undefined
+                error: errorMessage
             });
 
             throw error instanceof Error ? error : new Error(errorMessage);

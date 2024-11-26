@@ -4,6 +4,9 @@ import { KeyValueStore, Log } from '@crawlee/core';
 import { CaptchaServiceFactory } from '../../services/captcha/factory';
 import { CaptchaServiceType } from '../../services/captcha/types';
 import { sleep } from 'crawlee';
+import { TwoCaptchaService } from '@/services/captcha/2captcha';
+import * as path from 'path';
+import * as fs from 'fs';
 
 export class LoginHandler {
     private readonly keyValueStore: KeyValueStore;
@@ -150,6 +153,9 @@ export class LoginHandler {
                 timeout: 30000 
             });
 
+            // 处理可能的 Cloudflare 验证
+            await this.handleCloudflareChallenge(page);
+            
             // 首先执行登录前的准备步骤（如点击登录按钮显示表单）
             if (config.preLoginSteps) {
                 for (const step of config.preLoginSteps) {
@@ -190,7 +196,7 @@ export class LoginHandler {
             const formLocator = page.locator(config.formSelector);
             await formLocator.waitFor();
 
-            // 确保表单真正可交互
+            // 确保表单真可交互
             await formLocator.evaluate((form) => {
                 const style = window.getComputedStyle(form);
                 if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
@@ -432,7 +438,7 @@ export class LoginHandler {
         } catch (error) {
             // 保存当前页面状态
             try {
-                // 保存完整的页面HTML
+                // 存完整的页面HTML
                 const html = await page.content();
                 await this.keyValueStore.setValue(
                     `login-error-html-${Date.now()}`,
@@ -738,4 +744,120 @@ export class LoginHandler {
             throw new Error(`Pre-login step failed: ${error instanceof Error ? error.message : String(error)}`);
         }
     }
-} 
+
+    /**
+     * 执行命令并返回输出
+     */
+    private async runCommand(command: string): Promise<string> {
+        return new Promise((resolve, reject) => {
+            const { exec } = require('child_process');
+            exec(command, {
+                env: {
+                    ...process.env,
+                    PATH: `${path.join(path.resolve(process.cwd(), '..'), '.venv', 'Scripts')};${process.env.PATH}`
+                }
+            }, (error: Error | null, stdout: string, stderr: string) => {
+                if (error) {
+                    reject(new Error(`命令执行失败: ${error.message}`));
+                    return;
+                }
+                if (stderr) {
+                    this.log.info('命令执行警告:', { stderr });
+                }
+                resolve(stdout.trim());
+            });
+        });
+    }
+
+    private async handleCloudflareChallenge(page: Page): Promise<void> {
+        try {
+            // 获取当前URL
+            const url = page.url();
+            
+            // 获取项目根目录和脚本路径
+            const projectRoot = path.resolve(process.cwd(), '..');
+            const scriptPath = path.join(__dirname, 'cloudflare_selenium.py');
+            
+            // 执行Python脚本
+            this.log.info('开始处理Cloudflare验证...');
+            const result = await this.runCommand(`"${path.join(projectRoot, '.venv', 'Scripts', 'python')}" "${scriptPath}" "${url}"`);
+            
+            // 解析结果
+            let cfResult: { status: string; cookies?: any[]; error?: string };
+            try {
+                cfResult = JSON.parse(result);
+            } catch (error) {
+                throw new Error(`无法解析Python脚本输出: ${result}`);
+            }
+            
+            // 检查结果状态
+            if (cfResult.status === 'error') {
+                throw new Error(`Cloudflare验证失败: ${cfResult.error}`);
+            }
+            
+            if (!cfResult.cookies || !Array.isArray(cfResult.cookies)) {
+                throw new Error('未获取到有效的cookies');
+            }
+            
+            // 应用cookies到当前会话
+            this.log.info(`开始应用 ${cfResult.cookies.length} 个Cloudflare验证cookies...`);
+            for (const cookie of cfResult.cookies) {
+                try {
+                    await page.context().addCookies([{
+                        name: cookie.name,
+                        value: cookie.value,
+                        domain: cookie.domain || new URL(url).hostname,
+                        path: cookie.path || '/',
+                        secure: cookie.secure || true,
+                        httpOnly: cookie.httpOnly || true,
+                        sameSite: (cookie.sameSite as "Strict" | "Lax" | "None") || "Lax"
+                    }]);
+                    this.log.debug(`成功应用cookie: ${cookie.name}`);
+                } catch (error) {
+                    this.log.info(`应用cookie ${cookie.name} 时出错:`, { error });
+                }
+            }
+            
+            // 刷新页面
+            this.log.info('刷新页面并等待加载...');
+            await page.reload({ waitUntil: 'networkidle' });
+            
+            // 验证是否通过Cloudflare
+            const maxRetries = 3;
+            for (let i = 0; i < maxRetries; i++) {
+                // 检查页面内容
+                const pageContent = await page.content();
+                const isCloudflare = 
+                    pageContent.includes('challenges.cloudflare.com') ||
+                    pageContent.includes('cf-browser-verification') ||
+                    pageContent.includes('正在验证您的浏览器') ||
+                    pageContent.includes('Checking if the site connection is secure');
+
+                if (!isCloudflare) {
+                    // 检查是否成功到达目标页面
+                    const pageTitle = await page.title();
+                    const loginFormExists = await page.$('form[action*="login.php"]') !== null;
+                    
+                    if (loginFormExists || pageTitle.includes('登录') || pageTitle.includes('Login')) {
+                        this.log.info('成功通过Cloudflare验证，已到达登录页面');
+                        return;
+                    }
+                }
+
+                if (i < maxRetries - 1) {
+                    this.log.info(`验证未通过，等待后重试 (${i + 1}/${maxRetries})...`);
+                    await page.waitForTimeout(2000);  // 等待2秒后重试
+                    await page.reload({ waitUntil: 'networkidle' });
+                }
+            }
+
+            throw new Error('应用cookies后仍未能通过Cloudflare验证');
+            
+        } catch (error) {
+            this.log.error('Cloudflare验证处理失败', {
+                error: error instanceof Error ? error.message : String(error)
+            });
+            throw error;
+        }
+    }
+}

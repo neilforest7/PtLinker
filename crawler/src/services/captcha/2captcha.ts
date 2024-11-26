@@ -3,9 +3,21 @@ import { BaseCaptchaService } from './base';
 import { CaptchaResult, CaptchaServiceConfig, ICaptchaService } from './types';
 import { Log } from '@crawlee/core';
 
+interface TurnstileOptions {
+    sitekey: string;
+    url: string;
+    action: string;
+    data: string;
+    pagedata: string;
+    userAgent: string;
+}
+
 export class TwoCaptchaService extends BaseCaptchaService implements ICaptchaService {
     private readonly log = new Log({ prefix: '2CaptchaService' });
     private readonly apiKey: string;
+    private readonly client = axios.create({
+        baseURL: this.config.apiUrl || 'http://api.2captcha.com'
+    });
 
     constructor(config: CaptchaServiceConfig) {
         if (!config.apiKey) {
@@ -213,6 +225,36 @@ export class TwoCaptchaService extends BaseCaptchaService implements ICaptchaSer
             throw new Error(response.data.request);
         } catch (error) {
             throw new Error(`Failed to get balance: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+    }
+
+    private async waitForResult(taskId: string): Promise<string> {
+        // 实现等待结果的逻辑
+        // 可以复用之前的 getTaskResult 方法
+        return this.getTaskResult(taskId);
+    }
+
+    async solveTurnstile(options: TurnstileOptions): Promise<string> {
+        const { sitekey, url, action, data, pagedata, userAgent } = options;
+        
+        try {
+            const response = await this.client.post('', {
+                key: this.apiKey,
+                method: 'turnstile',
+                sitekey,
+                pageurl: url,
+                action: 'managed',
+                data,
+                pagedata,
+                userAgent,
+                json: 1
+            });
+
+            const taskId = response.data.request;
+            return await this.waitForResult(taskId);
+            
+        } catch (error) {
+            throw new Error(`Turnstile 验证失败: ${error instanceof Error ? error.message : String(error)}`);
         }
     }
 } 

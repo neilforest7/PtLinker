@@ -1,4 +1,4 @@
-export type CaptchaServiceType = 'api' | 'ocr' | 'custom';
+export type CaptchaServiceType = 'api' | 'ocr' | 'custom' | 'turnstile' | 'skip';
 
 export interface CaptchaServiceConfig {
     type: CaptchaServiceType;
@@ -21,6 +21,7 @@ export interface ICaptchaService {
     solve(image: Buffer): Promise<string>;
     reportError?(taskId: string): Promise<void>;
     getBalance?(): Promise<number>;
+    solveTurnstile?(options: { sitekey: string, url: string }): Promise<string>;
 }
 
 export enum CaptchaErrorType {

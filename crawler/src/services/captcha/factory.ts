@@ -58,10 +58,11 @@ export class CaptchaServiceFactory {
 
         switch (config.type) {
             case 'api':
+            case 'turnstile':
                 if (!config.apiKey) {
                     throw new CaptchaError(
                         CaptchaErrorType.API_ERROR,
-                        '2captcha requires an API key'
+                        `${config.type} requires an API key`
                     );
                 }
                 break;
@@ -75,6 +76,8 @@ export class CaptchaServiceFactory {
                 break;
             case 'ocr':
                 break;
+            case 'skip':
+                break;
             default:
                 throw new CaptchaError(
                     CaptchaErrorType.API_ERROR,
@@ -86,4 +89,5 @@ export class CaptchaServiceFactory {
 
 // 注册内置服务
 CaptchaServiceFactory.registerService('ocr', TesseractService);
-CaptchaServiceFactory.registerService('api', TwoCaptchaService); 
+CaptchaServiceFactory.registerService('api', TwoCaptchaService);
+CaptchaServiceFactory.registerService('turnstile', TwoCaptchaService); 
