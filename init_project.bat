@@ -33,7 +33,7 @@ echo. > src\App.tsx
 cd ..
 
 :: 爬虫服务结构
-cd crawler
+cd crawler_py
 mkdir src
 cd src
 mkdir crawlers

@@ -66,7 +66,7 @@ export abstract class BaseCrawler {
             );
 
             // 初始化登录处理器，注入存储管理器
-            this.loginHandler = new LoginHandler(store, this.log);
+            this.loginHandler = new LoginHandler(store, this.log, taskConfig);
 
             // 初始化数据处理器
             this.dataHandler = new DataHandler(dataset, store, this.log, taskConfig.taskId);

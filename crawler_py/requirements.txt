@@ -1,0 +1,23 @@
+# Core
+crawlee
+playwright
+pydantic
+loguru
+python-dotenv
+
+# Storage
+sqlalchemy
+aiosqlite
+
+# Utils
+tenacity
+aiohttp
+pillow
+
+# Captcha
+tesseract
+2captcha-python
+
+# Testing
+pytest
+pytest-asyncio

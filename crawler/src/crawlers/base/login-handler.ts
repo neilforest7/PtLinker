@@ -1,5 +1,5 @@
 import { Page } from 'playwright';
-import { LoginConfig, CrawlerError, CrawlerErrorType, FormField, CaptchaConfig, StorageState, PreLoginStep } from '../../types/crawler';
+import { LoginConfig, CrawlerError, CrawlerErrorType, FormField, CaptchaConfig, StorageState, PreLoginStep, CrawlerTaskConfig } from '../../types/crawler';
 import { KeyValueStore, Log } from '@crawlee/core';
 import { CaptchaServiceFactory } from '../../services/captcha/factory';
 import { CaptchaServiceType } from '../../services/captcha/types';
@@ -11,10 +11,12 @@ import * as fs from 'fs';
 export class LoginHandler {
     private readonly keyValueStore: KeyValueStore;
     private readonly log: Log;
+    private config: CrawlerTaskConfig;
 
-    constructor(keyValueStore: KeyValueStore, log: Log) {
+    constructor(keyValueStore: KeyValueStore, log: Log, config: CrawlerTaskConfig) {
         this.keyValueStore = keyValueStore;
         this.log = log;
+        this.config = config;
     }
 
     /**
@@ -774,34 +776,49 @@ export class LoginHandler {
             // 获取当前URL
             const url = page.url();
             
+            // 获取登录配置
+            const loginConfig = this.config.loginConfig;
+            if (!loginConfig) {
+                throw new Error('未找到登录配置');
+            }
+
+            // 获取用户名和密码
+            const username = loginConfig.fields.username.value;
+            const password = loginConfig.fields.password.value;
+            if (!username || !password) {
+                throw new Error('未提供用户名或密码');
+            }
+            
             // 获取项目根目录和脚本路径
             const projectRoot = path.resolve(process.cwd(), '..');
-            const scriptPath = path.join(__dirname, 'cloudflare_selenium.py');
+            const scriptPath = path.join(__dirname, 'cloudflare_drissionpage.py');
             
             // 执行Python脚本
-            this.log.info('开始处理Cloudflare验证...');
-            const result = await this.runCommand(`"${path.join(projectRoot, '.venv', 'Scripts', 'python')}" "${scriptPath}" "${url}"`);
+            this.log.info('开始处理登录流程...');
+            const result = await this.runCommand(
+                `"${path.join(projectRoot, '.venv', 'Scripts', 'python')}" "${scriptPath}" "${url}" "${username}" "${password}"`
+            );
             
             // 解析结果
-            let cfResult: { status: string; cookies?: any[]; error?: string };
+            let loginResult: { status: string; cookies?: any[]; error?: string };
             try {
-                cfResult = JSON.parse(result);
+                loginResult = JSON.parse(result);
             } catch (error) {
                 throw new Error(`无法解析Python脚本输出: ${result}`);
             }
             
             // 检查结果状态
-            if (cfResult.status === 'error') {
-                throw new Error(`Cloudflare验证失败: ${cfResult.error}`);
+            if (loginResult.status === 'error') {
+                throw new Error(`登录失败: ${loginResult.error}`);
             }
             
-            if (!cfResult.cookies || !Array.isArray(cfResult.cookies)) {
+            if (!loginResult.cookies || !Array.isArray(loginResult.cookies)) {
                 throw new Error('未获取到有效的cookies');
             }
             
             // 应用cookies到当前会话
-            this.log.info(`开始应用 ${cfResult.cookies.length} 个Cloudflare验证cookies...`);
-            for (const cookie of cfResult.cookies) {
+            this.log.info(`开始应用 ${loginResult.cookies.length} 个cookies...`);
+            for (const cookie of loginResult.cookies) {
                 try {
                     await page.context().addCookies([{
                         name: cookie.name,
@@ -822,39 +839,26 @@ export class LoginHandler {
             this.log.info('刷新页面并等待加载...');
             await page.reload({ waitUntil: 'networkidle' });
             
-            // 验证是否通过Cloudflare
-            const maxRetries = 3;
-            for (let i = 0; i < maxRetries; i++) {
-                // 检查页面内容
-                const pageContent = await page.content();
-                const isCloudflare = 
-                    pageContent.includes('challenges.cloudflare.com') ||
-                    pageContent.includes('cf-browser-verification') ||
-                    pageContent.includes('正在验证您的浏览器') ||
-                    pageContent.includes('Checking if the site connection is secure');
-
-                if (!isCloudflare) {
-                    // 检查是否成功到达目标页面
-                    const pageTitle = await page.title();
-                    const loginFormExists = await page.$('form[action*="login.php"]') !== null;
-                    
-                    if (loginFormExists || pageTitle.includes('登录') || pageTitle.includes('Login')) {
-                        this.log.info('成功通过Cloudflare验证，已到达登录页面');
-                        return;
+            // 验证登录状态
+            const loginCheck = loginConfig.successCheck;
+            if (loginCheck) {
+                const element = await page.$(loginCheck.selector);
+                if (!element) {
+                    throw new Error('登录状态验证失败：未找到登录成功标记');
+                }
+                
+                if (loginCheck.expectedText) {
+                    const text = await element.textContent();
+                    if (!text?.includes(loginCheck.expectedText)) {
+                        throw new Error('登录状态验证失败：未找到预期文本');
                     }
                 }
-
-                if (i < maxRetries - 1) {
-                    this.log.info(`验证未通过，等待后重试 (${i + 1}/${maxRetries})...`);
-                    await page.waitForTimeout(2000);  // 等待2秒后重试
-                    await page.reload({ waitUntil: 'networkidle' });
-                }
             }
-
-            throw new Error('应用cookies后仍未能通过Cloudflare验证');
+            
+            this.log.info('登录流程成功完成');
             
         } catch (error) {
-            this.log.error('Cloudflare验证处理失败', {
+            this.log.error('登录处理失败', {
                 error: error instanceof Error ? error.message : String(error)
             });
             throw error;
