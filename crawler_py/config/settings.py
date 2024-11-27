@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     CRAWLER_MAX_CONCURRENCY: int = 10
     
     # Browser Configuration
-    BROWSER_PATH: str = os.getenv('BROWSER_PATH', '')
+    BROWSER_PATH: str = os.getenv('BROWSER_PATH', r'C:/Users/Lukee/AppData/Local/pyppeteer/pyppeteer/local-chromium/1181205/chrome-win/chrome.exe')
     BROWSER_TIMEOUT: int = 30000
     BROWSER_VIEWPORT_WIDTH: int = 1280
     BROWSER_VIEWPORT_HEIGHT: int = 720

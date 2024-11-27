@@ -1,4 +1,15 @@
 import os
+from dotenv import load_dotenv
+
+# 加载.env文件
+load_dotenv()
+
+# 获取登录凭据
+USERNAME = os.getenv('LOGIN_USERNAME')
+PASSWORD = os.getenv('LOGIN_PASSWORD')
+
+if not USERNAME or not PASSWORD:
+    raise ValueError("LOGIN_USERNAME 和 LOGIN_PASSWORD 必须在.env文件中设置")
 
 # 站点URL配置
 SITE_URLS = {
@@ -12,26 +23,43 @@ SITE_URLS = {
 SITE_CONFIGS = {
     'hdhome': {
         'login_url': 'https://hdhome.org/login.php',
-        'form_selector': 'form[action="takelogin.php"]',
+        'form_selector': '@action=takelogin.php',
         'fields': {
             'username': {
                 'name': 'username',
                 'type': 'text',
-                'selector': 'input[name="username"]',
-                'value': os.getenv('LOGIN_USERNAME'),
+                'selector': '@name=username',
+                'value': USERNAME,
                 'required': True
             },
             'password': {
                 'name': 'password',
                 'type': 'password',
-                'selector': 'input[name="password"]',
-                'value': os.getenv('LOGIN_PASSWORD'),
+                'selector': '@name=password',
+                'value': PASSWORD,
                 'required': True
+            },
+            'ssl': {
+                'name': 'ssl',
+                'type': 'checkbox',
+                'selector': '@name=ssl',
+                'value': 'on'
+            },
+            'trackerssl': {
+                'name': 'trackerssl',
+                'type': 'checkbox',
+                'selector': '@name=trackerssl',
+                'value': 'on'
+            },
+            'submit': {
+                'name': 'submit',
+                'type': 'submit',
+                'selector': '@type=submit',
             }
         },
         'success_check': {
-            'selector': 'a.User_Name',
-            'expected_text': str(os.getenv('LOGIN_USERNAME'))
+            'selector': '@class=User_Name',
+            'expected_text': USERNAME
         }
     },
     'ourbits': {
@@ -41,21 +69,21 @@ SITE_CONFIGS = {
             'username': {
                 'name': 'username',
                 'type': 'text',
-                'selector': 'input[name="username"]',
-                'value': os.getenv('LOGIN_USERNAME'),
+                'selector': '@name="username"',
+                'value': USERNAME,
                 'required': True
             },
             'password': {
                 'name': 'password',
                 'type': 'password',
-                'selector': 'input[name="password"]',
-                'value': os.getenv('LOGIN_PASSWORD'),
+                'selector': '@name="password"',
+                'value': PASSWORD,
                 'required': True
             }
         },
         'success_check': {
             'selector': 'a.User_Name',
-            'expected_text': str(os.getenv('LOGIN_USERNAME'))
+            'expected_text': USERNAME
         }
     },
     'qingwapt': {
@@ -65,15 +93,15 @@ SITE_CONFIGS = {
             'username': {
                 'name': 'username',
                 'type': 'text',
-                'selector': 'input.textbox[name="username"][type="text"]',
-                'value': os.getenv('LOGIN_USERNAME'),
+                'selector': '@name="username" @type="text"',
+                'value': USERNAME,
                 'required': True
             },
             'password': {
                 'name': 'password',
                 'type': 'password',
-                'selector': 'input.textbox[name="password"][type="password"]',
-                'value': os.getenv('LOGIN_PASSWORD'),
+                'selector': '@name="password" @type="password"',
+                'value': PASSWORD,
                 'required': True
             }
         },
@@ -96,7 +124,7 @@ SITE_CONFIGS = {
         },
         'success_check': {
             'selector': '#info_block a.User_Name',
-            'expected_text': os.getenv('LOGIN_USERNAME')
+            'expected_text': USERNAME
         }
     },
     'hdfans': {
@@ -106,15 +134,15 @@ SITE_CONFIGS = {
             'username': {
                 'name': 'username',
                 'type': 'text',
-                'selector': 'input[name="username"]',
-                'value': os.getenv('LOGIN_USERNAME'),
+                'selector': '@name="username"',
+                'value': USERNAME,
                 'required': True
             },
             'password': {
                 'name': 'password',
                 'type': 'password',
-                'selector': 'input[name="password"]',
-                'value': os.getenv('LOGIN_PASSWORD'),
+                'selector': '@name="password"',
+                'value': PASSWORD,
                 'required': True
             }
         },
@@ -127,13 +155,17 @@ SITE_CONFIGS = {
             'input': {
                 'name': 'imagestring',
                 'type': 'text',
-                'selector': 'input[name="imagestring"]',
+                'selector': '@name="imagestring"',
                 'required': True
             },
+            'hash': {
+                'selector': '@name="imagehash"',
+                'targetField': 'imagehash'
+            }
         },
         'success_check': {
             'selector': 'a.User_Name b',
-            'expected_text': str(os.getenv('LOGIN_USERNAME'))
+            'expected_text': USERNAME
         }
     }
 }
@@ -143,42 +175,77 @@ EXTRACT_RULES = {
     'hdhome': [
         {
             'name': 'username',
-            'selector': 'a.User_Name',
+            'selector': '@class=User_Name',
             'type': 'text',
             'required': True
         },
         {
             'name': 'user_class',
-            'selector': 'img[alt*="class="]',
+            'selector': '@text()=等级',
+            'location': 'next-child',
+            'second_selector': '@@tag()=img@@alt@@src',
             'type': 'attribute',
             'attribute': 'alt',
-            'transform': 'extract_class'
         },
         {
             'name': 'join_time',
-            'selector': 'td:has-text("加入时间") + td',
+            'selector': '@text()=加入日期',
+            'location': 'next',
+            'second_selector': '',
+            'type': 'text'
+        },
+        {
+            'name': 'last_active',
+            'selector': '@text()=最近动向',
+            'location': 'next',
+            'second_selector': '',
             'type': 'text'
         },
         {
             'name': 'upload',
-            'selector': 'td:has-text("上传量") + td',
+            'selector': '@text()=上传量',
+            'location': 'parent',
+            'second_selector': '',
             'type': 'text'
         },
         {
             'name': 'download',
-            'selector': 'td:has-text("下载量") + td',
+            'selector': '@text()=下载量',
+            'location': 'parent',
+            'second_selector': '',
             'type': 'text'
         },
         {
             'name': 'ratio',
-            'selector': 'td:has-text("分享率") + td',
+            'selector': '@text()=分享率',
+            'location': 'next',
+            'second_selector': '@tag()=font',
             'type': 'text'
         },
         {
             'name': 'bonus',
-            'selector': 'td:has-text("魔力值") + td',
+            'selector': '@text()=魔力值',
+            'location': 'next',
+            'second_selector': '',
             'type': 'text'
-        }
+        },
+        {
+            'name': 'seeding_score',
+            'selector': '@text()=做种积分',
+            'location': 'next',
+            'second_selector': '',
+            'type': 'text'
+        },
+        {
+            'name': 'hr_count',
+            'selector': '@title=查看HR详情',
+            'type': 'text'
+        },
+        {
+            'name': 'seed_subpage',
+            'selector': '@href^javascript: getusertorrentlistajax',
+            'type': 'text'
+        },
     ],
     'ourbits': [
         {

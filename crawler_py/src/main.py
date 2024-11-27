@@ -2,6 +2,9 @@ import asyncio
 import os
 from datetime import datetime
 from dotenv import load_dotenv
+from DrissionPage import ChromiumOptions
+from loguru import logger
+from pathlib import Path
 from crawlers.site.hdhome_crawler import HDHomeCrawler
 from crawlers.site.ourbits_crawler import OurBitsCrawler
 from crawlers.site.qingwapt_crawler import QingWaptCrawler
@@ -10,8 +13,27 @@ from config.sites import SITE_URLS, SITE_CONFIGS, EXTRACT_RULES
 import argparse
 import json
 
+
+def init_drissionpage():
+    """初始化DrissionPage配置"""
+    chrome_path = os.getenv('CHROME_PATH')
+    if chrome_path and Path(chrome_path).exists():
+        try:
+            logger.info(f"设置Chrome路径: {chrome_path}")
+            ChromiumOptions().set_browser_path(chrome_path).save()
+            return True
+        except Exception as e:
+            logger.error(f"设置Chrome路径失败: {str(e)}")
+            return False
+    logger.warning(f"Chrome路径无效或不存在: {chrome_path}")
+    return False
+
+
 # 加载环境变量
 load_dotenv()
+
+# 初始化DrissionPage配置
+init_drissionpage()
 
 # 爬虫映射
 CRAWLERS = {
@@ -50,5 +72,5 @@ async def main():
     except Exception as e:
         print(f"爬取过程中出现错误: {str(e)}")
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     asyncio.run(main()) 

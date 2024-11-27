@@ -21,3 +21,20 @@ tesseract
 # Testing
 pytest
 pytest-asyncio
+
+# DrissionPage
+DrissionPage
+python-dotenv
+loguru
+pydantic
+PyYAML
+
+# Ddddocr
+ddddocr
+twocaptcha-python
+
+# Requests
+requests
+beautifulsoup4
+lxml
+pillow

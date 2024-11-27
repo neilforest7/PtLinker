@@ -1,14 +1,17 @@
-from playwright.async_api import Browser, Page, async_playwright
-from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional
-from pathlib import Path
-import os
 import json
+import os
 import traceback
+from abc import ABC, abstractmethod
 from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, Optional
+
 from loguru import logger
+from DrissionPage import Chromium, ChromiumOptions
+
 from handlers.login import LoginHandler
 from models.crawler import CrawlerTaskConfig
+
 
 class BaseCrawler(ABC):
     def __init__(self, task_config: Dict[str, Any]):
@@ -23,9 +26,9 @@ class BaseCrawler(ABC):
         # 初始化登录处理器
         self.login_handler = LoginHandler(self.task_config)
         
-        self.browser: Optional[Browser] = None
-        self.context = None
-        self.page: Optional[Page] = None
+        # 初始化ChromiumOptions
+        self.chrome_options = ChromiumOptions().auto_port()
+        self.browser: Optional[Chromium] = None
         self.logger = logger.bind(task_id=task_config['task_id'], site_id=self.site_id)
 
     @abstractmethod
@@ -36,36 +39,26 @@ class BaseCrawler(ABC):
     async def start(self):
         """启动爬虫"""
         try:
-            playwright = await async_playwright().start()
-            self.browser = await playwright.chromium.launch(headless=True)
-            self.context = await self.browser.new_context()
-            self.page = await self.context.new_page()
-
+            # 使用ChromiumOptions初始化浏览器
+            self.browser = Chromium(self.chrome_options)
+            self.logger.debug(f"创建新的浏览器实例，端口: {self.chrome_options}")
+            
             try:
-                # 尝试恢复登录状态
-                if await self.login_handler.restore_browser_state(self.page):
+                # 尝试恢复登录状态或执行登录
+                if await self.login_handler.restore_browser_state(self.browser):
                     self.logger.info("成功恢复登录状态")
-                    # 验证登录状态是否有效
-                    await self.page.goto(self.task_config.start_urls[0])
-                    if not await self._check_login():
-                        self.logger.warning("登录状态已失效，需要重新登录")
-                        await self.login_handler.perform_login(self.page, self.task_config.login_config)
                 else:
                     self.logger.info("无法恢复登录状态，执行登录流程")
-                    await self.login_handler.perform_login(self.page, self.task_config.login_config)
+                    await self.login_handler.perform_login(self.browser, self.task_config.login_config)
 
                 # 开始爬取
-                await self._crawl()
+                await self._crawl(self.browser)
 
             finally:
                 # 清理浏览器资源
-                if self.page:
-                    await self.page.close()
-                if self.context:
-                    await self.context.close()
                 if self.browser:
-                    await self.browser.close()
-                await playwright.stop()
+                    self.logger.debug("关闭浏览器实例")
+                    self.browser.quit()
 
         except Exception as e:
             error_info = {
@@ -88,11 +81,11 @@ class BaseCrawler(ABC):
         error_file.write_text(json.dumps(error, ensure_ascii=False, indent=2))
 
     @abstractmethod
-    async def _check_login(self) -> bool:
+    async def _check_login(self, browser: Chromium) -> bool:
         """检查是否已登录"""
         pass
 
     @abstractmethod
-    async def _crawl(self):
+    async def _crawl(self, browser: Chromium):
         """爬取数据的主要逻辑"""
         pass
