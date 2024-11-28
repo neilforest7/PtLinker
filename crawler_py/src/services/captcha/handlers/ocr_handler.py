@@ -11,7 +11,7 @@ class OCRHandler(BaseCaptchaHandler):
     def __init__(self, storage_dir: str):
         super().__init__(storage_dir)
         self.ocr = ddddocr.DdddOcr(show_ad=False)
-        self.logger = logger.bind(handler="ocr")
+        self.logger = logger.bind(handler="ocr", site_id="OCRHandler")
     
     async def handle(self, image_data: bytes, site_id: str) -> Optional[str]:
         """处理验证码

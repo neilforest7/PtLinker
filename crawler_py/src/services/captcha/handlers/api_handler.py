@@ -12,7 +12,7 @@ class APIHandler(BaseCaptchaHandler):
     
     def __init__(self, storage_dir: str):
         super().__init__(storage_dir)
-        self.logger = logger.bind(handler="api")
+        self.logger = logger.bind(handler="api", site_id="APIHandler")
         
         # 初始化2captcha客户端
         api_key = os.getenv('CAPTCHA_API_KEY')
@@ -51,10 +51,13 @@ class APIHandler(BaseCaptchaHandler):
                 'language': 0,  # 0 = 任何语言
             }
             
+            # 将图片数据转换为base64字符串
+            image_base64 = base64.b64encode(image_data).decode('utf-8')
+            
             # 发送识别请求
             self.logger.debug("发送验证码识别请求到2captcha")
             result = self.solver.normal(
-                image_data,
+                image_base64,
                 **params,
                 timeout=self.timeout,
                 pollingInterval=self.polling_interval

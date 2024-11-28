@@ -113,8 +113,8 @@ class DataHandler:
             return True
 
         except Exception as e:
-            self.logger.error(f"处理数据项时发生错误: {str(e)}", exc_info=True)
-            self.logger.debug(f"错误数据项: {json.dumps(item, ensure_ascii=False)}")
+            self.logger.error("处理数据项失败", exc_info=True)
+            self.logger.debug(f"错误详情: {type(e).__name__}")
             await self._record_error(item.get('id', '未知ID'), str(e))
             self.stats['failed_items'] += 1
             return False
@@ -254,7 +254,8 @@ class DataHandler:
             return True
             
         except StorageError as e:
-            self.logger.error(f"批量保存失败: {str(e)}", exc_info=True)
+            self.logger.error("批量保存失败", exc_info=True)
+            self.logger.debug(f"错误详情: {type(e).__name__}")
             return False
 
     async def save_all(self) -> bool:
@@ -282,7 +283,8 @@ class DataHandler:
             return True
             
         except Exception as e:
-            self.logger.error(f"保存数据失败: {str(e)}", exc_info=True)
+            self.logger.error("保存数据失败", exc_info=True)
+            self.logger.debug(f"错误详情: {type(e).__name__}")
             return False
     async def get_stats(self) -> Dict[str, Any]:
         """获取数据处理统计信息"""
@@ -336,7 +338,8 @@ class DataHandler:
             return state_data
             
         except Exception as e:
-            self.logger.error(f"加载cookies失败: {str(e)}", exc_info=True)
+            self.logger.error("加载cookies失败", exc_info=True)
+            self.logger.debug(f"错误详情: {type(e).__name__}")
             return None
 
     async def validate_cookies(self, page: Page) -> bool:
@@ -378,6 +381,7 @@ class DataHandler:
             return is_valid
             
         except Exception as e:
-            self.logger.error(f"验证cookies时发生错误: {str(e)}", exc_info=True)
+            self.logger.error("验证cookies失败", exc_info=True)
+            self.logger.debug(f"错误详情: {type(e).__name__}")
             return False
 

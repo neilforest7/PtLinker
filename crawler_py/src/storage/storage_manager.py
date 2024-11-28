@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict,  Optional, Union
 from pathlib import Path
 import json
 import gzip
@@ -6,7 +6,6 @@ import shutil
 import time
 from datetime import datetime
 from loguru import logger
-import os
 from abc import ABC, abstractmethod
 
 class StorageError(Exception):
@@ -54,7 +53,7 @@ class FileStorage(BaseStorage):
     def __init__(self, base_dir: Union[str, Path], compress: bool = True):
         self.base_dir = Path(base_dir)
         self.compress = compress
-        self.logger = logger.bind(storage_type="file")
+        self.logger = logger.bind(storage_type="file", site_id="FileStorage")
         
     async def save(self, data: Any, path: str) -> bool:
         """
@@ -97,8 +96,8 @@ class FileStorage(BaseStorage):
             return True
             
         except Exception as e:
-            self.logger.error(f"保存数据失败: {str(e)}", exc_info=True)
-            raise StorageWriteError(f"保存数据失败: {str(e)}")
+            self.logger.error("保存数据失败", exc_info=True)
+            raise StorageWriteError(str(e))
     
     async def load(self, path: str) -> Any:
         """
@@ -109,10 +108,17 @@ class FileStorage(BaseStorage):
             
         Returns:
             加载的数据
+            
+        Raises:
+            StorageReadError: 当文件不存在或读取失败时
         """
         try:
             full_path = self.base_dir / path
-            self.logger.debug(f"准备加载数据: {full_path}")
+            
+            # 检查文件是否存在
+            if not await self.exists(path):
+                self.logger.debug(f"文件不存在: {full_path}")
+                raise FileNotFoundError(f"文件不存在: {full_path}")
             
             # 检查压缩文件
             compressed_path = str(full_path) + '.gz'
@@ -125,11 +131,17 @@ class FileStorage(BaseStorage):
                 with open(full_path, 'r', encoding='utf-8') as f:
                     data = json.load(f)
             
-            self.logger.info(f"数据加载成功: {path}")
+            self.logger.debug(f"数据加载成功: {path}")
             return data
             
+        except FileNotFoundError as e:
+            self.logger.debug(f"文件不存在: {str(e)}")
+            raise StorageReadError(f"文件不存在: {str(e)}")
+        except json.JSONDecodeError as e:
+            self.logger.error(f"JSON解析失败: {str(e)}")
+            raise StorageReadError(f"JSON解析失败: {str(e)}")
         except Exception as e:
-            self.logger.error(f"加载数据失败: {str(e)}", exc_info=True)
+            self.logger.error(f"加载数据失败: {str(e)}")
             raise StorageReadError(f"加载数据失败: {str(e)}")
     
     async def delete(self, path: str) -> bool:
@@ -161,7 +173,7 @@ class FileStorage(BaseStorage):
             return True
             
         except Exception as e:
-            self.logger.error(f"删除文件失败: {str(e)}", exc_info=True)
+            self.logger.error("删除文件失败", exc_info=True)
             return False
     
     async def exists(self, path: str) -> bool:
@@ -221,7 +233,7 @@ class StorageManager:
                 }
         """
         self.config = storage_config
-        self.logger = logger.bind(component="storage_manager")
+        self.logger = logger.bind(component="storage_manager", site_id="StorageManager")
         
         # 初始化存储后端
         if storage_config['type'] == 'file':
@@ -266,10 +278,10 @@ class StorageManager:
             return success
             
         except Exception as e:
-            self.logger.error(f"保存数据失败: {str(e)}", exc_info=True)
+            self.logger.error("保存数据失败", exc_info=True)
             raise
     
-    async def load(self, path: str, fallback_to_backup: bool = True) -> Any:
+    async def load(self, path: str, fallback_to_backup: bool = True) -> Optional[Any]:
         """
         加载数据
         
@@ -278,15 +290,28 @@ class StorageManager:
             fallback_to_backup: 加载失败时是否尝试从备份加载
             
         Returns:
-            加载的数据
+            Optional[Any]: 加载的数据，如果文件不存在且没有备份则返回None
         """
         try:
-            self.logger.info(f"开始加载数据: {path}")
+            self.logger.debug(f"开始加载数据: {path}")
             return await self.storage.load(path)
+        except StorageReadError as e:
+            if "文件不存在" in str(e):
+                if fallback_to_backup:
+                    self.logger.debug("文件不存在，尝试从备份加载")
+                    try:
+                        return await self._load_from_backup(path)
+                    except StorageReadError as backup_error:
+                        if "没有可用的备份" in str(backup_error):
+                            self.logger.debug("没有找到文件或备份")
+                            return None
+                        raise backup_error
+                else:
+                    self.logger.debug("文件不存在且不尝试从备份加载")
+                    return None
+            raise
         except Exception as e:
-            if fallback_to_backup:
-                self.logger.warning(f"加载数据失败，尝试从备份加载: {str(e)}")
-                return await self._load_from_backup(path)
+            self.logger.error(f"加载数据时发生未知错误: {str(e)}")
             raise
     
     async def _create_backup(self, path: str) -> bool:
@@ -311,23 +336,29 @@ class StorageManager:
             # 获取所有备份文件
             base_path = Path(path)
             backup_pattern = f"{base_path.name}.*.bak"
+            backup_dir = self.storage.base_dir / base_path.parent
+            
+            # 确保备份目录存在
+            if not backup_dir.exists():
+                raise StorageReadError("没有可用的备份")
+            
             backup_files = sorted(
-                base_path.parent.glob(backup_pattern),
+                backup_dir.glob(backup_pattern),
                 key=lambda x: x.stat().st_mtime,
                 reverse=True
             )
             
             if not backup_files:
-                raise StorageReadError("没有可用的备份文件")
+                raise StorageReadError("没有可用的备份")
             
             # 加载最新的备份
             latest_backup = backup_files[0]
-            self.logger.info(f"从备份加载数据: {latest_backup}")
+            self.logger.debug(f"从备份加载数据: {latest_backup}")
             return await self.storage.load(str(latest_backup.relative_to(self.storage.base_dir)))
             
         except Exception as e:
-            self.logger.error(f"从备份加载失败: {str(e)}")
-            raise
+            self.logger.warning(f"从备份加载失败: {str(e)}")
+            raise StorageReadError(str(e))
     
     async def _cleanup_old_backups(self, path: str) -> None:
         """清理旧的备份文件"""

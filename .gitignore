@@ -16,3 +16,4 @@ crawler_py/*.png
 crawler_py/.venv
 crawler_py/.vscode
 crawler_py/storage
+crawler_py/logs

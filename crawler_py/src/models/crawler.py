@@ -23,6 +23,7 @@ class LoginConfig(BaseModel):
     """登录配置"""
     login_url: str
     form_selector: str
+    pre_login: Optional[Dict[str, Any]] = None
     fields: Dict[str, FormField]
     captcha: Optional[CaptchaConfig] = None
     success_check: Dict[str, str]

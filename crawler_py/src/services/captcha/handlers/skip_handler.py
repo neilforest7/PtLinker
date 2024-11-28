@@ -8,7 +8,7 @@ class SkipHandler(BaseCaptchaHandler):
     
     def __init__(self, storage_dir: str):
         super().__init__(storage_dir)
-        self.logger = logger.bind(handler="skip")
+        self.logger = logger.bind(handler="skip", site_id="SkipHandler")
     
     async def handle(self, image_data: bytes, site_id: str) -> Optional[str]:
         """处理验证码

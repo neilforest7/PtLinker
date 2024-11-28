@@ -12,7 +12,7 @@ class ManualHandler(BaseCaptchaHandler):
     
     def __init__(self, storage_dir: str):
         super().__init__(storage_dir)
-        self.logger = logger.bind(handler="manual")
+        self.logger = logger.bind(handler="manual", site_id="ManualHandler")
         self.timeout = int(os.getenv('MANUAL_CAPTCHA_TIMEOUT', '300'))  # 5分钟超时
     
     async def handle(self, image_data: bytes, site_id: str) -> Optional[str]:

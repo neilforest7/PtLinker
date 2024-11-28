@@ -1,145 +1,132 @@
-import os
-import json
-from typing import Optional, Dict, Type, Union
-from pathlib import Path
-from loguru import logger
-from PIL import Image
-import io
 import base64
-from DrissionPage.items import ChromiumElement
+import os
+from typing import Optional, Union
 
-from .base_handler import BaseCaptchaHandler
-from .handlers.ocr_handler import OCRHandler
+import requests
+from DrissionPage.items import ChromiumElement
+from loguru import logger
+
 from .handlers.api_handler import APIHandler
-from .handlers.manual_handler import ManualHandler
-from .handlers.skip_handler import SkipHandler
+from .handlers.ocr_handler import OCRHandler
+
 
 class CaptchaService:
-    """验证码服务"""
-    
-    HANDLERS: Dict[str, Type[BaseCaptchaHandler]] = {
-        'ocr': OCRHandler,
-        'api': APIHandler,
-        'manual': ManualHandler,
-        'skip': SkipHandler
-    }
-
-    def __init__(self, storage_dir: str = 'storage/captcha'):
-        self.storage_dir = Path(storage_dir)
-        self.storage_dir.mkdir(parents=True, exist_ok=True)
-        self.logger = logger.bind(service="captcha")
+    def __init__(self):
+        self.logger = logger.bind(service="captcha", site_id="CaptchaService")
+        
+        # 初始化处理器
+        storage_dir = os.getenv('CAPTCHA_STORAGE_PATH', 'storage/captcha')
+        self.api_handler = APIHandler(storage_dir)
+        self.ocr_handler = OCRHandler(storage_dir)
         
         # 获取默认处理方式
         self.default_method = os.getenv('CAPTCHA_DEFAULT_METHOD', 'api')
+        self.logger.info(f"使用验证码处理方式: {self.default_method}")
         
-        # 获取站点特定的处理方式
-        self.site_methods = {}
-        site_methods_str = os.getenv('CAPTCHA_SITE_METHODS', '{}')
-        try:
-            self.site_methods = json.loads(site_methods_str)
-            self.logger.info(f"已加载站点验证码处理方式配置: {self.site_methods}")
-        except json.JSONDecodeError as e:
-            self.logger.error(f"解析站点验证码处理方式配置失败: {str(e)}")
-        
-        # 初始化处理器缓存
-        self.handler_cache = {}
-
-    def _get_handler(self, site_id: str) -> BaseCaptchaHandler:
-        """获取指定站点的验证码处理器"""
-        # 如果处理器已经在缓存中，直接返回
-        if site_id in self.handler_cache:
-            return self.handler_cache[site_id]
-            
-        # 获取站点的处理方式
-        method = self.site_methods.get(site_id, self.default_method)
-        self.logger.info(f"站点 {site_id} 使用验证码处理方式: {method}")
-        
-        # 验证处理方式是否有效
-        if method not in self.HANDLERS:
-            self.logger.warning(f"无效的验证码处理方式: {method}，使用默认方式: {self.default_method}")
-            method = self.default_method
-        
-        # 创建处理器
-        handler_class = self.HANDLERS[method]
-        handler = handler_class(self.storage_dir)
-        
-        # 缓存处理器
-        self.handler_cache[site_id] = handler
-        return handler
-
-    def _get_image_data(self, element: ChromiumElement) -> Optional[bytes]:
-        """从元素获取图片数据"""
-        try:
-            # 使用src()方法获取图片数据
-            image_data = element.src()
-            if image_data is None:
-                self.logger.warning("无法获取图片数据")
-                return None
-                
-            # 如果返回的是字符串（URL），尝试获取截图
-            if isinstance(image_data, str):
-                self.logger.debug("获取到URL，尝试获取截图")
-                return element.get_screenshot()
-                
-            return image_data
-            
-        except Exception as e:
-            self.logger.error(f"获取验证码图片数据失败: {str(e)}")
-            return None
-
-    def _process_image_data(self, image_data: bytes) -> bytes:
-        """处理图片数据，确保格式正确"""
-        try:
-            # 尝试打开图片
-            image = Image.open(io.BytesIO(image_data))
-            
-            # 如果不是PNG格式，转换为PNG
-            if image.format != 'PNG':
-                output = io.BytesIO()
-                image.save(output, format='PNG')
-                return output.getvalue()
-            
-            return image_data
-            
-        except Exception as e:
-            self.logger.error(f"处理图片数据失败: {str(e)}")
-            return image_data
-
-    async def handle_captcha(self, element_or_data: Union[ChromiumElement, bytes], site_id: str) -> Optional[str]:
+    async def handle_captcha(self, input_data: Union[ChromiumElement, str, bytes], site_id: str) -> Optional[str]:
         """处理验证码
         
         Args:
-            element_or_data: 验证码元素或图片数据
-            site_id: 站点ID
+            element: 验证码元素，可以是WebElement、URL字符串或bytes数据
+            site_id: 站点ID，用于日志记录
             
         Returns:
-            Optional[str]: 识别出的验证码文本，失败返回None
+            str: 识别出的验证码文本，失败返回None
         """
         try:
-            # 获取图片数据
-            if isinstance(element_or_data, bytes):
-                image_data = element_or_data
+            # 获取验证码数据
+            captcha_data = await self._get_captcha_data(input_data)
+            if not captcha_data:
+                return None
+                
+            # 根据默认处理方式选择处理器
+            if self.default_method == 'api':
+                return await self.api_handler.handle(captcha_data, site_id)
             else:
-                image_data = self._get_image_data(element_or_data)
-                if not image_data:
-                    raise Exception("无法获取验证码图片数据")
-            
-            # 处理图片数据
-            image_data = self._process_image_data(image_data)
-            
-            # 获取处理器并处理验证码
-            handler = self._get_handler(site_id)
-            return await handler.handle(image_data, site_id)
-            
+                return await self.ocr_handler.handle(captcha_data, site_id)
+                
         except Exception as e:
-            self.logger.error(f"处理验证码时出错: {str(e)}")
+            self.logger.error(f"处理验证码失败: {str(e)}")
             return None
-
+            
+    async def _get_captcha_data(self, input_data: Union[ChromiumElement, str, bytes]) -> Optional[bytes]:
+        """获取验证码数据
+        
+        Args:
+            element: 验证码元素，可以是WebElement、URL字符串或bytes数据
+            
+        Returns:
+            bytes: 验证码图片的二进制数据
+        """
+        try:
+            if isinstance(input_data, ChromiumElement):
+                # 如果是WebElement，获取src属性
+                src = input_data.src(base64_to_bytes=True)
+                if not src:
+                    self.logger.error("验证码元素没有src属性")
+                    return None
+                    
+                # 如果是base64编码的图片
+                if src.startswith('data:image'):
+                    try:
+                        # 提取base64数据部分
+                        base64_data = src.split(',')[1]
+                        return base64.b64decode(base64_data)
+                    except Exception as e:
+                        self.logger.error(f"解析base64图片数据失败: {str(e)}")
+                        return None
+                        
+                return await self._download_image(src)
+                
+            elif isinstance(input_data, str):
+                # 如果是URL字符串
+                if input_data.startswith('http'):
+                    return await self._download_image(input_data)
+                # 如果是base64字符串
+                elif input_data.startswith('data:image'):
+                    try:
+                        base64_data = input_data.split(',')[1]
+                        return base64.b64decode(base64_data)
+                    except Exception as e:
+                        self.logger.error(f"解析base64字符串失败: {str(e)}")
+                        return None
+                else:
+                    self.logger.error("无效的字符串格式")
+                    return None
+                    
+            elif isinstance(input_data, bytes):
+                # 如果已经是bytes数据，直接返回
+                return input_data
+                
+            else:
+                self.logger.error(f"不支持的元素类型: {type(input_data)}")
+                return None
+                
+        except Exception as e:
+            self.logger.error(f"获取验证码数据失败: {str(e)}")
+            return None
+            
+    async def _download_image(self, url: str) -> Optional[bytes]:
+        """下载图片
+        
+        Args:
+            url: 图片URL
+            
+        Returns:
+            bytes: 图片的二进制数据
+        """
+        try:
+            response = requests.get(url, timeout=10)
+            response.raise_for_status()
+            return response.content
+        except Exception as e:
+            self.logger.error(f"下载验证码图片失败: {str(e)}")
+            return None
+            
     def cleanup(self):
         """清理资源"""
-        for handler in self.handler_cache.values():
-            try:
-                handler.cleanup()
-            except Exception as e:
-                self.logger.error(f"清理验证码处理器时出错: {str(e)}")
-        self.handler_cache.clear()
+        try:
+            self.api_handler.cleanup()
+            self.ocr_handler.cleanup()
+        except Exception as e:
+            self.logger.error(f"清理验证码服务资源失败: {str(e)}")
