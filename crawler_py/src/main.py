@@ -1,20 +1,22 @@
+import argparse
 import asyncio
 import os
+from concurrent.futures import ProcessPoolExecutor
 from datetime import datetime
-from dotenv import load_dotenv
-from DrissionPage import ChromiumOptions
-from loguru import logger
 from pathlib import Path
+
+from config.sites import EXTRACT_RULES, SITE_CONFIGS
+from crawlers.site.frds_crawler import FrdsCrawler
+from crawlers.site.hdfans_crawler import HDFansCrawler
 from crawlers.site.hdhome_crawler import HDHomeCrawler
 from crawlers.site.ourbits_crawler import OurBitsCrawler
 from crawlers.site.qingwapt_crawler import QingWaptCrawler
-from crawlers.site.hdfans_crawler import HDFansCrawler
-from config.sites import SITE_URLS, SITE_CONFIGS, EXTRACT_RULES
-import argparse
-import json
-from utils.logger import setup_logger, get_logger
-from concurrent.futures import ProcessPoolExecutor
-import functools
+from crawlers.site.ubits_crawler import UBitsCrawler
+from dotenv import load_dotenv
+from DrissionPage import ChromiumOptions
+from loguru import logger
+from utils.logger import get_logger, setup_logger
+
 
 def init_drissionpage():
     """初始化DrissionPage配置"""
@@ -61,7 +63,9 @@ CRAWLERS = {
     'hdhome': HDHomeCrawler,
     'ourbits': OurBitsCrawler,
     'qingwapt': QingWaptCrawler,
-    'hdfans': HDFansCrawler
+    'hdfans': HDFansCrawler,
+    'ubits': UBitsCrawler,
+    'frds': FrdsCrawler
 }
 
 def main():
@@ -79,7 +83,7 @@ def main():
         task_config = {
             'task_id': f'{site}-{int(datetime.now().timestamp())}',
             'site_id': site,
-            'start_urls': [SITE_URLS[site]],
+            'site_url': [SITE_CONFIGS[site]['site_url']],
             'login_config': SITE_CONFIGS.get(site),
             'extract_rules': EXTRACT_RULES.get(site, []),
             'username': os.getenv('LOGIN_USERNAME'),

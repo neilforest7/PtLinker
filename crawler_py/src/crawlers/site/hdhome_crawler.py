@@ -12,7 +12,7 @@ from ..base.base_crawler import BaseCrawler
 class HDHomeCrawler(BaseCrawler):
     def __init__(self, task_config: Dict[str, Any]):
         super().__init__(task_config)
-        self.base_url = task_config['start_urls'][0]
+        self.base_url = task_config['site_url'][0]
         self.logger = logger.bind(site_id="hdhome")
         self.extract_rules = EXTRACT_RULES.get('hdhome', [])
         if not self.extract_rules:
@@ -126,38 +126,19 @@ class HDHomeCrawler(BaseCrawler):
             self.logger.debug(f"找到做种统计按钮{seeding_btn}，开始点击")
             seeding_btn.click()
 
-            # 获取做种列表容器
-            seeding_container = tab.ele('#ka1').ele('@tag()=table')
-            if not seeding_container:
-                self.logger.warning("未找到做种统计容器")
-                return stats
-                
-            seeding_rows = seeding_container.eles('@tag()=tr')
-            if not seeding_rows:
-                self.logger.warning("未找到做种统计行")
-                return stats
-                
-            seeding_count = len(seeding_rows) - 1
-            seeding_size = 0.0
+            # 使用基类方法提取所有页面的体积数据
+            volumes = await self._extract_seeding_volumes(
+                tab,
+                container_selector="#ka1",
+                table_selector="@tag()=table",  # 表格选择器
+                pagination_selector='@class=nexus-pagination', # 分页器选择器
+                volume_selector_index= 3  # 体积列
+            )
             
-            for index, row in enumerate(seeding_rows):
-                if index == 0:  # 跳过表头
-                    continue
-                t_size = row.ele('@tag()=td', index=3)
-                if t_size:
-                    size_text = t_size.text.strip().replace('\n', '')
-                    self.logger.debug(f"提取到做种体积文本: {size_text}")
-                    
-                    # 使用正则表达式匹配数字和单位
-                    size_match = re.search(r'([\d.]+)\s*(TB|GB|MB|KB|B)', size_text, re.IGNORECASE)
-                    self.logger.debug(f"匹配结果: {size_match}")
-                    if size_match:
-                        size_gb = self._convert_size_to_gb(size_text)
-                        self.logger.debug(f"转换后的大小(GB): {size_gb}")
-                        seeding_size += size_gb
-                    else:
-                        self.logger.warning(f"无法解析大小文本: {size_text}")
-                        
+            # 统计做种数量和总体积
+            seeding_count = len(volumes)
+            seeding_size = sum(self._convert_size_to_gb(v) for v in volumes)
+
             stats['seeding_count'] = seeding_count
             self.logger.info(f"提取到做种数量: {stats['seeding_count']}")
             stats['seeding_size'] = f"{seeding_size:.2f} GB"

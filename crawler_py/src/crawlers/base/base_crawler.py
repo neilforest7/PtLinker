@@ -1,17 +1,20 @@
 import json
 import os
+from time import sleep
 import traceback
 from abc import ABC, abstractmethod
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List, Tuple
 import re
+from urllib.parse import urljoin
 
 from loguru import logger
 from DrissionPage import Chromium, ChromiumOptions
 
 from handlers.login import LoginHandler
 from models.crawler import CrawlerTaskConfig
+from utils.logger import get_logger
 
 
 class BaseCrawler(ABC):
@@ -157,6 +160,7 @@ class BaseCrawler(ABC):
                     transform = rule.get('transform', None)
                     location = rule.get('location', None)
                     second_selector = rule.get('second_selector', None)
+                    ele_only = rule.get('ele_only', True)
 
                     if location == 'next':
                         element = tab.ele(selector).next(second_selector)
@@ -164,6 +168,10 @@ class BaseCrawler(ABC):
                         element = tab.ele(selector).parent(second_selector)
                     elif location == 'next-child':
                         element = tab.ele(selector).next().child(second_selector)
+                    elif location == 'parent-child':
+                        element = tab.ele(selector).parent().child(second_selector, ele_only)
+                    elif location == 'east':
+                        element = tab.ele(selector).east(second_selector)
                     else:
                         element = tab.ele(selector)
                         
@@ -342,3 +350,98 @@ class BaseCrawler(ABC):
     async def _crawl(self, browser: Chromium):
         """爬取数据的主要逻辑"""
         pass
+
+    async def _extract_seeding_volumes(self, tab: Chromium, container_selector: str, table_selector: str, pagination_selector: str, volume_selector_index: int) -> List[str]:
+        """
+        通用的统计做种容器函数，处理分页并提取每页的种子体积
+        
+        Args:
+            tab: DrissionPage标签页实例
+            container_selector: 容器的选择器
+            table_selector: 表格的选择器
+            volume_selector_index: 体积列的索引（从0开始）
+        
+        Returns:
+            包含所有页面种子体积的列表
+        """
+        volumes = []
+        tab.wait.ele_displayed(container_selector, timeout=10)
+        
+        # 获取第一页数据
+        self.logger.debug("处理第1页数据")
+        container = tab.ele(container_selector)
+        if not container:
+            self.logger.warning(f"未找到容器: {container_selector}")
+            return volumes
+            
+        table = container.ele(table_selector)
+        if not table:
+            self.logger.warning(f"未找到表格: {table_selector}")
+            return volumes
+
+        rows = table.eles('@tag()=tr')[1:]  # 排除表头
+        for row in rows:
+            volume_cell = row.ele('@tag()=td', index=volume_selector_index)
+            if volume_cell:
+                volumes.append(volume_cell.text.strip())
+        
+        # 检查分页
+        pagination = container.ele(pagination_selector)
+        if not pagination:
+            self.logger.debug("没有检测到分页，处理完成")
+            return volumes
+            
+        # 获取所有页码链接
+        page_numbers = []
+        for link in pagination.eles('@tag()=a'):
+            href = link.attr('href')
+            if href and 'page=' in href:
+                try:
+                    # 从链接中提取页码
+                    page_num = int(re.search(r'page=(\d+)', href).group(1))
+                    if page_num not in page_numbers:
+                        page_numbers.append(page_num)
+                        self.logger.debug(f"添加页码: {page_num +1}")
+                except (AttributeError, ValueError):
+                    continue
+        
+        # 按页码排序
+        page_numbers.sort()
+        
+        # 处理后续页面
+        for page_num in page_numbers:
+            try:
+                # 找到对应页码的链接并点击
+                pagination = tab.ele(container_selector).ele(pagination_selector)
+                page_link = pagination.ele(f'@href$page={page_num}')
+                self.logger.debug(f"找到页码 {page_num + 1} 的链接: {page_link}")
+                if not page_link:
+                    self.logger.warning(f"未找到页码 {page_num + 1} 的链接")
+                    continue
+                # 点击链接
+                page_link.wait.clickable()
+                page_link.click()
+                self.logger.debug(f"点击页码 {page_num + 1} 的链接")
+                
+                # 等待表格重新加载
+                tab.wait.ele_displayed(table_selector, timeout=10)
+                self.logger.debug(f"等待表格重新加载完成")
+                
+                table = container.ele(table_selector)
+                if not table:
+                    self.logger.warning(f"未找到表格: {table_selector}")
+                    continue
+                
+                # 提取数据
+                rows = table.eles('@tag()=tr')[1:]  # 排除表头
+                for row in rows:
+                    volume_cell = row.ele('@tag()=td', index=volume_selector_index)
+                    if volume_cell:
+                        volumes.append(volume_cell.text.strip())
+                        
+            except Exception as e:
+                self.logger.error(f"处理第{page_num + 1}页时出错: {str(e)}")
+                continue
+        
+        self.logger.info(f"共处理 {len(volumes)} 条做种数据")
+        return volumes

@@ -1,6 +1,8 @@
-from typing import Optional, Dict, List, Any, Literal
-from pydantic import BaseModel, Field
 from datetime import datetime
+from typing import Any, Dict, List, Literal, Optional
+
+from pydantic import BaseModel, Field
+
 
 class FormField(BaseModel):
     """表单字段配置"""
@@ -43,7 +45,7 @@ class CrawlerTaskConfig(BaseModel):
     site_id: Optional[str] = None
     username: Optional[str] = None
     password: Optional[str] = None
-    start_urls: List[str]
+    site_url: List[str]
     login_config: Optional[LoginConfig] = None
     extract_rules: List[ExtractRule] = Field(default_factory=list)
     custom_config: Optional[Dict[str, Any]] = None

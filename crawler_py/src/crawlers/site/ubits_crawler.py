@@ -9,17 +9,17 @@ from loguru import logger
 from ..base.base_crawler import BaseCrawler
 
 
-class HDFansCrawler(BaseCrawler):
+class UBitsCrawler(BaseCrawler):
     def __init__(self, task_config: Dict[str, Any]):
         super().__init__(task_config)
         self.base_url = task_config['site_url'][0]
-        self.logger = logger.bind(site_id="hdfans")
-        self.extract_rules = EXTRACT_RULES.get('hdfans', [])
+        self.logger = logger.bind(site_id="ubits")
+        self.extract_rules = EXTRACT_RULES.get('ubits', [])
         if not self.extract_rules:
-            self.logger.warning("未找到hdfans的数据提取规则")
+            self.logger.warning("未找到ubits的数据提取规则")
 
     def _get_site_id(self) -> str:
-        return 'hdfans'
+        return 'ubits'
 
     async def _check_login(self, browser: Chromium) -> bool:
         """检查是否已登录"""
@@ -125,7 +125,7 @@ class HDFansCrawler(BaseCrawler):
                 return stats
             self.logger.debug(f"找到做种统计按钮{seeding_btn}，开始点击")
             seeding_btn.click()
-
+            
             # 使用基类方法提取所有页面的体积数据
             volumes = await self._extract_seeding_volumes(
                 tab,
@@ -138,11 +138,11 @@ class HDFansCrawler(BaseCrawler):
             # 统计做种数量和总体积
             seeding_count = len(volumes)
             seeding_size = sum(self._convert_size_to_gb(v) for v in volumes)
-                        
+            
             stats['seeding_count'] = seeding_count
             self.logger.info(f"提取到做种数量: {stats['seeding_count']}")
             stats['seeding_size'] = f"{seeding_size:.2f} GB"
-            self.logger.info(f"提取到总做种体积(GB): {stats['seeding_size']}")
+            self.logger.info(f"提取到总做种体积: {stats['seeding_size']}")
             
         except Exception as e:
             self.logger.error(f"解析做种统计数据失败: {str(e)}")
@@ -150,3 +150,4 @@ class HDFansCrawler(BaseCrawler):
             self.logger.debug(f"错误堆栈: ", exc_info=True)
             
         return stats
+

@@ -12,17 +12,20 @@ PASSWORD = os.getenv('LOGIN_PASSWORD')
 if not USERNAME or not PASSWORD:
     raise ValueError("LOGIN_USERNAME 和 LOGIN_PASSWORD 必须在.env文件中设置")
 
-# 站点URL配置
-SITE_URLS = {
-    'hdhome': 'https://hdhome.org',
-    'ourbits': 'https://ourbits.club',
-    'qingwapt': 'https://www.qingwapt.com',
-    'hdfans': 'https://hdfans.org'
-}
+# # 站点URL配置
+# SITE_URLS = {
+#     'hdhome': 'https://hdhome.org',
+#     'ourbits': 'https://ourbits.club',
+#     'qingwapt': 'https://www.qingwapt.com',
+#     'hdfans': 'https://hdfans.org',
+#     'ubits': 'https://ubits.club',
+#     'frds': 'https://pt.keepfrds.com'
+# }
 
 # 站点登录配置
 SITE_CONFIGS = {
     'hdhome': {
+        'site_url': 'https://hdhome.org',
         'login_url': 'https://hdhome.org/login.php',
         'form_selector': '@action=takelogin.php',
         'fields': {
@@ -64,6 +67,7 @@ SITE_CONFIGS = {
         }
     },
     'ourbits': {
+        'site_url': 'https://ourbits.club',
         'login_url': 'https://ourbits.club/login.php',
         'form_selector': '@action=takelogin.php',
         'fields': {
@@ -93,6 +97,7 @@ SITE_CONFIGS = {
         }
     },
     'qingwapt': {
+        'site_url': 'https://www.qingwapt.com',
         'login_url': 'https://www.qingwapt.com/login.php',
         'form_selector': '@action=takelogin.php',
         'pre_login': {
@@ -145,6 +150,7 @@ SITE_CONFIGS = {
         }
     },
     'hdfans': {
+        'site_url': 'https://hdfans.org',
         'login_url': 'https://hdfans.org/login.php',
         'form_selector': '@action=takelogin.php',
         'fields': {
@@ -185,6 +191,94 @@ SITE_CONFIGS = {
                 'type': 'text',
                 'selector': '@name=imagehash',
                 'targetField': 'imagehash'
+            }
+        },
+        'success_check': {
+            'selector': '@class=User_Name',
+            'expected_text': USERNAME
+        }
+    },
+    'ubits': {
+        'site_url': 'https://ubits.club',
+        'login_url': 'https://ubits.club/login.php',
+        'form_selector': '@action=takelogin.php',
+        'fields': {
+            'username': {
+                'name': 'username',
+                'type': 'text',
+                'selector': '@name=username',
+                'value': USERNAME,
+                'required': True
+            },
+            'password': {
+                'name': 'password',
+                'type': 'password',
+                'selector': '@name=password',
+                'value': PASSWORD,
+                'required': True
+            },
+            'submit': {
+                'name': 'submit', 
+                'type': 'submit',
+                'selector': '@value=登录',
+            }
+        },
+        'captcha': {
+            'type': 'custom',
+            'element': {
+                'selector': '@alt=CAPTCHA',
+                'type': 'src'
+            },
+            'input': {
+                'name': 'imagestring',
+                'type': 'text',
+                'selector': '@name=imagestring',
+                'required': True
+            },
+            'hash': {
+                'name': 'imagehash',
+                'type': 'text',
+                'selector': '@name=imagehash',
+                'targetField': 'imagehash'
+            }
+        },
+        'success_check': {
+            'selector': '@class=User_Name',
+            'expected_text': USERNAME
+        }
+    },
+    'frds': {
+        'site_url': 'https://pt.keepfrds.com',
+        'login_url': 'https://pt.keepfrds.com/login.php',
+        'form_selector': '@action=takelogin.php',
+        'pre_login': {
+            'actions': [
+                {
+                    'type': 'bypass-cf-turnstile',
+                    'selector': '@class=cf-turnstile',
+                    'wait_time': 5  # 点击后等待3秒让表单出现
+                }
+            ]
+        },
+        'fields': {
+            'username': {
+                'name': 'username',
+                'type': 'text',
+                'selector': '@name=username',
+                'value': USERNAME,
+                'required': True
+            },
+            'password': {
+                'name': 'password',
+                'type': 'password',
+                'selector': '@name=password',
+                'value': PASSWORD,
+                'required': True
+            },
+            'submit': {
+                'name': 'submit', 
+                'type': 'submit',
+                'selector': '@value=Boarding',
             }
         },
         'success_check': {
@@ -464,6 +558,134 @@ EXTRACT_RULES = {
             'name': 'hr_count',
             'selector': '@href^myhr.php',
             'type': 'text'
+        },
+    ],
+    'ubits': [
+        {
+            'name': 'username',
+            'selector': '@class=User_Name',
+            'type': 'text',
+            'required': True
+        },
+        {
+            'name': 'user_class',
+            'selector': '@text()=等级',
+            'location': 'next-child',
+            'second_selector': '@@tag()=img@@alt@@src',
+            'type': 'attribute',
+            'attribute': 'alt',
+        },
+        {
+            'name': 'join_time',
+            'selector': '@text()=加入日期',
+            'location': 'next',
+            'second_selector': '',
+            'type': 'text'
+        },
+        {
+            'name': 'last_active',
+            'selector': '@text()=最近动向',
+            'location': 'next',
+            'second_selector': '',
+            'type': 'text'
+        },
+        {
+            'name': 'upload',
+            'selector': '@text()=上传量',
+            'location': 'parent',
+            'second_selector': '',
+            'type': 'text'
+        },
+        {
+            'name': 'download',
+            'selector': '@text()=下载量',
+            'location': 'parent',
+            'second_selector': '',
+            'type': 'text'
+        },
+        {
+            'name': 'ratio',
+            'selector': '@text()=分享率',
+            'location': 'next',
+            'second_selector': '@tag()=font',
+            'type': 'text'
+        },
+        {
+            'name': 'bonus',
+            'selector': '@text()=魔力值',
+            'location': 'next',
+            'second_selector': '',
+            'type': 'text'
+        },
+        {
+            'name': 'seeding_score',
+            'selector': '@text()=做种积分',
+            'location': 'next',
+            'second_selector': '',
+            'type': 'text'
+        },
+        {
+            'name': 'hr_count',
+            'selector': '@href^myhr.php',
+            'type': 'text'
+        },
+    ],
+    'frds': [
+        {
+            'name': 'username',
+            'selector': '@class=User_Name',
+            'type': 'text',
+            'required': True
+        },
+        {
+            'name': 'user_class',
+            'selector': '@text()=等级',
+            'location': 'next-child',
+            'second_selector': '@@tag()=img@@alt@@src',
+            'type': 'attribute',
+            'attribute': 'alt',
+        },
+        {
+            'name': 'join_time',
+            'selector': '@text()=加入日期',
+            'location': 'next',
+            'second_selector': '',
+            'type': 'text'
+        },
+        {
+            'name': 'last_active',
+            'selector': '@text()=最近动向',
+            'location': 'next',
+            'second_selector': '',
+            'type': 'text'
+        },
+        {
+            'name': 'upload',
+            'selector': '@text()=上传量',
+            'location': 'parent',
+            'second_selector': '',
+            'type': 'text'
+        },
+        {
+            'name': 'download',
+            'selector': '@text()=下载量',
+            'location': 'parent',
+            'second_selector': '',
+            'type': 'text'
+        },
+        {
+            'name': 'ratio',
+            'selector': '@text()=分享率',
+            'location': 'next',
+            'second_selector': '@tag()=font',
+            'type': 'text'
+        },
+        {
+            'name': 'bonus',
+            'selector': '@@text()=魔力值@@tag()=strong',
+            'location': 'parent',
+            'second_selector': '',
+            'type': 'text',
         },
     ]
 } 

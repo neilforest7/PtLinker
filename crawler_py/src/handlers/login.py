@@ -104,19 +104,17 @@ class LoginHandler:
                     else:
                         self.logger.warning(f"  - 未找到输入元素: {field_config.selector}")
             self.logger.debug("表单字段填充完成")
-
+            
             # 处理验证码
-            if login_config.captcha:
+            # 检查站点的验证码处理方式
+            skipped_sites = os.getenv('CAPTCHA_SKIP_SITES', '')
+            if skipped_sites and self.task_config.site_id in skipped_sites:
+                self.logger.info(f"站点 {self.task_config.site_id} 配置为跳过验证码")
+            elif login_config.captcha:
                 self.logger.debug("开始处理验证码")
-                # 检查站点的验证码处理方式
-                site_method = os.getenv('CAPTCHA_SITE_METHODS', '{}')
                 try:
-                    site_methods = json.loads(site_method)
-                    if site_methods.get(self.task_config.site_id) == 'skip':
-                        self.logger.info(f"站点 {self.task_config.site_id} 配置为跳过验证码")
-                    else:
-                        self.logger.debug("开始验证码处理流程")
-                        await self._handle_captcha(tab, login_config)
+                    self.logger.debug("开始验证码处理流程")
+                    await self._handle_captcha(tab, login_config)
                 except json.JSONDecodeError:
                     self.logger.warning("解析站点验证码配置失败")
                     raise Exception("解析站点验证码配置失败")
@@ -569,6 +567,19 @@ class LoginHandler:
                         
                     element.click()
                     self.logger.debug(f"点击了元素: {selector}")
+                    
+                    if wait_time > 0:
+                        self.logger.debug(f"等待 {wait_time} 秒")
+                        sleep(wait_time)
+                elif action_type == 'bypass-cf-turnstile':
+                    cft = tab.ele(selector)
+                    if not cft:
+                        self.logger.error(f"未找到pre-login元素 - 选择器: {selector}")
+                        return False
+                    
+                    cf_bypasser = CloudflareBypasser(tab)
+                    cf_bypasser.click_verification_button()
+                    self.logger.debug(f"点击了cf-turnstile验证按钮: {selector}")
                     
                     if wait_time > 0:
                         self.logger.debug(f"等待 {wait_time} 秒")
