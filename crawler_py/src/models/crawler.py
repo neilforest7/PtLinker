@@ -34,7 +34,7 @@ class ExtractRule(BaseModel):
     """数据提取规则"""
     name: str
     selector: str
-    type: Literal["text", "attribute", "html"]
+    type: Optional[Literal["text", "attribute", "html"]] = None
     attribute: Optional[str] = None
     required: bool = False
     transform: Optional[str] = None

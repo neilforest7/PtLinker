@@ -7,14 +7,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional, List, Tuple
 import re
-from urllib.parse import urljoin
 
-from loguru import logger
 from DrissionPage import Chromium, ChromiumOptions
 
 from handlers.login import LoginHandler
 from models.crawler import CrawlerTaskConfig
-from utils.logger import get_logger
+from utils.logger import get_logger, setup_logger
 
 
 class BaseCrawler(ABC):
@@ -62,7 +60,8 @@ class BaseCrawler(ABC):
             self.chrome_options.set_argument(arg)
         
         self.browser: Optional[Chromium] = None
-        self.logger = logger.bind(task_id=task_config['task_id'], site_id=self.site_id)
+        setup_logger()
+        self.logger = get_logger(name=__name__, site_id=self.site_id)
 
     @abstractmethod
     def _get_site_id(self) -> str:
@@ -80,13 +79,19 @@ class BaseCrawler(ABC):
                 # 尝试恢复登录状态或执行登录
                 if not os.getenv('FRESH_LOGIN', 'false').lower() == 'true':
                     if await self.login_handler.restore_browser_state(self.browser):
-                        self.logger.info("成功恢复登录状态")
+                        self.logger.success("成功恢复登录状态")
                     else:
                         self.logger.info("无法恢复登录状态，执行登录流程")
-                        await self.login_handler.perform_login(self.browser, self.task_config.login_config)
+                        res = await self.login_handler.perform_login(self.browser, self.task_config.login_config)
+                        if res == False:
+                            self.logger.error("登录失败")
+                            raise Exception("登录失败")
                 else:
                     self.logger.info("FRESH_LOGIN=true，执行从头登录流程")
-                    await self.login_handler.perform_login(self.browser, self.task_config.login_config)
+                    res = await self.login_handler.perform_login(self.browser, self.task_config.login_config)
+                    if res == False:
+                        self.logger.error("登录失败")
+                        raise Exception("登录失败")
                 
                 # 开始爬取
                 await self._crawl(self.browser)
@@ -443,5 +448,5 @@ class BaseCrawler(ABC):
                 self.logger.error(f"处理第{page_num + 1}页时出错: {str(e)}")
                 continue
         
-        self.logger.info(f"共处理 {len(volumes)} 条做种数据")
+        self.logger.success(f"共处理 {len(volumes)} 条做种数据")
         return volumes

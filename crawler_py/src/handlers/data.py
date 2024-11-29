@@ -5,7 +5,7 @@ from pathlib import Path
 from datetime import datetime
 from ..storage.storage_manager import StorageManager, StorageError
 from playwright.async_api import Page
-
+from utils.logger import get_logger, setup_logger
 class DataProcessError(Exception):
     """数据处理相关的异常"""
     pass
@@ -32,7 +32,8 @@ class DataHandler:
         """
         self.task_id = task_config.get('task_id', f'task-{int(datetime.now().timestamp())}')
         self.site_id = task_config.get('site_id', 'unknown')
-        self.logger = logger.bind(task_id=self.task_id, site_id=self.site_id)
+        setup_logger()
+        self.logger = get_logger(name=__name__, site_id=self.site_id)
         
         # 初始化存储管理器
         storage_config = task_config.get('storage', {
@@ -106,7 +107,7 @@ class DataHandler:
             if len(self.items) >= self.batch_size:
                 await self._save_batch()
             
-            self.logger.info(f"数据项 [{item_id}] 处理成功")
+            self.logger.success(f"数据项 [{item_id}] 处理成功")
             self.logger.debug(f"当前统计: 成功={self.stats['successful_items']}, "
                             f"失败={self.stats['failed_items']}, "
                             f"总数={self.stats['total_items']}")
@@ -250,7 +251,7 @@ class DataHandler:
             # 清空缓存
             self.items = []
             
-            self.logger.info(f"批量保存完成: {filename}")
+            self.logger.success(f"批量保存完成: {filename}")
             return True
             
         except StorageError as e:
@@ -276,7 +277,7 @@ class DataHandler:
                 backup=True
             )
             
-            self.logger.info("所有数据保存完成")
+            self.logger.success("所有数据保存完成")
             self.logger.info(f"总统计: 成功={self.stats['successful_items']}, "
                             f"失败={self.stats['failed_items']}, "
                             f"总数={self.stats['total_items']}")
@@ -332,7 +333,7 @@ class DataHandler:
                 self.logger.warning("Cookies已过期")
                 return None
                 
-            self.logger.info("Cookies和浏览器状态加载成功")
+            self.logger.success("Cookies和浏览器状态加载成功")
             self.logger.debug(f"Cookies数量: {len(state_data['cookies'])}")
             
             return state_data
@@ -374,7 +375,7 @@ class DataHandler:
             is_valid = await page.locator(self.site_config['login_check_selector']).count() > 0
             
             if is_valid:
-                self.logger.info("Cookies验证成功，登录状态有效")
+                self.logger.success("Cookies验证成功，登录状态有效")
             else:
                 self.logger.warning("Cookies验证失败，登录状态无效")
             

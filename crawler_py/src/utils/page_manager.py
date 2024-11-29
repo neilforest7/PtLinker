@@ -101,7 +101,7 @@ class PageManager:
     def set_cookies(self, cookies: Dict):
         """设置cookies"""
         self.browser.set.cookies(cookies)
-        logger.info("Cookies set")
+        logger.success("Cookies set")
     
     def __enter__(self):
         """上下文管理器入口"""

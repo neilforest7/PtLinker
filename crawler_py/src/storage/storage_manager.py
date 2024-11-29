@@ -5,8 +5,9 @@ import gzip
 import shutil
 import time
 from datetime import datetime
-from loguru import logger
 from abc import ABC, abstractmethod
+
+from utils.logger import get_logger, setup_logger
 
 class StorageError(Exception):
     """存储相关的基础异常类"""
@@ -53,7 +54,8 @@ class FileStorage(BaseStorage):
     def __init__(self, base_dir: Union[str, Path], compress: bool = True):
         self.base_dir = Path(base_dir)
         self.compress = compress
-        self.logger = logger.bind(storage_type="file", site_id="FileStorage")
+        setup_logger()
+        self.logger = get_logger(name=__name__, site_id="Storage")
         
     async def save(self, data: Any, path: str) -> bool:
         """
@@ -232,8 +234,9 @@ class StorageManager:
                     'max_backups': 3,  # 最大备份数
                 }
         """
-        self.config = storage_config
-        self.logger = logger.bind(component="storage_manager", site_id="StorageManager")
+        self.config = storage_config    
+        setup_logger()
+        self.logger = get_logger(name=__name__, site_id="Storage")
         
         # 初始化存储后端
         if storage_config['type'] == 'file':

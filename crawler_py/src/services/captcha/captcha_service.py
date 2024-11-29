@@ -4,7 +4,7 @@ from typing import Optional, Union
 
 import requests
 from DrissionPage.items import ChromiumElement
-from loguru import logger
+from utils.logger import get_logger, setup_logger
 
 from .handlers.api_handler import APIHandler
 from .handlers.ocr_handler import OCRHandler
@@ -12,7 +12,8 @@ from .handlers.ocr_handler import OCRHandler
 
 class CaptchaService:
     def __init__(self):
-        self.logger = logger.bind(service="captcha", site_id="CaptchaService")
+        setup_logger()
+        self.logger = get_logger(name=__name__, site_id="Captcha")
         
         # 初始化处理器
         storage_dir = os.getenv('CAPTCHA_STORAGE_PATH', 'storage/captcha')

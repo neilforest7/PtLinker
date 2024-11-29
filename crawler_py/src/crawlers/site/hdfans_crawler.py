@@ -4,7 +4,7 @@ from urllib.parse import urljoin
 
 from config.sites import EXTRACT_RULES
 from DrissionPage import Chromium
-from loguru import logger
+from utils.logger import get_logger, setup_logger
 
 from ..base.base_crawler import BaseCrawler
 
@@ -13,7 +13,8 @@ class HDFansCrawler(BaseCrawler):
     def __init__(self, task_config: Dict[str, Any]):
         super().__init__(task_config)
         self.base_url = task_config['site_url'][0]
-        self.logger = logger.bind(site_id="hdfans")
+        setup_logger()
+        self.logger = get_logger(name=__name__, site_id="hdfans")
         self.extract_rules = EXTRACT_RULES.get('hdfans', [])
         if not self.extract_rules:
             self.logger.warning("未找到hdfans的数据提取规则")

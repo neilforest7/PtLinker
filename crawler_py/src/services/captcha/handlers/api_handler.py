@@ -2,8 +2,9 @@ import os
 from typing import Optional
 import base64
 import io
-from loguru import logger
 from twocaptcha import TwoCaptcha
+
+from utils.logger import get_logger, setup_logger
 
 from ..base_handler import BaseCaptchaHandler
 
@@ -12,7 +13,8 @@ class APIHandler(BaseCaptchaHandler):
     
     def __init__(self, storage_dir: str):
         super().__init__(storage_dir)
-        self.logger = logger.bind(handler="api", site_id="APIHandler")
+        setup_logger()
+        self.logger = get_logger(name=__name__, site_id="api")
         
         # 初始化2captcha客户端
         api_key = os.getenv('CAPTCHA_API_KEY')

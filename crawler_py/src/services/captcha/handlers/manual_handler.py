@@ -2,8 +2,9 @@ from typing import Optional
 import os
 import webbrowser
 from pathlib import Path
-from loguru import logger
 import time
+
+from utils.logger import get_logger, setup_logger
 
 from ..base_handler import BaseCaptchaHandler
 
@@ -12,7 +13,8 @@ class ManualHandler(BaseCaptchaHandler):
     
     def __init__(self, storage_dir: str):
         super().__init__(storage_dir)
-        self.logger = logger.bind(handler="manual", site_id="ManualHandler")
+        setup_logger()
+        self.logger = get_logger(name=__name__, site_id="manualcap")
         self.timeout = int(os.getenv('MANUAL_CAPTCHA_TIMEOUT', '300'))  # 5分钟超时
     
     async def handle(self, image_data: bytes, site_id: str) -> Optional[str]:

@@ -6,9 +6,9 @@ from typing import Any, Dict, Optional
 from urllib.parse import urljoin
 
 import DrissionPage
+from utils.logger import get_logger, setup_logger
 from utils.CloudflareBypasser import CloudflareBypasser
 from DrissionPage import Chromium
-from loguru import logger
 from models.crawler import CrawlerTaskConfig, LoginConfig
 from services.captcha.captcha_service import CaptchaService
 from storage.storage_manager import StorageManager
@@ -17,7 +17,8 @@ from storage.storage_manager import StorageManager
 class LoginHandler:
     def __init__(self, task_config: CrawlerTaskConfig):
         self.task_config = task_config
-        self.logger = logger.bind(task_id=task_config.task_id, site_id=task_config.site_id)
+        setup_logger()
+        self.logger = get_logger(name=__name__, site_id=task_config.site_id)
         self.logger.debug(f"初始化LoginHandler - 任务ID: {task_config.task_id}, 站点ID: {task_config.site_id}")
         self.captcha_service = CaptchaService()
         
@@ -143,17 +144,17 @@ class LoginHandler:
             success = await self._verify_login(tab, login_config.success_check)
             
             if success:
-                self.logger.info("登录成功，准备保存浏览器状态")
+                self.logger.success("登录成功，准备保存浏览器状态")
                 await self._save_browser_state(browser)
+                # 关闭标签页
+                self.logger.debug("正在关闭登录标签页")
+                tab.close()
+                return success
             else:
                 self.logger.error("登录失败 - 未找到成功登录的标识")
                 self.logger.debug(f"当前页面URL: {tab.url}")
                 self.logger.debug(f"当前页面标题: {tab.title}")
-
-            # 关闭标签页
-            self.logger.debug("正在关闭登录标签页")
-            tab.close()
-            return success
+                return False
         
         except DrissionPage.errors.ElementNotFoundError as e:
             self.logger.error("登录过程找不到元素", exc_info=True)
@@ -233,27 +234,6 @@ class LoginHandler:
             captcha_input.input(captcha_text)
             self.logger.debug("验证码已填充到输入框")
 
-            # # 处理验证码hash
-            # if hasattr(captcha_config, 'hash') and captcha_config.hash:
-            #     self.logger.debug("检测到验证码hash配置")
-            #     hash_selector = captcha_config.hash.get('selector')
-            #     if hash_selector:
-            #         self.logger.debug(f"查找hash元素 - 选择器: {hash_selector}")
-            #         hash_element = tab.ele(hash_selector)
-            #         if hash_element:
-            #             hash_value = hash_element.attr('value')
-            #             if hash_value:
-            #                 target_field = captcha_config.hash.get('targetField', 'imagehash')
-            #                 self.logger.debug(f"查找hash输入框 - 名称: {target_field}")
-            #                 hash_input = tab.ele(f'input[name="{target_field}"]')
-            #                 if hash_input:
-            #                     hash_input.input(hash_value)
-            #                     self.logger.debug(f"已填充验证码hash: {hash_value}")
-            #                 else:
-            #                     self.logger.warning(f"未找到hash输入框: {target_field}")
-            #         else:
-            #             self.logger.warning(f"未找到hash元素: {hash_selector}")
-
         except Exception as e:
             self.logger.error("验证码处理失败", exc_info=True)
             self.logger.debug(f"错误详情: {type(e).__name__}")
@@ -270,6 +250,8 @@ class LoginHandler:
                 self.logger.warning(f"未找到成功标识元素: {success_check['selector']}")
                 self.logger.debug(f"当前页面URL: {tab.url}")
                 self.logger.debug(f"当前页面标题: {tab.title}")
+                # 检查失败原因
+                await self._check_login_error(tab)
                 return False
                 
             if "expected_text" in success_check:
@@ -277,15 +259,70 @@ class LoginHandler:
                 self.logger.debug(f"检查登录成功文本:")
                 self.logger.debug(f"  - 期望文本: {success_check['expected_text']}")
                 self.logger.debug(f"  - 实际文本: {content}")
-                return success_check["expected_text"] in (content or "")
+                if not success_check["expected_text"] in (content or ""):
+                    # 检查失败原因
+                    await self._check_login_error(tab)
+                    return False
+                return True
             
             self.logger.debug("登录验证成功")
             return True
             
         except Exception as e:
-            self.logger.error("登录验证失败", exc_info=True)
-            self.logger.debug(f"错误详情: {type(e).__name__}")
+            self.logger.error(f"验证登录状态时发生错误: {str(e)}")
+            self.logger.debug(f"错误详情: ", exc_info=True)
             return False
+            
+    async def _check_login_error(self, tab) -> None:
+        """检查登录失败的具体原因"""
+        try:
+            # 检查常见的错误信息
+            error_selectors = {
+                # 错误提示框
+                'error_box': '@class=error',
+                # 具体错误文本
+                'error_text': '@class=error_text',
+                # 表单错误
+                'form_error': 'form .error',
+                # 验证码错误
+                'captcha_error': '@class=captcha-error'
+            }
+            
+            # 检查所有可能的错误信息
+            error_messages = []
+            for selector in error_selectors.values():
+                elements = tab.eles(selector)
+                for element in elements:
+                    if element and element.text.strip():
+                        error_messages.append(element.text.strip())
+            
+            # 如果找到错误信息
+            if error_messages:
+                error_text = ' | '.join(error_messages)
+                self.logger.error(f"登录失败，错误信息: {error_text}")
+                return
+            
+            # 检查特定的错误关键词
+            page_text = tab.eles('@class=text')
+            error_keywords = [
+                "密码错误", "密码不正确",
+                "验证码错误", "验证码不正确", "验证码已过期",
+                "用户名不存在", "账号不存在",
+                "账号已被禁用", "账号已封禁",
+                "登录失败", "Login Failed",
+                "图片代码无效",
+                "不要返回，图片代码已被清除！",
+                "点击这里获取新的图片代码。"
+            ]
+            for text in page_text:
+                for keyword in error_keywords:
+                    if keyword in text.text:
+                        self.logger.error(f"登录失败: {keyword}")
+                        return
+                    
+        except Exception as e:
+            self.logger.error(f"检查登录错误信息时发生错误: {str(e)}")
+            self.logger.debug(f"错误详情: ", exc_info=True)
 
     async def _save_browser_state(self, browser: Chromium) -> bool:
         """保存浏览器状态（cookies等）"""
@@ -385,7 +422,7 @@ class LoginHandler:
                 self.logger.warning(f"浏览器状态已过期 ({days_old}天)")
                 return None
             
-            self.logger.info("浏览器状态加载成功")
+            self.logger.success("浏览器状态加载成功")
             self.logger.debug(f"状态数据概览:")
             self.logger.debug(f"  - Cookies数量: {len(state_data['cookies'])}")
             self.logger.debug(f"  - localStorage项数: {len(state_data.get('localStorage', {}))}")
@@ -496,7 +533,7 @@ class LoginHandler:
                 tab.run_js(js_code, state_data['sessionStorage'])
                 self.logger.debug("sessionStorage恢复完成")
             
-            self.logger.info("浏览器状态恢复成功")
+            self.logger.success("浏览器状态恢复成功")
             return True
             
         except Exception as e:
@@ -540,10 +577,11 @@ class LoginHandler:
             # sleep(160)
             tab.wait.load_start()
             if not await self._is_cloudflare_present(tab):
-                self.logger.info("Cloudflare验证已完成")
+                self.logger.success("Cloudflare验证已完成")
                 return True
-            self.logger.error("Cloudflare验证超时")
-            return False
+            else:
+                self.logger.error("Cloudflare验证超时")
+                return False
 
         except Exception as e:
             self.logger.error("Cloudflare验证处理出错", exc_info=True)
