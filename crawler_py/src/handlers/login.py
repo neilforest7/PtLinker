@@ -9,7 +9,7 @@ import DrissionPage
 from utils.logger import get_logger, setup_logger
 from utils.CloudflareBypasser import CloudflareBypasser
 from DrissionPage import Chromium
-from models.crawler import CrawlerTaskConfig, LoginConfig
+from models.crawler import CrawlerTaskConfig, LoginConfig, WebElement
 from services.captcha.captcha_service import CaptchaService
 from storage.storage_manager import StorageManager
 
@@ -89,19 +89,31 @@ class LoginHandler:
                     input_ele = tab.ele(field_config.selector)
                     if input_ele:
                         self.logger.debug(f"  - 找到输入元素 - ID: {input_ele.attr('id')}")
-                        # 对密码字段做特殊处理，不记录实际密码
-                        if field_config.type == "password":
-                            self.logger.debug(f"  - 正在填充密码字段: {field_config.value}")
-                            sleep(0.5)
-                            input_ele.clear()
-                            self.logger.debug(f"  - 已清空密码字段")
-                            input_ele.input(str(field_config.value))
+                        
+                        # 根据字段类型获取值
+                        if field_name == 'username':
+                            value = self.task_config.username
+                        elif field_name == 'password':
+                            value = self.task_config.password
                         else:
-                            self.logger.debug(f"  - 正在填充{field_name}: {field_config.value}")
+                            value = getattr(field_config, 'value', None)
+                            
+                        if value is None:
+                            self.logger.debug(f"  - 字段 {field_name} 没有值")
+                            continue
+                            
+                        # 根据字段类型处理输入
+                        if field_config.type == "checkbox":
+                            input_ele.click()
+                        else:
                             sleep(0.5)
                             input_ele.clear()
                             self.logger.debug(f"  - 已清空{field_name}字段")
-                            input_ele.input(str(field_config.value))
+                            input_ele.input(str(value))
+                            if field_config.type == "password":
+                                self.logger.debug(f"  - 已填充密码字段")
+                            else:
+                                self.logger.debug(f"  - 已填充{field_name}: {value}")
                     else:
                         self.logger.warning(f"  - 未找到输入元素: {field_config.selector}")
             self.logger.debug("表单字段填充完成")
@@ -174,10 +186,13 @@ class LoginHandler:
             captcha_config = login_config.captcha
             captcha_type = captcha_config.type
             
-            self.logger.debug(f"等待验证码元素 - 选择器: {captcha_config.element['selector']}")
-            captcha_element = tab.ele(captcha_config.element["selector"], timeout=3)
+            # 获取验证码元素选择器
+            element_selector = captcha_config.element.selector
+            self.logger.debug(f"等待验证码元素 - 选择器: {element_selector}")
+            
+            captcha_element = tab.ele(element_selector, timeout=3)
             if not captcha_element:
-                self.logger.error(f"验证码元素未找到 - 选择器: {captcha_config.element['selector']}")
+                self.logger.error(f"验证码元素未找到 - 选择器: {element_selector}")
                 raise Exception("验证码元素未找到")
                 
             # 获取验证码数据
@@ -190,7 +205,7 @@ class LoginHandler:
                     raise Exception("验证码元素没有style属性")
                 
                 # 从style中提取图片URL
-                url_pattern = captcha_config.element.get('url_pattern', r'url\("([^"]+)"\)')
+                url_pattern = captcha_config.element.url_pattern
                 import re
                 url_match = re.search(url_pattern, style)
                 if not url_match:
@@ -224,10 +239,12 @@ class LoginHandler:
             self.logger.debug(f"验证码识别成功 - 结果: {captcha_text}")
 
             # 填充验证码
-            self.logger.debug(f"查找验证码输入框 - 选择器: {captcha_config.input.selector}")
-            captcha_input = tab.ele(captcha_config.input.selector)
+            input_selector = captcha_config.input.selector
+            self.logger.debug(f"查找验证码输入框 - 选择器: {input_selector}")
+            
+            captcha_input = tab.ele(input_selector)
             if not captcha_input:
-                self.logger.error(f"验证码输入框未找到 - 选择器: {captcha_config.input.selector}")
+                self.logger.error(f"验证码输入框未找到 - 选择器: {input_selector}")
                 raise Exception("验证码输入框未找到")
             
             self.logger.debug(f"找到验证码输入框 - ID: {captcha_input.attr('id')}")
@@ -239,15 +256,15 @@ class LoginHandler:
             self.logger.debug(f"错误详情: {type(e).__name__}")
             raise
 
-    async def _verify_login(self, tab, success_check: Dict[str, str]) -> bool:
+    async def _verify_login(self, tab, success_check: WebElement) -> bool:
         """验证登录是否成功"""
         try:
             self.logger.debug(f"开始验证登录状态")
-            self.logger.debug(f"检查成功标识 - 选择器: {success_check['selector']}")
-            element = tab.ele(success_check["selector"], timeout=5)
+            self.logger.debug(f"检查成功标识 - 选择器: {success_check.selector}")
+            element = tab.ele(success_check.selector, timeout=10)
             
             if not element:
-                self.logger.warning(f"未找到成功标识元素: {success_check['selector']}")
+                self.logger.warning(f"未找到成功标识元素: {success_check.selector}")
                 self.logger.debug(f"当前页面URL: {tab.url}")
                 self.logger.debug(f"当前页面标题: {tab.title}")
                 # 检查失败原因
@@ -257,9 +274,9 @@ class LoginHandler:
             if "expected_text" in success_check:
                 content = element.child().text
                 self.logger.debug(f"检查登录成功文本:")
-                self.logger.debug(f"  - 期望文本: {success_check['expected_text']}")
+                self.logger.debug(f"  - 期望文本: {success_check.expected_text}")
                 self.logger.debug(f"  - 实际文本: {content}")
-                if not success_check["expected_text"] in (content or ""):
+                if not success_check.expected_text in (content or ""):
                     # 检查失败原因
                     await self._check_login_error(tab)
                     return False
@@ -339,7 +356,7 @@ class LoginHandler:
             
             # 记录cookies的详细信息
             for cookie in cookies:
-                self.logger.debug(f"Cookie: {cookie.get('name')} = {cookie.get('value')} "
+                self.logger.trace(f"Cookie: {cookie.get('name')} = {cookie.get('value')} "
                                 f"[domain: {cookie.get('domain')}, "
                                 f"path: {cookie.get('path')}, "
                                 f"expires: {cookie.get('expires')}]")

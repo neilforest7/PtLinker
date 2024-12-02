@@ -1,51 +1,67 @@
-from datetime import datetime
 from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
 
-class FormField(BaseModel):
-    """表单字段配置"""
+class WebElement(BaseModel):
+    """元素选择器配置"""
     name: str
-    type: Literal["text", "password", "checkbox", "radio", "hidden", "submit"]
     selector: str
-    value: Optional[str | bool] = None
-    required: bool = True
-    validation: Optional[Dict[str, str]] = None
+    type: Optional[Literal["text", "attribute", "html", "src", "password", "checkbox"]] = "text"
+    location: Optional[str] = None
+    second_selector: Optional[str] = None
+    required: Optional[bool] = False
+    transform: Optional[str] = None
+    attribute: Optional[str] = None
+    ele_only: Optional[bool] = True
+    need_pre_action: Optional[bool] = False
+    index: Optional[int] = None
+    url_pattern: Optional[str] = None  # 用于验证码背景图片URL提取
+    
 
 class CaptchaConfig(BaseModel):
     """验证码配置"""
     type: Optional[str] = 'custom'
-    element: Dict[str, str]
-    input: FormField
-    hash: Optional[Dict[str, str]] = None
-    solver: Optional[Dict[str, Any]] = None
+    element: WebElement
+    input: WebElement
+    hash: Optional[WebElement] = None
 
 class LoginConfig(BaseModel):
     """登录配置"""
     login_url: str
     form_selector: str
     pre_login: Optional[Dict[str, Any]] = None
-    fields: Dict[str, FormField]
+    fields: Dict[str, WebElement]
     captcha: Optional[CaptchaConfig] = None
-    success_check: Dict[str, str]
+    success_check: WebElement
 
-class ExtractRule(BaseModel):
+class ExtractRuleSet(BaseModel):
     """数据提取规则"""
-    name: str
-    selector: str
-    type: Optional[Literal["text", "attribute", "html"]] = None
-    attribute: Optional[str] = None
-    required: bool = False
-    transform: Optional[str] = None
+    rules: List[WebElement]
+
+class CheckInResultConfig(BaseModel):
+    """签到结果检查配置"""
+    element: WebElement  # 结果容器选择器
+    sign: Dict[str, str] = {  # 结果标识文本
+        "success": "签到成功",
+        "already": "今天已经签到",
+        "error": "签到失败"
+    }
+
+class CheckInConfig(BaseModel):
+    """签到配置"""
+    checkin_url: Optional[str] = None  # 直接访问的签到URL
+    checkin_button: Optional[WebElement] = None  # 签到按钮配置
+    success_check: CheckInResultConfig  # 签到结果检查配置（必需）
 
 class CrawlerTaskConfig(BaseModel):
     """爬虫任务配置"""
     task_id: str
     site_id: Optional[str] = None
+    site_url: List[str]
     username: Optional[str] = None
     password: Optional[str] = None
-    site_url: List[str]
     login_config: Optional[LoginConfig] = None
-    extract_rules: List[ExtractRule] = Field(default_factory=list)
+    extract_rules: Optional[ExtractRuleSet] = None
+    checkin_config: Optional[CheckInConfig] = None
     custom_config: Optional[Dict[str, Any]] = None

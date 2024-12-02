@@ -41,13 +41,13 @@ class FrdsConfig(BaseSiteConfig):
                         },
                         'submit': {
                             'name': 'submit',
-                            'type': 'submit',
-                            'selector': '@value=Boarding'
+							'selector': '@value=Boarding'
                         },
                     },
                     'success_check': {
+                        'name': 'login_result',
                         'selector': '@class=User_Name',
-                        'attribute': 'text'
+                        'type': 'text'
                     }
                 },
                 'extract_rules': [
@@ -56,6 +56,30 @@ class FrdsConfig(BaseSiteConfig):
                         'selector': '@class=User_Name',
                         'type': 'text',
                         'required': True
+                    },
+                    {
+                        'name': 'seeding_list',
+                        'selector': '@href^javascript: getusertorrentlistajax',
+                        'index': 2
+                    },
+                    {
+                        'name': 'seeding_list_container',
+                        'selector': '#ka1',
+                        'type': 'text',
+                        'need_pre_action': True
+                    },
+                    {
+                        'name': 'seeding_list_table',
+                        'selector': '@tag()=table',
+                        'type': 'text',
+                        'need_pre_action': True,
+                        'index': 3
+                    },
+                    {
+                        'name': 'seeding_list_pagination',
+                        'selector': '@class=nexus-pagination',
+                        'type': 'text',
+                        'need_pre_action': True
                     },
                     {
                         'name': 'user_class',
@@ -107,7 +131,7 @@ class FrdsConfig(BaseSiteConfig):
                         'second_selector': '',
                         'type': 'text',
                     },
-                ]
+                ],
             }
             
             # 验证配置
