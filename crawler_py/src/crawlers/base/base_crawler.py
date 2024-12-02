@@ -349,6 +349,11 @@ class BaseCrawler(ABC):
                 if hr_match:
                     cleaned_data['hr_count'] = int(hr_match.group(1))
             
+            if 'bonus_per_hour' in data:
+                bph_match = re.search(r'([\d.]+)', data['bonus_per_hour'])
+                if bph_match:
+                    cleaned_data['bonus_per_hour'] = float(bph_match.group(1))
+            
             # 清洗做种体积数据
             if 'seeding_size' in data:
                 size_in_gb = self._convert_size_to_gb(data['seeding_size'])

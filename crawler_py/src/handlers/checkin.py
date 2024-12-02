@@ -213,6 +213,7 @@ class CheckInHandler:
                 if tab.ele(selector, timeout=2):
                     self.logger.debug(f"找到已签到标识: {selector}")
                     return True
+            self.logger.debug(f"{self.task_config.site_id} 未发现已签到标识")
                     
             # 检查各种可能表示未签到的元素
             unchecked_selectors = [

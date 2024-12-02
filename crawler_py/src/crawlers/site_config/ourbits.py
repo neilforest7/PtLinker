@@ -129,6 +129,14 @@ class OurBitsConfig(BaseSiteConfig):
                         'second_selector': '',
                         'type': 'text'
                     },
+                    {
+                        'name': 'bonus_per_hour',
+                        'selector': '@text()^你当前每小时能获取',
+                        'type': 'text',
+                        'need_pre_action': True,
+                        'pre_action_type': 'goto',
+                        'page_url': '/mybonus.php'
+                    },
                 ],
                 'checkin_config': 
                     {
@@ -137,18 +145,18 @@ class OurBitsConfig(BaseSiteConfig):
                             'name': 'checkin_button',
                             'selector': '@href$attendance.php',
                         },
-                        'success_check': {
-                            'element':{
-                                'name': 'checkin_result',
-                                'selector': '@tag()=h2',
-                                'type': 'text'
-                            },
-                            'sign':{
-                                'success': '签到成功',
-                                'already': '今天已经签到过了',
-                                'error': '签到失败',
-                            }
-                        }
+                        # 'success_check': {
+                        #     'element':{
+                        #         'name': 'checkin_result',
+                        #         'selector': '@tag()=h2',
+                        #         'type': 'text'
+                        #     },
+                        #     'sign':{
+                        #         'success': '签到成功',
+                        #         'already': '今天已经签到过了',
+                        #         'error': '签到失败',
+                        #     }
+                        # }
                     }
             }
             

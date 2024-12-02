@@ -11,7 +11,6 @@ class WebElement(BaseModel):
     location: Optional[str] = None
     second_selector: Optional[str] = None
     required: Optional[bool] = False
-    transform: Optional[str] = None
     attribute: Optional[str] = None
     ele_only: Optional[bool] = True
     need_pre_action: Optional[bool] = False

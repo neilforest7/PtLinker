@@ -231,6 +231,7 @@ class SiteCrawler(BaseCrawler):
         # 按规则分组，先处理不需要预处理的规则
         normal_rules = []
         pre_action_rules = []
+        rule: WebElement
         for rule in self.extract_rules.rules:
             if rule.need_pre_action:
                 pre_action_rules.append(rule)
@@ -315,11 +316,10 @@ class SiteCrawler(BaseCrawler):
                 value = element.html
             elif rule.type == "src":
                 value = element.attr('src')
-                
-            # 应用转换
-            if value and rule.transform:
-                value = self._apply_transform(value, rule.transform)
             
+            # if value and rule.filter:
+            #     value = self._apply_filter(value, rule.filter)
+                
             self.logger.debug(f"提取到{rule.name}: {value}")
             return value.strip() if value else None
             

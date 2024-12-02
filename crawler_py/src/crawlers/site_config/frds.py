@@ -131,6 +131,14 @@ class FrdsConfig(BaseSiteConfig):
                         'second_selector': '',
                         'type': 'text',
                     },
+                    {
+                        'name': 'bonus_per_hour',
+                        'selector': '@text()^你当前每小时能获取',
+                        'type': 'text',
+                        'need_pre_action': True,
+                        'pre_action_type': 'goto',
+                        'page_url': '/mybonus.php'
+                    },
                 ],
             }
             

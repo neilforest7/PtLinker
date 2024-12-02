@@ -156,8 +156,7 @@ class QingwaPTConfig(BaseSiteConfig):
                     },
                     {
                         'name': 'bonus_per_hour',
-                        'selector': '@text()=每小时获得蝌蚪',
-                        'location': 'next',
+                        'selector': '@@tag()=td@@rowspan=3',
                         'type': 'text',
                         'need_pre_action': True,
                         'pre_action_type': 'goto',
