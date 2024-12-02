@@ -106,7 +106,7 @@ class BaseCrawler(ABC):
                 # 执行签到
                 try:
                     self.logger.info("开始执行签到")
-                    await self.checkin_handler.perform_checkin(self.browser, self.task_config.checkin_config)
+                    await self.checkin_handler.perform_checkin(self.browser, self.task_config)
                 except Exception as e:
                     self.logger.error(f"签到失败: {str(e)}")
 
@@ -164,89 +164,88 @@ class BaseCrawler(ABC):
         except Exception as e:
             self.logger.error(f"保存页面源码失败: {str(e)}")
 
-    async def _extract_data_with_rules(self, tab: Chromium) -> Dict[str, Any]:
-        """使用规则提取数据的通用方法"""
-        data = {}
-        try:
-            # tab = browser.latest_tab
-            if not tab:
-                raise Exception("未找到活动标签页")
+    # async def _extract_data_with_rules(self, tab: Chromium) -> Dict[str, Any]:
+    #     """使用规则提取数据的通用方法"""
+    #     data = {}
+    #     try:
+    #         if not tab:
+    #             raise Exception("未找到活动标签页")
                 
-            if not self.extract_rules:
-                self.logger.error("未配置数据提取规则")
-                return data
+    #         if not self.extract_rules:
+    #             self.logger.error("未配置数据提取规则")
+    #             return data
 
-            for rule in self.extract_rules.rules:
-                self.logger.debug(f"提取数据中: {rule.name}")
-                try:
-                    name = rule.name
-                    selector = rule.selector
-                    element_type = rule.type or 'text'
-                    required = rule.required
-                    transform = rule.transform
-                    location = rule.location
-                    second_selector = rule.second_selector
-                    need_pre_action = rule.need_pre_action
+    #         for rule in self.extract_rules.rules:
+    #             self.logger.debug(f"提取数据中: {rule.name}")
+    #             try:
+    #                 name = rule.name
+    #                 selector = rule.selector
+    #                 element_type = rule.type or 'text'
+    #                 required = rule.required
+    #                 transform = rule.transform
+    #                 location = rule.location
+    #                 second_selector = rule.second_selector
+    #                 need_pre_action = rule.need_pre_action
 
-                    if need_pre_action:
-                        self.logger.debug(f"需要预操作: {name}")
-                        continue
+    #                 if need_pre_action:
+    #                     self.logger.debug(f"需要预操作: {name}")
+    #                     continue
 
-                    if location == 'next':
-                        element = tab.ele(selector).next(second_selector)
-                    elif location == 'parent':
-                        element = tab.ele(selector).parent(second_selector)
-                    elif location == 'next-child':
-                        element = tab.ele(selector).next().child(second_selector)
-                    elif location == 'parent-child':
-                        element = tab.ele(selector).parent().child(second_selector)
-                    elif location == 'east':
-                        element = tab.ele(selector).east(second_selector)
-                    else:
-                        element = tab.ele(selector)
+    #                 if location == 'next':
+    #                     element = tab.ele(selector).next(second_selector)
+    #                 elif location == 'parent':
+    #                     element = tab.ele(selector).parent(second_selector)
+    #                 elif location == 'next-child':
+    #                     element = tab.ele(selector).next().child(second_selector)
+    #                 elif location == 'parent-child':
+    #                     element = tab.ele(selector).parent().child(second_selector)
+    #                 elif location == 'east':
+    #                     element = tab.ele(selector).east(second_selector)
+    #                 else:
+    #                     element = tab.ele(selector)
                         
-                    if not element:
-                        if required:
-                            self.logger.error(f"未找到必需的元素: {name} (选择器: {selector})")
-                        else:
-                            self.logger.warning(f"未找到可选元素: {name} (选择器: {selector})")
-                        continue
+    #                 if not element:
+    #                     if required:
+    #                         self.logger.error(f"未找到必需的元素: {name} (选择器: {selector})")
+    #                     else:
+    #                         self.logger.warning(f"未找到可选元素: {name} (选择器: {selector})")
+    #                     continue
 
-                    # 根据类型提取数据
-                    if element_type == 'text':
-                        value = element.text
-                        self.logger.info(f"{name}提取到文本: {value}")
-                    elif element_type == 'attribute':
-                        attribute = rule.attribute
-                        if not attribute:
-                            self.logger.error(f"属性类型的规则缺少attribute字段: {name}")
-                            continue
-                        value = element.attr(attribute)
-                    else:
-                        self.logger.warning(f"未知的元素类型: {element_type}")
-                        continue
+    #                 # 根据类型提取数据
+    #                 if element_type == 'text':
+    #                     value = element.text
+    #                     self.logger.info(f"{name}提取到文本: {value}")
+    #                 elif element_type == 'attribute':
+    #                     attribute = rule.attribute
+    #                     if not attribute:
+    #                         self.logger.error(f"属性类型的规则缺少attribute字段: {name}")
+    #                         continue
+    #                     value = element.attr(attribute)
+    #                 else:
+    #                     self.logger.warning(f"未知的元素类型: {element_type}")
+    #                     continue
 
-                    # 应用转换函数
-                    if transform and value:
-                        if transform == 'extract_class':
-                            class_match = re.search(r'class=(.*?)(?:\s|$)', value)
-                            value = class_match.group(1) if class_match else value
-                        else:
-                            self.logger.warning(f"未知的转换函数: {transform}")
+    #                 # 应用转换函数
+    #                 if transform and value:
+    #                     if transform == 'extract_class':
+    #                         class_match = re.search(r'class=(.*?)(?:\s|$)', value)
+    #                         value = class_match.group(1) if class_match else value
+    #                     else:
+    #                         self.logger.warning(f"未知的转换函数: {transform}")
 
-                    if value:
-                        data[name] = value.strip()
-                    else:
-                        self.logger.warning(f"元素 {name} 的值为空")
+    #                 if value:
+    #                     data[name] = value.strip()
+    #                 else:
+    #                     self.logger.warning(f"元素 {name} 的值为空")
 
-                except Exception as e:
-                    self.logger.error(f"提取 {name} 时出错: {str(e)}")
-                    continue
+    #             except Exception as e:
+    #                 self.logger.error(f"提取 {name} 时出错: {str(e)}")
+    #                 continue
 
-        except Exception as e:
-            self.logger.error(f"提取数据失败: {str(e)}")
+    #     except Exception as e:
+    #         self.logger.error(f"提取数据失败: {str(e)}")
 
-        return data
+    #     return data
 
     def _convert_size_to_gb(self, size_str: str) -> float:
         """将带单位的数据量字符串转换为以GB为单位的float值

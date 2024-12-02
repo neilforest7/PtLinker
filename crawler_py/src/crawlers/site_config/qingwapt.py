@@ -154,26 +154,35 @@ class QingwaPTConfig(BaseSiteConfig):
                         'second_selector': '',
                         'type': 'text'
                     },
+                    {
+                        'name': 'bonus_per_hour',
+                        'selector': '@text()=每小时获得蝌蚪',
+                        'location': 'next',
+                        'type': 'text',
+                        'need_pre_action': True,
+                        'pre_action_type': 'goto',
+                        'page_url': '/mybonus.php'
+                    },
                 ],
                 'checkin_config': 
                     {
-                        'checkin_url': 'https://www.qingwapt.com/attendance.php',
+                        'checkin_url': '/attendance.php',
                         'checkin_button': {
                             'name': 'checkin_button',
                             'selector': '@href=attendance.php',
                         },
-                        'success_check': {
-                            'element':{
-                                'name': 'checkin_result',
-                                'selector': '@tag()=h2',
-                                'type': 'text'
-                            },
-                            'sign':{
-                                'success': '签到成功',
-                                'already': '今天已经签到过了',
-                                'error': '签到失败',
-                            }
-                        }
+                        # 'success_check': {
+                        #     'element':{
+                        #         'name': 'checkin_result',
+                        #         'selector': '@tag()=h2',
+                        #         'type': 'text'
+                        #     },
+                        #     'sign':{
+                        #         'success': '签到成功',
+                        #         'already': '今天已经签到过了',
+                        #         'error': '签到失败',
+                        #     }
+                        # }
                     }
             }
             

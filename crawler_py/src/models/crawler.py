@@ -17,7 +17,8 @@ class WebElement(BaseModel):
     need_pre_action: Optional[bool] = False
     index: Optional[int] = None
     url_pattern: Optional[str] = None  # 用于验证码背景图片URL提取
-    
+    page_url: Optional[str] = None  # 需要访问的页面URL
+    pre_action_type: Optional[str] = None  # 预处理类型
 
 class CaptchaConfig(BaseModel):
     """验证码配置"""
@@ -41,18 +42,14 @@ class ExtractRuleSet(BaseModel):
 
 class CheckInResultConfig(BaseModel):
     """签到结果检查配置"""
-    element: WebElement  # 结果容器选择器
-    sign: Dict[str, str] = {  # 结果标识文本
-        "success": "签到成功",
-        "already": "今天已经签到",
-        "error": "签到失败"
-    }
+    element: Optional[WebElement] = None  # 结果容器选择器
+    sign: Optional[Dict[str, str]] = None
 
 class CheckInConfig(BaseModel):
     """签到配置"""
     checkin_url: Optional[str] = None  # 直接访问的签到URL
     checkin_button: Optional[WebElement] = None  # 签到按钮配置
-    success_check: CheckInResultConfig  # 签到结果检查配置（必需）
+    success_check: Optional[CheckInResultConfig] = None  # 签到结果检查配置（必需）
 
 class CrawlerTaskConfig(BaseModel):
     """爬虫任务配置"""

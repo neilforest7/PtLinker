@@ -5,8 +5,9 @@ from typing import Optional, Tuple
 from DrissionPage import Chromium
 import DrissionPage
 import DrissionPage.errors
+from utils.url import convert_url
 from models.crawler import CheckInConfig, CrawlerTaskConfig
-from utils.CloudflareBypasser import CloudflareBypasser
+from utils.clouodflare_bypasser import CloudflareBypasser
 from utils.logger import get_logger, setup_logger
 
 
@@ -24,7 +25,7 @@ class CheckInHandler:
         #     except Exception as e:
         #         self.logger.error(f"签到配置验证失败: {str(e)}")
 
-    async def perform_checkin(self, browser: Chromium, checkin_config: CheckInConfig) -> None:
+    async def perform_checkin(self, browser: Chromium, task_config: CrawlerTaskConfig) -> None:
         """执行签到处理"""
         # 检查环境变量中的签到开关
         if not self._check_env_enabled():
@@ -32,19 +33,29 @@ class CheckInHandler:
             return
             
         # 检查站点配置中的签到设置，如果未配置(如frds)则不进行签到
-        if not checkin_config:
+        if not task_config.checkin_config:
             self.logger.info(f"{self.task_config.site_id} 未配置签到功能")
             return
+        
+        checkin_config = task_config.checkin_config
         
         try:
             self.logger.debug(f"开始签到流程 - checkin_config: {checkin_config}")
             tab = browser.new_tab()
             browser.activate_tab(tab)
-            self.logger.debug(f"创建新标签页 - 标签页ID: {id(tab)}")
+            self.logger.trace(f"使用标签页 - 标签页ID: {id(tab)}")
 
+            try:
+                if await self._is_already_checked_in(tab):
+                    self.logger.success(f"{self.task_config.site_id} 今天已经签到")
+                    return
+                
+            except Exception as e:
+                self.logger.warning(f"{self.task_config.site_id} 检查签到状态时出错: {str(e)}")
+                
             # 首先尝试通过访问签到URL的方式
             self.logger.info(f"开始签到流程 - URL:{checkin_config.checkin_url}")
-            result = await self._try_checkin_by_url(tab, checkin_config)
+            result = await self._try_checkin_by_url(tab, checkin_config, task_config)
             if result:
                 return result
                 
@@ -57,7 +68,7 @@ class CheckInHandler:
             self.logger.error(f"{self.task_config.site_id} 签到失败: {str(e)}")
             return
             
-    async def _try_checkin_by_url(self, tab, checkin_config: CheckInConfig) -> bool:
+    async def _try_checkin_by_url(self, tab, checkin_config: CheckInConfig, task_config: CrawlerTaskConfig) -> bool:
         """
         尝试通过直接访问签到URL的方式签到
         
@@ -65,6 +76,7 @@ class CheckInHandler:
             bool: 是否成功签到
         """
         checkin_url = checkin_config.checkin_url
+        checkin_url = convert_url(task_config, checkin_url)
         if not checkin_url:
             self.logger.debug(f"{self.task_config.site_id} 未配置签到URL")
             return False
@@ -102,109 +114,243 @@ class CheckInHandler:
         """
         尝试通过点击按钮的方式签到
         """
-        # 获取签到按钮配置
-        button_config = checkin_config.checkin_button
-        if not button_config:
-            self.logger.warning(f"{self.task_config.site_id} 未配置签到按钮")
-            return
+        try:
+            # 首先检查是否已经签到
+            if await self._is_already_checked_in(tab):
+                self.logger.info(f"{self.task_config.site_id} [按钮方式] 今天已经签到")
+                return "already"
+                
+            # 获取签到按钮配置
+            button_config = checkin_config.checkin_button
+            if not button_config:
+                self.logger.warning(f"{self.task_config.site_id} 未配置签到按钮")
+                return
+                
+            # 查找签到按钮（使用多个选择器）
+            button_selectors = [
+                button_config.selector,  # 配置的选择器
+                '@href$attendance.php',  # 包含attendance的链接
+                '@id:signed',  # 通用签到按钮ID
+                '@text:签到',  # 文本为"签到"的元素
+                '@text:签 到',  # 文本为"签 到"的元素
+                '@id:sign_in',  # 签到按钮ID
+                '@href:addbonus',  # 魔力值相关链接
+                '@class:dt_button@value:打卡',  # 打卡按钮
+                '@href:sign_in',  # 包含sign_in的链接
+                '@onclick:do_signin',  # 签到点击事件
+                '@id:do-attendance',  # 签到按钮ID
+                'shark-icon-button@href:attendance.php'  # 特殊签到按钮
+            ]
             
-        # 查找并点击签到按钮
-        button = tab.ele(button_config.selector)
-        if not button:
-            self.logger.warning(f"{self.task_config.site_id} 未找到签到按钮")
-            return
-        
-        already_keywords = ["签到已得", "已签到", "already", "签到成功"]
-        if any(keyword in button.text for keyword in already_keywords):
-            self.logger.info(f"{self.task_config.site_id} [按钮方式] 今天已经签到")
-            return "already"
+            button = None
+            for selector in button_selectors:
+                button = tab.ele(selector, timeout=3)
+                if button:
+                    self.logger.debug(f"找到签到按钮: {selector}")
+                    break
+                    
+            if not button:
+                self.logger.warning(f"{self.task_config.site_id} 未找到任何签到按钮")
+                return
+            
+            # 检查按钮文本是否表明已签到
+            already_keywords = ["已签到", "已经签到", "签到已得", "今日已签"]
+            if button.text and any(keyword in button.text for keyword in already_keywords):
+                self.logger.info(f"{self.task_config.site_id} [按钮方式] 今天已经签到")
+                return "already"
 
-        # 检查按钮是否可见和可点击
-        if not button.is_displayed():
-            self.logger.warning(f"{self.task_config.site_id} 签到按钮不可见")
-            return
-        if not button.is_enabled():
-            self.logger.warning(f"{self.task_config.site_id} 签到按钮不可点击")
-            return
-        
-        # 点击按钮并等待页面变化
-        button.click()
-        
-        if await self._is_cloudflare_present(tab):
-            self.logger.info("检测到Cloudflare验证页面")
-            if not await self._handle_cloudflare(tab):
-                self.logger.error("Cloudflare验证失败")
-                return False
+            # 检查按钮是否可见和可点击
+            if not button.is_displayed():
+                self.logger.warning(f"{self.task_config.site_id} 签到按钮不可见")
+                return
+            if not button.is_enabled():
+                self.logger.warning(f"{self.task_config.site_id} 签到按钮不可点击")
+                return
             
-        # 检查签到结果
-        result = await self._check_checkin_result(tab, checkin_config)
+            # 点击按钮并等待页面变化
+            button.click()
+            tab.wait.load_complete()
+            
+            if await self._is_cloudflare_present(tab):
+                self.logger.info("检测到Cloudflare验证页面")
+                if not await self._handle_cloudflare(tab):
+                    self.logger.error("Cloudflare验证失败")
+                    return False
+                
+            # 检查签到结果
+            result = await self._check_checkin_result(tab, checkin_config)
+            
+            if result == "success":
+                self.logger.success(f"{self.task_config.site_id} [按钮方式] 签到成功")
+                return result
+            elif result == "already":
+                self.logger.info(f"{self.task_config.site_id} [按钮方式] 今天已经签到")
+                return result
+            else:
+                self.logger.error(f"{self.task_config.site_id} [按钮方式] 签到失败")
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"{self.task_config.site_id} [按钮方式] 签到出错: {str(e)}")
+            return False
+            
+    async def _is_already_checked_in(self, tab) -> bool:
+        """
+        检查是否已经签到
         
-        if result == "success":
-            self.logger.success(f"{self.task_config.site_id} [按钮方式] 签到成功")
-            return result
-        elif result == "already":
-            self.logger.info(f"{self.task_config.site_id} [按钮方式] 今天已经签到")
-            return result
-        else:
-            self.logger.error(f"{self.task_config.site_id} [按钮方式] 签到失败")
+        Returns:
+            bool: True已签到 False未签到
+        """
+        try:
+            checked_selectors = [
+                '@text:签到已得',
+                '@text:今日已签',
+                '@text:今天已签到',
+                '@class:already-signed',
+                '@class:signed-in'
+            ]
+            for selector in checked_selectors:
+                if tab.ele(selector, timeout=2):
+                    self.logger.debug(f"找到已签到标识: {selector}")
+                    return True
+                    
+            # 检查各种可能表示未签到的元素
+            unchecked_selectors = [
+                '@href$attendance.php',  # 包含attendance的链接
+                '@id:signed',  # 签到按钮ID
+                '@text:签到',  # 文本为"签到"的元素
+                '@text:签 到',  # 文本为"签 到"的元素
+                '@id:sign_in',  # 签到按钮ID
+                '@href:addbonus',  # 魔力值相关链接
+                '@class:dt_button@value:打卡',  # 打卡按钮
+                '@href:sign_in',  # 包含sign_in的链接
+                '@onclick:do_signin',  # 签到点击事件
+                '@id:do-attendance',  # 签到按钮ID
+                'shark-icon-button@href:attendance.php'  # 特殊签到按钮
+            ]
+            
+            # 如果找到任何一个未签到的元素，说明还没签到
+            for selector in unchecked_selectors:
+                if tab.ele(selector, timeout=2):
+                    self.logger.debug(f"找到未签到标识: {selector}")
+                    return False
+                
+            self.logger.debug(f"{self.task_config.site_id} 未发现未签到标识, 默认已签到")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"检查签到状态时出错: {str(e)}")
             return False
 
-    async def _check_checkin_result(self, tab, checkin_config: CheckInConfig) -> Tuple[str, str]:
+    async def _check_checkin_result(self, tab, checkin_config: CheckInConfig) -> str:
         """
         检查签到结果
         
         Args:
-            page: 要检查的页面
+            tab: 要检查的标签页
+            checkin_config: 签到配置
 
         Returns:
-            Tuple[str, str]: (结果类型, 详细信息)
-            结果类型: 
+            str: 结果类型
                 - success: 签到成功
                 - already: 已经签到
-                - captcha: 需要验证码
                 - error: 其他错误
         """
-        # 获取结果检查配置
-        sign = checkin_config.success_check.sign
-        slt = checkin_config.success_check.element.selector
-        loc = checkin_config.success_check.element.location
-        s_slt = checkin_config.success_check.element.second_selector
-        self.logger.debug(f"{self.task_config.site_id} 签到结果检查配置: {slt}, {loc}, {s_slt} => {sign}")
-
-        if loc == "child":
-            element = tab.ele(slt).eles(s_slt)
-        elif loc == 'index':
-            element = tab.ele(slt, index=int(s_slt))
-        else:
-            element = tab.eles(slt)
-
-        if not element:
-            self.logger.warning(f"{self.task_config.site_id} 未配置签到结果检查元素")
-            return "error"
-        if not sign:
-            self.logger.warning(f"{self.task_config.site_id} 未配置签到结果检查标志")
-            return "error"
+        try:
+            # 2. 检查常见的签到成功标识
+            success_selectors = [
+                '@text:签到成功',
+                '@text:已签到',
+                '@text:今天已经签到',
+                '@text:签到已得',
+                '@text:已经打卡',
+                '@text:打卡成功',
+                '@class:signed',
+                '@class:checked',
+                '@class:success'
+            ]
             
-        # 检查是否需要验证码
-        if tab.ele('@class=cf-turnstile'):
-            cf_bypasser = CloudflareBypasser(tab)
-            cf_bypasser.click_verification_button()
-            self.logger.debug(f"点击了cf-turnstile验证按钮")
+            for selector in success_selectors:
+                element = tab.ele(selector)
+                if element:
+                    self.logger.debug(f"找到通用成功标识: {selector}")
+                    return "success"
+                    
+            # 3. 检查常见的已签到标识
+            already_selectors = [
+                '@text:今日已签',
+                '@text:今天已签到',
+                '@text:已经签到',
+                '@text:请明天再来',
+                '@class:already-signed',
+                '@class:signed-in'
+            ]
             
-        # 检查是否签到成功
-        for ele in element:
-            if ele.text == sign["success"]:
-                return "success"
+            for selector in already_selectors:
+                element = tab.ele(selector)
+                if element:
+                    self.logger.debug(f"找到通用已签到标识: {selector}")
+                    return "already"
+                    
+            # 4. 检查常见的错误标识
+            error_selectors = [
+                '@text:签到失败',
+                '@text:出错',
+                '@text:错误',
+                '@class:error',
+                '@class:fail',
+                '@class:failed'
+            ]
+            
+            for selector in error_selectors:
+                element = tab.ele(selector)
+                if element:
+                    self.logger.debug(f"找到通用错误标识: {selector}")
+                    return "error"
+                    
+            # 1. 首先检查配置的结果检查规则
+            if checkin_config.success_check:
+                result_config = checkin_config.success_check
+                element_config = result_config.element
+                sign_config = result_config.sign
                 
-            # 检查是否已经签到
-            if ele.text == sign["already"]:
-                return "already"
+                self.logger.debug(f"{self.task_config.site_id} 检查配置的签到结果规则")
+                element = tab.ele(element_config.selector)
+                if element and element.text:
+                    text = element.text
+                    if sign_config["success"] in text:
+                        self.logger.debug(f"找到成功标识: {sign_config['success']}")
+                        return "success"
+                    elif sign_config["already"] in text:
+                        self.logger.debug(f"找到已签到标识: {sign_config['already']}")
+                        return "already"
+                    elif sign_config["error"] in text:
+                        self.logger.debug(f"找到错误标识: {sign_config['error']}")
+                        return "error"
+            
+            # 5. 检查是否有验证码
+            if tab.ele('@class=cf-turnstile'):
+                self.logger.debug("检测到验证码，尝试处理")
+                cf_bypasser = CloudflareBypasser(tab)
+                cf_bypasser.click_verification_button()
+                self.logger.debug("点击了验证码按钮")
+                tab.wait.load_complete()
+                # 递归检查结果
+                return await self._check_checkin_result(tab, checkin_config)
                 
-            # 检查是否有错误信息
-            if ele.text == sign["error"]:
-                return "error"
+            # 6. 如果都没找到，记录页面状态
+            self.logger.warning(f"未找到任何已知的结果标识")
+            self.logger.debug(f"当前页面URL: {tab.url}")
+            self.logger.debug(f"当前页面标题: {tab.title}")
+            if tab.ele('body'):
+                self.logger.debug(f"页面文本: {tab.ele('body').text[:200]}...")  # 只记录前200个字符
                 
-        return "error"
+            return "error"
+                
+        except Exception as e:
+            self.logger.error(f"检查签到结果时出错: {str(e)}")
+            self.logger.debug(f"错误详情: ", exc_info=True)
+            return "error"
             
     async def _check_env_enabled(self) -> bool:
         """

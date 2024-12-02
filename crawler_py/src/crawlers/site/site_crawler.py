@@ -3,6 +3,8 @@ from typing import Any, Dict, Optional
 from urllib.parse import urljoin
 
 from DrissionPage import Chromium
+from utils.url import convert_url
+from models.crawler import WebElement
 from utils.logger import get_logger
 
 from ..base.base_crawler import BaseCrawler
@@ -115,19 +117,19 @@ class SiteCrawler(BaseCrawler):
         # 提取额外统计数据（如果配置了）
         if self.extract_rules and any(rule.name == 'seeding_list' for rule in self.extract_rules.rules):
             try:
-                stats_data = await self._extract_stats_data(tab)
-                data.update(stats_data)
+                seeding_data = await self._extract_seeding_data(tab)
+                data.update(seeding_data)
             except Exception as e:
                 self.logger.error(f"获取统计数据失败: {str(e)}")
         
         return data
 
-    async def _extract_stats_data(self, tab: Chromium) -> Dict[str, Any]:
-        """提取统计数据"""
-        stats = {}
+    async def _extract_seeding_data(self, tab: Chromium) -> Dict[str, Any]:
+        """提取做种数据"""
+        seeding_data = {}
         
         if not self.extract_rules:
-            return stats
+            return seeding_data
             
         try:
             # 从extract_rules中获取配置
@@ -139,7 +141,7 @@ class SiteCrawler(BaseCrawler):
                 seeding_btn = tab.ele(rules_dict['seeding_list'].selector, index=idx)
                 if not seeding_btn:
                     self.logger.warning("未找到做种统计按钮")
-                    return stats
+                    return seeding_data
                     
                 self.logger.debug(f"找到做种统计按钮，开始点击")
                 seeding_btn.click()
@@ -206,14 +208,121 @@ class SiteCrawler(BaseCrawler):
                 seeding_count = len(volumes)
                 seeding_size = sum(self._convert_size_to_gb(v) for v in volumes)
                 
-                stats['seeding_count'] = seeding_count
-                self.logger.info(f"提取到做种数量: {stats['seeding_count']}")
-                stats['seeding_size'] = f"{seeding_size:.2f} GB"
-                self.logger.info(f"提取到总做种体积: {stats['seeding_size']}")
+                seeding_data['seeding_count'] = seeding_count
+                self.logger.info(f"提取到做种数量: {seeding_data['seeding_count']}")
+                seeding_data['seeding_size'] = f"{seeding_size:.2f} GB"
+                self.logger.info(f"提取到总做种体积: {seeding_data['seeding_size']}")
                 
         except Exception as e:
             self.logger.error(f"解析做种统计数据失败: {str(e)}")
             self.logger.debug(f"错误详情: {type(e).__name__}")
             self.logger.debug(f"错误堆栈: ", exc_info=True)
             
-        return stats 
+        return seeding_data 
+
+    async def _extract_data_with_rules(self, tab: Chromium) -> Dict[str, Any]:
+        """根据规则提取数据"""
+        data = {}
+        
+        if not self.extract_rules:
+            self.logger.info("未配置数据提取规则")
+            return data
+            
+        # 按规则分组，先处理不需要预处理的规则
+        normal_rules = []
+        pre_action_rules = []
+        for rule in self.extract_rules.rules:
+            if rule.need_pre_action:
+                pre_action_rules.append(rule)
+            else:
+                normal_rules.append(rule)
+                
+        # 先处理普通规则
+        for rule in normal_rules:
+            try:
+                value = await self._extract_element_value(tab, rule)
+                if value is not None:
+                    data[rule.name] = value
+                elif rule.required:
+                    raise ValueError(f"必需的字段 {rule.name} 未能提取到值")
+            except Exception as e:
+                self.logger.error(f"提取 {rule.name} 时出错: {str(e)}")
+                if rule.required:
+                    raise
+                    
+        # 处理需要预处理的规则
+        for rule in pre_action_rules:
+            try:
+                original_url = tab.url
+                # 如果规则指定了页面URL，先访问该页面
+                if rule.pre_action_type == 'goto' and rule.page_url:
+                    full_url = convert_url(self.task_config, rule.page_url)
+                    self.logger.debug(f"访问页面: {full_url}")
+                    tab.get(full_url)
+                
+                    # 提取数据
+                    value = await self._extract_element_value(tab, rule)
+                    if value is not None:
+                        data[rule.name] = value
+                    elif rule.required:
+                        raise ValueError(f"必需的字段 {rule.name} 未能提取到值")
+                    # 返回原页面
+                    tab.get(original_url)
+
+            except Exception as e:
+                self.logger.error(f"提取 {rule.name} 时出错: {str(e)}")
+                if rule.required:
+                    raise
+                    
+        return data
+        
+    async def _extract_element_value(self, tab: Chromium, rule: WebElement) -> Optional[str]:
+        """提取元素值"""
+        try:
+            # 根据位置关系查找元素
+            if rule.location:
+                base_element = tab.ele(rule.selector)
+                if not base_element:
+                    self.logger.warning(f"未找到基础定位元素: {rule.selector}")
+                    return None
+                    
+                if rule.location == 'next':
+                    element = base_element.next()
+                elif rule.location == 'parent':
+                    element = base_element.parent()
+                elif rule.location == 'next-child' and rule.second_selector:
+                    element = base_element.next().child(rule.second_selector)
+                elif rule.location == 'parent-child' and rule.second_selector:
+                    element = base_element.parent().child(rule.second_selector)
+                elif rule.location == 'east' and rule.second_selector:
+                    element = base_element.east(rule.second_selector)
+                else:
+                    element = base_element
+            else:
+                element = tab.ele(rule.selector)
+                
+            if not element:
+                self.logger.warning(f"未找到元素: {rule.selector}")
+                return None
+                
+            # 根据类型提取值
+            value = None
+            if rule.type == "text":
+                value = element.text
+            elif rule.type == "attribute" and rule.attribute:
+                value = element.attr(rule.attribute)
+            elif rule.type == "html":
+                value = element.html
+            elif rule.type == "src":
+                value = element.attr('src')
+                
+            # 应用转换
+            if value and rule.transform:
+                value = self._apply_transform(value, rule.transform)
+            
+            self.logger.debug(f"提取到{rule.name}: {value}")
+            return value.strip() if value else None
+            
+        except Exception as e:
+            self.logger.error(f"提取元素值时出错: {str(e)}")
+            return None

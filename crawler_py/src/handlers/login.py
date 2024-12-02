@@ -7,7 +7,7 @@ from urllib.parse import urljoin
 
 import DrissionPage
 from utils.logger import get_logger, setup_logger
-from utils.CloudflareBypasser import CloudflareBypasser
+from utils.clouodflare_bypasser import CloudflareBypasser
 from DrissionPage import Chromium
 from models.crawler import CrawlerTaskConfig, LoginConfig, WebElement
 from services.captcha.captcha_service import CaptchaService
@@ -260,36 +260,61 @@ class LoginHandler:
         """验证登录是否成功"""
         try:
             self.logger.debug(f"开始验证登录状态")
-            self.logger.debug(f"检查成功标识 - 选择器: {success_check.selector}")
-            element = tab.ele(success_check.selector, timeout=10)
             
-            if not element:
-                self.logger.warning(f"未找到成功标识元素: {success_check.selector}")
-                self.logger.debug(f"当前页面URL: {tab.url}")
-                self.logger.debug(f"当前页面标题: {tab.title}")
-                # 检查失败原因
+            # 1. 首先检查是否存在密码输入框（存在则说明未登录）
+            if tab.ele('@type=password'):
+                self.logger.warning("页面上存在密码输入框，判定为未登录")
                 await self._check_login_error(tab)
                 return False
                 
-            if "expected_text" in success_check:
-                content = element.child().text
-                self.logger.debug(f"检查登录成功文本:")
-                self.logger.debug(f"  - 期望文本: {success_check.expected_text}")
-                self.logger.debug(f"  - 实际文本: {content}")
-                if not success_check.expected_text in (content or ""):
-                    # 检查失败原因
-                    await self._check_login_error(tab)
-                    return False
-                return True
+            # 2. 检查是否存在登出相关元素
+            logout_selectors = [
+                '@href:logout',  # 包含logout的链接
+                '@data-url:logout',  # data-url属性包含logout
+                '@onclick:logout',  # onclick事件包含logout
+                '@href:mybonus',  # 魔力值页面链接
+                '@href:usercp',  # 用户控制面板链接
+                '@lay-on:logout',  # layui的登出按钮
+                'form@action:logout',  # 登出表单
+                '@class:user-info-side',  # 用户信息侧栏
+                '#myitem'  # 我的项目链接
+            ]
             
-            self.logger.debug("登录验证成功")
-            return True
+            for selector in logout_selectors:
+                if tab.ele(selector, timeout = 3):
+                    self.logger.debug(f"找到登录状态元素: {selector}")
+                    return True
+                    
+            # 3. 如果配置了特定的成功检查元素，也进行检查
+            if success_check:
+                self.logger.debug(f"检查配置的成功标识 - 选择器: {success_check.selector}")
+                element = tab.ele(success_check.selector, timeout=3)
+                
+                if element:
+                    if hasattr(success_check, 'expected_text'):
+                        content = element.text
+                        self.logger.debug(f"检查登录成功文本:")
+                        self.logger.debug(f"  - 期望文本: {success_check.expected_text}")
+                        self.logger.debug(f"  - 实际文本: {content}")
+                        if success_check.expected_text in (content or ""):
+                            return True
+                    else:
+                        # 如果没有指定expected_text，元素存在即视为成功
+                        return True
+                        
+            # 4. 记录当前页面状态
+            self.logger.debug(f"当前页面URL: {tab.url}")
+            self.logger.debug(f"当前页面标题: {tab.title}")
+            
+            # 5. 检查错误信息
+            await self._check_login_error(tab)
+            return False
             
         except Exception as e:
             self.logger.error(f"验证登录状态时发生错误: {str(e)}")
             self.logger.debug(f"错误详情: ", exc_info=True)
             return False
-            
+
     async def _check_login_error(self, tab) -> None:
         """检查登录失败的具体原因"""
         try:
@@ -457,7 +482,7 @@ class LoginHandler:
         """恢复浏览器状态"""
         try:
             self.logger.info("开始恢复浏览器状态")
-            self.logger.debug(f"浏览器实例ID: {id(browser)}")
+            self.logger.debug(f"浏览器��例ID: {id(browser)}")
             
             # 加载状态数据
             state_data = await self.load_browser_state()
