@@ -1,5 +1,7 @@
-from typing import Dict, Any, ClassVar
+from typing import Any, ClassVar, Dict
+
 from .base import BaseSiteConfig
+
 
 class QingwaPTConfig(BaseSiteConfig):
     """QingwaPT站点配置"""
@@ -29,27 +31,26 @@ class QingwaPTConfig(BaseSiteConfig):
                     'fields': {
                         'username': {
                             'name': 'username',
-                            'type': 'text',
                             'selector': '@name=username',
+                            'type': 'text',
                             'required': True
                         },
                         'password': {
                             'name': 'password',
-                            'type': 'password',
                             'selector': '@name=password',
+                            'type': 'password',
                             'required': True
                         },
                         'submit': {
                             'name': 'submit',
-                            'type': 'submit',
-                            'selector': '@value=登录',
-                        }
+                            'selector': '@value=登录'
+                        },
                     },
                     'captcha': {
                         'type': 'background',
                         'element': {
+                            'name': 'captcha',
                             'selector': '#captcha',
-                            'type': 'background-image',
                             'url_pattern': r'url\("([^"]+)"\)'
                         },
                         'input': {
@@ -60,6 +61,7 @@ class QingwaPTConfig(BaseSiteConfig):
                         },
                     },
                     'success_check': {
+                        'name': 'login_result',
                         'selector': '@class=User_Name',
                         'type': 'text'
                     }
@@ -70,6 +72,30 @@ class QingwaPTConfig(BaseSiteConfig):
                         'selector': '@class=User_Name',
                         'type': 'text',
                         'required': True
+                    },
+                    {
+                        'name': 'seeding_list',
+                        'selector': '@href^javascript: getusertorrentlistajax',
+                        'index': 2
+                    },
+                    {
+                        'name': 'seeding_list_container',
+                        'selector': '#ka1',
+                        'type': 'text',
+                        'need_pre_action': True
+                    },
+                    {
+                        'name': 'seeding_list_table',
+                        'selector': '@tag()=table',
+                        'type': 'text',
+                        'need_pre_action': True,
+                        'index': 4
+                    },
+                    {
+                        'name': 'seeding_list_pagination',
+                        'selector': '@class=nexus-pagination',
+                        'type': 'text',
+                        'need_pre_action': True
                     },
                     {
                         'name': 'user_class',
@@ -119,7 +145,7 @@ class QingwaPTConfig(BaseSiteConfig):
                         'selector': '@text()=蝌蚪',
                         'location': 'next',
                         'second_selector': '',
-                        'type': 'text'
+                        'type': 'text',
                     },
                     {
                         'name': 'seeding_score',
@@ -128,7 +154,27 @@ class QingwaPTConfig(BaseSiteConfig):
                         'second_selector': '',
                         'type': 'text'
                     },
-                ]
+                ],
+                'checkin_config': 
+                    {
+                        'checkin_url': 'https://www.qingwapt.com/attendance.php',
+                        'checkin_button': {
+                            'name': 'checkin_button',
+                            'selector': '@href=attendance.php',
+                        },
+                        'success_check': {
+                            'element':{
+                                'name': 'checkin_result',
+                                'selector': '@tag()=h2',
+                                'type': 'text'
+                            },
+                            'sign':{
+                                'success': '签到成功',
+                                'already': '今天已经签到过了',
+                                'error': '签到失败',
+                            }
+                        }
+                    }
             }
             
             # 验证配置

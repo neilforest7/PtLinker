@@ -129,11 +129,11 @@ class FileStorage(BaseStorage):
                 with gzip.open(compressed_path, 'rt', encoding='utf-8') as f:
                     data = json.load(f)
             else:
-                self.logger.debug(f"从JSON文件加载: {full_path}")
+                self.logger.info(f"从JSON文件加载: {full_path}")
                 with open(full_path, 'r', encoding='utf-8') as f:
                     data = json.load(f)
             
-            self.logger.debug(f"数据加载成功: {path}")
+            self.logger.info(f"数据加载成功: {path}")
             return data
             
         except FileNotFoundError as e:

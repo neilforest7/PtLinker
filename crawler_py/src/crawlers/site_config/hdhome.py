@@ -20,14 +20,14 @@ class HDHomeConfig(BaseSiteConfig):
                     'fields': {
                         'username': {
                             'name': 'username',
-                            'type': 'text',
                             'selector': '@name=username',
+                            'type': 'text',
                             'required': True
                         },
                         'password': {
                             'name': 'password',
-                            'type': 'password',
                             'selector': '@name=password',
+                            'type': 'password',
                             'required': True
                         },
                         'ssl': {
@@ -44,13 +44,13 @@ class HDHomeConfig(BaseSiteConfig):
                         },
                         'submit': {
                             'name': 'submit',
-                            'type': 'submit',
                             'selector': '@type=submit',
                         }
                     },
                     'success_check': {
+                        'name': 'login_result',
                         'selector': '@class=User_Name',
-                        'attribute': 'text'
+                        'type': 'text'
                     }
                 },
                 'extract_rules': [
@@ -59,6 +59,30 @@ class HDHomeConfig(BaseSiteConfig):
                         'selector': '@class=User_Name',
                         'type': 'text',
                         'required': True
+                    },
+                    {
+                        'name': 'seeding_list',
+                        'selector': '@href^javascript: getusertorrentlistajax',
+                        'index': 2
+                    },
+                    {
+                        'name': 'seeding_list_container',
+                        'selector': '#ka1',
+                        'type': 'text',
+                        'need_pre_action': True
+                    },
+                    {
+                        'name': 'seeding_list_table',
+                        'selector': '@tag()=table',
+                        'type': 'text',
+                        'need_pre_action': True,
+                        'index': 3
+                    },
+                    {
+                        'name': 'seeding_list_pagination',
+                        'selector': '@class=nexus-pagination',
+                        'type': 'text',
+                        'need_pre_action': True
                     },
                     {
                         'name': 'user_class',
@@ -108,7 +132,7 @@ class HDHomeConfig(BaseSiteConfig):
                         'selector': '@text()=魔力值',
                         'location': 'next',
                         'second_selector': '',
-                        'type': 'text'
+                        'type': 'text',
                     },
                     {
                         'name': 'seeding_score',
@@ -122,7 +146,27 @@ class HDHomeConfig(BaseSiteConfig):
                         'selector': '@title=查看HR详情',
                         'type': 'text'
                     },
-                ]
+                ],
+                'checkin_config': 
+                    {
+                        'checkin_url': 'https://hdhome.org/attendance.php',
+                        'checkin_button': {
+                            'name': 'checkin_button',
+                            'selector': '@href$attendance.php',
+                        },
+                        'success_check': {
+                            'element':{
+                                'name': 'checkin_result',
+                                'selector': '@tag()=h2',
+                                'type': 'text'
+                            },
+                            'sign':{
+                                'success': '签到成功',
+                                'already': '今天已经签到过了',
+                                'error': '签到失败',
+                            }
+                        }
+                    }
             }
             
             # 验证配置

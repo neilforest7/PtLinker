@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Dict, Any, List, Optional
 from datetime import datetime
-from models.crawler import CrawlerTaskConfig, LoginConfig, ExtractRule, FormField
+from models.crawler import CrawlerTaskConfig, LoginConfig, ExtractRuleSet, CheckInConfig, WebElement
 
 @dataclass
 class BaseSiteConfig:
@@ -9,7 +9,8 @@ class BaseSiteConfig:
     site_id: str
     site_url: str
     login_config: Dict[str, Any]
-    extract_rules: List[Dict[str, Any]]
+    extract_rules: Dict[str, Any]
+    checkin_config: Dict[str, Any]
 
     @classmethod
     def get_config(cls) -> Dict[str, Any]:
@@ -74,7 +75,17 @@ class BaseSiteConfig:
             login_config = None
         
         # 转换提取规则
-        extract_rules = [ExtractRule(**rule) for rule in config.get('extract_rules', [])]
+        if config.get('extract_rules'):
+            extract_rules = ExtractRuleSet(rules=[WebElement(**rule) for rule in config['extract_rules']])
+        else:
+            extract_rules = None
+        
+        # 转换签到配置
+        if config.get('checkin_config'):
+            checkin_config_dict = config['checkin_config'].copy()
+            checkin_config = CheckInConfig(**checkin_config_dict)
+        else:
+            checkin_config = None
         
         # 创建任务配置
         task_config = CrawlerTaskConfig(
@@ -85,6 +96,7 @@ class BaseSiteConfig:
             password=password,
             login_config=login_config,
             extract_rules=extract_rules,
+            checkin_config=checkin_config,
             custom_config=custom_config or {}
         )
         

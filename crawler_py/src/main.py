@@ -5,36 +5,33 @@ from concurrent.futures import ProcessPoolExecutor
 from datetime import datetime
 from pathlib import Path
 
-from crawlers.site_config import SITE_CONFIGS
-from crawlers.site.frds_crawler import FrdsCrawler
-from crawlers.site.hdfans_crawler import HDFansCrawler
-from crawlers.site.hdhome_crawler import HDHomeCrawler
-from crawlers.site.ourbits_crawler import OurBitsCrawler
-from crawlers.site.qingwapt_crawler import QingWaptCrawler
-from crawlers.site.ubits_crawler import UBitsCrawler
-from crawlers.site_config.hdhome import HDHomeConfig
+# from crawlers.site_config import SITE_CONFIGS
+from crawlers.site.site_crawler import SiteCrawler
 from crawlers.site_config.ourbits import OurBitsConfig
 from crawlers.site_config.qingwapt import QingwaPTConfig
 from crawlers.site_config.hdfans import HDFansConfig
 from crawlers.site_config.ubits import UBitsConfig
 from crawlers.site_config.frds import FrdsConfig
+from crawlers.site_config.hdhome import HDHomeConfig
 from dotenv import load_dotenv
 from DrissionPage import ChromiumOptions
 from utils.logger import get_logger, setup_logger
 
-# 爬虫映射
-CRAWLERS = {
-    'hdhome': (HDHomeCrawler, HDHomeConfig),
-    'ourbits': (OurBitsCrawler, OurBitsConfig),
-    'qingwapt': (QingWaptCrawler, QingwaPTConfig),
-    'hdfans': (HDFansCrawler, HDFansConfig),
-    'ubits': (UBitsCrawler, UBitsConfig),
-    'frds': (FrdsCrawler, FrdsConfig)
+# 站点配置映射
+SITE_CONFIGS = {
+    'ubits': UBitsConfig,
+    'ourbits': OurBitsConfig,
+    'qingwapt': QingwaPTConfig,
+    'hdfans': HDFansConfig,
+    'frds': FrdsConfig,
+    'hdhome': HDHomeConfig,
+    # 其他站点配置可以在这里添加
 }
 
 def init_drissionpage():
     """初始化DrissionPage配置"""
     chrome_path = os.getenv('CHROME_PATH')
+    main_logger = get_logger(__name__, "Main")
     if chrome_path and Path(chrome_path).exists():
         try:
             main_logger = get_logger(__name__, "Main")
@@ -52,9 +49,11 @@ def run_crawler(site: str, task_config: dict):
     try:
         crawler_logger = get_logger(__name__, site_id=site)
         crawler_logger.info(f"开始爬取 {site} 站点数据...")
-        crawler_class = CRAWLERS[site][0]  # 获取爬虫类
-        crawler = crawler_class(task_config)
+        
+        # 使用统一的SiteCrawler
+        crawler = SiteCrawler(task_config)
         asyncio.run(crawler.start())
+        
         crawler_logger.success(f"完成爬取 {site} 站点数据")
         return True
     except Exception as e:
@@ -64,7 +63,7 @@ def run_crawler(site: str, task_config: dict):
 def main():
     # 修改命令行参数解析器以接受多个站点
     parser = argparse.ArgumentParser(description='PT站点数据爬取工具')
-    parser.add_argument('sites', nargs='+', choices=CRAWLERS.keys(), help='要爬取的站点，可指定多个')
+    parser.add_argument('sites', nargs='+', choices=SITE_CONFIGS.keys(), help='要爬取的站点，可指定多个')
     parser.add_argument('--concurrent', '-c', type=int, default=6, 
                         help='同时执行的最大爬虫数量(默认: 6)')
     args = parser.parse_args()
@@ -74,7 +73,7 @@ def main():
     for site in args.sites:
         try:
             # 获取站点配置类
-            config_class = CRAWLERS[site][1]
+            config_class = SITE_CONFIGS[site]
             
             # 创建任务配置
             task_config = config_class.create_task_config(
@@ -149,7 +148,7 @@ def main():
 
 if __name__ == "__main__":
     # 加载环境变量
-    env_path = Path(__file__).parent / '.env'
+    env_path = Path(__file__).parent.parent / '.env'
     load_dotenv(env_path)
 
     # 设置日志记录器

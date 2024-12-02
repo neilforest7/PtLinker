@@ -47,9 +47,9 @@ class APIHandler(BaseCaptchaHandler):
             
             # 准备API请求参数
             params = {
-                'numeric': 4,  # 假设是4位数字验证码
+                'numeric': 6,  # 假设是6位数字验证码
                 'min_len': 4,
-                'max_len': 4,
+                'max_len': 8,
                 'language': 0,  # 0 = 任何语言
             }
             
