@@ -1,7 +1,11 @@
 from dataclasses import dataclass
-from typing import Dict, Any, List, Optional
 from datetime import datetime
-from models.crawler import CrawlerTaskConfig, LoginConfig, ExtractRuleSet, CheckInConfig, WebElement
+from typing import Any, Dict, List, Optional
+
+from models.crawler import (CheckInConfig, CrawlerTaskConfig, ExtractRuleSet,
+                            LoginConfig, WebElement)
+from handlers.credentials import CredentialsManager
+
 
 @dataclass
 class BaseSiteConfig:
@@ -11,6 +15,7 @@ class BaseSiteConfig:
     login_config: Dict[str, Any]
     extract_rules: Dict[str, Any]
     checkin_config: Dict[str, Any]
+    _credentials_manager = CredentialsManager()
 
     @classmethod
     def get_config(cls) -> Dict[str, Any]:
@@ -29,20 +34,17 @@ class BaseSiteConfig:
         task_id: Optional[str] = None,
         custom_config: Optional[Dict[str, Any]] = None
     ) -> CrawlerTaskConfig:
-        """
-        创建任务配置
-        
-        Args:
-            username: 用户名
-            password: 密码
-            task_id: 任务ID，如果不提供则自动生成
-            custom_config: 自定义配置
-            
-        Returns:
-            CrawlerTaskConfig: 任务配置实例
-        """
+        """创建任务配置"""
         # 获取站点基础配置
         config = cls.get_config()
+        
+        # 获取站点凭证(优先使用特定凭证,其次使用环境变量凭证)
+        site_credential = cls._credentials_manager.get_site_credential(config['site_id'])
+        if site_credential:
+            # 将凭证信息添加到配置中
+            config['credentials'] = site_credential
+            username = site_credential.username
+            password = site_credential.password
         
         # 生成任务ID
         if task_id is None:
@@ -92,8 +94,7 @@ class BaseSiteConfig:
             task_id=task_id,
             site_id=config['site_id'],
             site_url=[config['site_url']],  # 转换为列表格式
-            username=username,
-            password=password,
+            credentials=config.get('credentials'),  # 添加凭证信息
             login_config=login_config,
             extract_rules=extract_rules,
             checkin_config=checkin_config,

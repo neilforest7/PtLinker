@@ -50,13 +50,19 @@ class CheckInConfig(BaseModel):
     checkin_button: Optional[WebElement] = None  # 签到按钮配置
     success_check: Optional[CheckInResultConfig] = None  # 签到结果检查配置（必需）
 
+class SiteCredential(BaseModel):
+    """站点凭证配置"""
+    username: str
+    password: str
+    enabled: bool = True
+    description: Optional[str] = None
+
 class CrawlerTaskConfig(BaseModel):
     """爬虫任务配置"""
     task_id: str
     site_id: Optional[str] = None
     site_url: List[str]
-    username: Optional[str] = None
-    password: Optional[str] = None
+    credentials: Optional[SiteCredential] = None  # 添加站点特定的凭证
     login_config: Optional[LoginConfig] = None
     extract_rules: Optional[ExtractRuleSet] = None
     checkin_config: Optional[CheckInConfig] = None

@@ -75,13 +75,9 @@ def main():
             # 获取站点配置类
             config_class = SITE_CONFIGS[site]
             
-            # 创建任务配置
-            task_config = config_class.create_task_config(
-                username=os.getenv('LOGIN_USERNAME'),
-                password=os.getenv('LOGIN_PASSWORD')
-            )
-            
-            tasks.append((site, task_config.dict()))  # 转换为字典以便序列化
+            # 创建任务配置(不再传入用户名和密码参数)
+            task_config = config_class.create_task_config()
+            tasks.append((site, task_config.dict()))
             
         except Exception as e:
             main_logger.error(f"创建 {site} 的任务配置失败: {str(e)}")

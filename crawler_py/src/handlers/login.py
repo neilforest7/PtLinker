@@ -36,6 +36,17 @@ class LoginHandler:
     async def perform_login(self, browser: Chromium, login_config: LoginConfig) -> bool:
         """执行登录流程"""
         try:
+            # 检查凭证
+            if not self.task_config.credentials:
+                self.logger.error("未配置任何可用凭证")
+                return False
+            
+            if not self.task_config.credentials.enabled:
+                self.logger.warning("当前凭证已禁用")
+                return False
+            
+            self.logger.info(f"使用凭证 '{self.task_config.credentials.description or '未命名'}' 登录")
+            
             self.logger.info(f"开始登录流程 - URL: {login_config.login_url}")
             self.logger.debug(f"浏览器实例ID: {id(browser)}")
             
@@ -82,38 +93,41 @@ class LoginHandler:
             # 填充表单字段
             self.logger.info("开始填充表单字段")
             for field_name, field_config in login_config.fields.items():
-                if field_config.type != "submit":
-                    self.logger.debug(f"处理字段 {field_name}:")
-                    self.logger.debug(f"  - 选择器: {field_config.selector}")
-                    self.logger.debug(f"  - 类型: {field_config.type}")
+                if field_name == 'username':
+                    value = self.task_config.credentials.username
+                elif field_name == 'password':
+                    value = self.task_config.credentials.password
+                else:
+                    value = getattr(field_config, 'value', None)
+                    
+                if value is None:
+                    self.logger.debug(f"  - 字段 {field_name} 没有值")
+                    continue
+                    
+                # 根据字段类型处理输入
+                if field_config.type == "checkbox":
+                    input_ele = tab.ele(field_config.selector)
+                    if input_ele:
+                        input_ele.click()
+                    else:
+                        self.logger.warning(f"  - 未找到输入元素: {field_config.selector}")
+                else:
+                    sleep(0.5)
                     input_ele = tab.ele(field_config.selector)
                     if input_ele:
                         self.logger.debug(f"  - 找到输入元素 - ID: {input_ele.attr('id')}")
                         
-                        # 根据字段类型获取值
-                        if field_name == 'username':
-                            value = self.task_config.username
-                        elif field_name == 'password':
-                            value = self.task_config.password
-                        else:
-                            value = getattr(field_config, 'value', None)
-                            
-                        if value is None:
-                            self.logger.debug(f"  - 字段 {field_name} 没有值")
-                            continue
-                            
                         # 根据字段类型处理输入
-                        if field_config.type == "checkbox":
-                            input_ele.click()
-                        else:
-                            sleep(0.5)
+                        if field_config.type == "password":
                             input_ele.clear()
                             self.logger.debug(f"  - 已清空{field_name}字段")
                             input_ele.input(str(value))
-                            if field_config.type == "password":
-                                self.logger.debug(f"  - 已填充密码字段")
-                            else:
-                                self.logger.debug(f"  - 已填充{field_name}: {value}")
+                            self.logger.debug(f"  - 已填充密码字段")
+                        else:
+                            input_ele.clear()
+                            self.logger.debug(f"  - 已清空{field_name}字段")
+                            input_ele.input(str(value))
+                            self.logger.debug(f"  - 已填充{field_name}: {value}")
                     else:
                         self.logger.warning(f"  - 未找到输入元素: {field_config.selector}")
             self.logger.debug("表单字段填充完成")
@@ -396,14 +410,14 @@ class LoginHandler:
             
             # 准备状态数据
             state_data = {
-                'cookies': cookies.as_dict(),  # 使用as_dict()方法转换为字典格式
-                'cookies_full': cookies,  # 保存完整的cookies信息
+                'cookies': cookies.as_dict() if hasattr(cookies, 'as_dict') else cookies,
+                'cookies_full': cookies,
                 'localStorage': dict(local_storage) if local_storage else {},
                 'sessionStorage': dict(session_storage) if session_storage else {},
                 'loginState': {
                     'isLoggedIn': True,
                     'lastLoginTime': datetime.now().timestamp() * 1000,
-                    'username': self.task_config.username
+                    'username': self.task_config.credentials.username if self.task_config.credentials else None
                 },
                 'timestamp': datetime.now().isoformat(),
                 'siteId': self.task_config.site_id
@@ -482,7 +496,7 @@ class LoginHandler:
         """恢复浏览器状态"""
         try:
             self.logger.info("开始恢复浏览器状态")
-            self.logger.debug(f"浏览器��例ID: {id(browser)}")
+            self.logger.debug(f"浏览器例ID: {id(browser)}")
             
             # 加载状态数据
             state_data = await self.load_browser_state()
