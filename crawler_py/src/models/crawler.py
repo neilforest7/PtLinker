@@ -7,7 +7,7 @@ class WebElement(BaseModel):
     """元素选择器配置"""
     name: str
     selector: str
-    type: Optional[Literal["text", "attribute", "html", "src", "password", "checkbox"]] = "text"
+    type: Optional[Literal["text", "attribute", "html", "src", "password", "checkbox", "by_day"]] = "text"
     location: Optional[str] = None
     second_selector: Optional[str] = None
     required: Optional[bool] = False

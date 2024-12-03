@@ -15,7 +15,7 @@ class UBitsConfig(BaseSiteConfig):
                 'site_id': 'ubits',
                 'site_url': 'https://ubits.club',
                 'login_config': {
-                    'login_url': 'https://ubits.club/login.php',
+                    'login_url': '/login.php',
                     'form_selector': '@action=takelogin.php',
                     'fields': {
                         'username': {
@@ -51,14 +51,14 @@ class UBitsConfig(BaseSiteConfig):
                     },
                     'success_check': {
                         'name': 'login_result',
-                        'selector': '@class=User_Name',
+                        'selector': '@class$User_Name',
                         'type': 'text'
                     }
                 },
                 'extract_rules': [
                     {
                         'name': 'username',
-                        'selector': '@class=User_Name',
+                        'selector': '@class$User_Name',
                         'type': 'text',
                         'required': True
                     },
@@ -159,7 +159,7 @@ class UBitsConfig(BaseSiteConfig):
                 ],
                 'checkin_config': 
                     {
-                        'checkin_url': 'https://ubits.club/attendance.php',
+                        'checkin_url': '/attendance.php',
                         'checkin_button': {
                             'name': 'checkin_button',
                             'selector': '@href$attendance.php',

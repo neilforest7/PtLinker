@@ -1,8 +1,8 @@
 from typing import Dict, Any, ClassVar
 from .base import BaseSiteConfig
 
-class HDHomeConfig(BaseSiteConfig):
-    """HDHome站点配置"""
+class ZMPTConfig(BaseSiteConfig):
+    """ZMPT站点配置"""
     
     # 类级别的配置缓存
     _config: ClassVar[Dict[str, Any]] = None
@@ -12,8 +12,8 @@ class HDHomeConfig(BaseSiteConfig):
         """获取站点配置，使用缓存避免重复创建"""
         if cls._config is None:
             cls._config = {
-                'site_id': 'hdhome',
-                'site_url': 'https://hdhome.org',
+                'site_id': 'zmpt',
+                'site_url': 'https://zmpt.cc',
                 'login_config': {
                     'login_url': '/login.php',
                     'form_selector': '@action=takelogin.php',
@@ -30,20 +30,8 @@ class HDHomeConfig(BaseSiteConfig):
                             'type': 'password',
                             'required': True
                         },
-                        'ssl': {
-                            'name': 'ssl',
-                            'type': 'checkbox',
-                            'selector': '@name=ssl',
-                            'value': 'on'
-                        },
-                        'trackerssl': {
-                            'name': 'trackerssl',
-                            'type': 'checkbox',
-                            'selector': '@name=trackerssl',
-                            'value': 'on'
-                        },
                         'submit': {
-                            'name': 'submit',
+                            'name': 'submit', 
                             'selector': '@type=submit',
                         }
                     },
@@ -76,7 +64,7 @@ class HDHomeConfig(BaseSiteConfig):
                         'selector': '@tag()=table',
                         'type': 'text',
                         'need_pre_action': True,
-                        'index': 3
+                        'index': 4
                     },
                     {
                         'name': 'seeding_list_pagination',
@@ -129,7 +117,7 @@ class HDHomeConfig(BaseSiteConfig):
                     },
                     {
                         'name': 'bonus',
-                        'selector': '@text()=魔力值',
+                        'selector': '@text()=电力值',
                         'location': 'next',
                         'second_selector': '',
                         'type': 'text',
@@ -143,7 +131,7 @@ class HDHomeConfig(BaseSiteConfig):
                     },
                     {
                         'name': 'hr_count',
-                        'selector': '@title=查看HR详情',
+                        'selector': '@href^myhr.php',
                         'type': 'text'
                     },
                     {

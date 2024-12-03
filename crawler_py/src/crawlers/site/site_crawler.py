@@ -67,19 +67,18 @@ class SiteCrawler(BaseCrawler):
         tab.get(self.base_url)
         
         # 获取用户资料页面URL
-        profile_url = await self._get_profile_url(tab)
-        
+        self.profile_url, self.uid = await self._get_profile_url(tab)
+
         # 访问用户资料页面
-        tab.get(profile_url)
+        tab.get(self.profile_url)
         
         return tab
 
     async def _get_profile_url(self, tab: Chromium) -> str:
         """获取用户资料页面的URL"""
         # 从配置中获取资料链接选择器
-        profile_config = self.task_config.custom_config.get('profile_link', {})
-        selector = profile_config.get('selector', '@class=User_Name')  # 默认选择器
-        
+        profile_config = self.task_config.extract_rules
+        selector = [rule.selector for rule in profile_config.rules if rule.name == 'username'][0]
         self.logger.debug("查找用户资料链接")
         profile_element = tab.ele(selector)
         if not profile_element:
@@ -91,19 +90,18 @@ class SiteCrawler(BaseCrawler):
         
         # 提取用户ID（如果需要）
         uid = None
-        if profile_config.get('extract_uid', True):
-            uid_match = re.search(r'id=(\d+)', profile_url)
-            if uid_match:
-                uid = uid_match.group(1)
-                self.logger.debug(f"提取到用户ID: {uid}")
-            else:
-                self.logger.warning("未能从URL中提取用户ID")
+        uid_match = re.search(r'id=(\d+)', profile_url)
+        if uid_match:
+            uid = uid_match.group(1)
+            self.logger.debug(f"提取到用户ID: {uid}")
+        else:
+            self.logger.warning("未能从URL中提取用户ID")
         
         # 确保使用完整URL
-        full_profile_url = urljoin(self.base_url, profile_url)
+        full_profile_url = convert_url(self.task_config, profile_url, uid=uid)
         self.logger.debug(f"访问用户资料页面: {full_profile_url}")
         
-        return full_profile_url
+        return full_profile_url, uid
 
     async def _extract_all_data(self, tab: Chromium) -> Dict[str, Any]:
         """提取所有数据"""
@@ -113,7 +111,8 @@ class SiteCrawler(BaseCrawler):
         self.logger.info("开始提取用户基本数据")
         basic_data = await self._extract_data_with_rules(tab)
         data.update(basic_data)
-        
+        data.update(dict(uid=self.uid))
+
         # 提取额外统计数据（如果配置了）
         if self.extract_rules and any(rule.name == 'seeding_list' for rule in self.extract_rules.rules):
             try:
@@ -130,7 +129,7 @@ class SiteCrawler(BaseCrawler):
         
         if not self.extract_rules:
             return seeding_data
-            
+
         try:
             # 从extract_rules中获取配置
             rules_dict = {rule.name: rule for rule in self.extract_rules.rules}
@@ -138,14 +137,23 @@ class SiteCrawler(BaseCrawler):
             # 检查是否配置了做种列表按钮
             if 'seeding_list' in rules_dict:
                 idx = rules_dict['seeding_list'].index
-                seeding_btn = tab.ele(rules_dict['seeding_list'].selector, index=idx)
-                if not seeding_btn:
-                    self.logger.warning("未找到做种统计按钮")
-                    return seeding_data
-                    
-                self.logger.debug(f"找到做种统计按钮，开始点击")
-                seeding_btn.click()
                 
+                # 如果不需要预处理，则点击做种统计按钮
+                if not rules_dict['seeding_list'].need_pre_action:                    
+                    seeding_btn = tab.ele(rules_dict['seeding_list'].selector, index=idx)
+                    if not seeding_btn:
+                        self.logger.warning("未找到做种统计按钮")
+                        return seeding_data
+                        
+                    self.logger.debug(f"找到做种统计按钮，开始点击")
+                    seeding_btn.click()
+
+                # 假设需要预处理，方式为访问做种列表页面，代表站点audiences
+                elif rules_dict['seeding_list'].pre_action_type == 'goto':
+                    self.logger.debug(f"需要预处理，访问页面: {rules_dict['seeding_list'].page_url}")
+                    tab.get(convert_url(self.task_config, rules_dict['seeding_list'].page_url, uid=self.uid))
+                    self.logger.debug(f"访问converted页面: {tab.url}")
+                    
                 # 提取做种数据
                 volumes = []
                 page = 0
@@ -162,7 +170,12 @@ class SiteCrawler(BaseCrawler):
                         
                         # 等待表格加载
                         self.logger.debug(f"开始查找表格: {rules_dict['seeding_list_table'].selector}")
-                        table = container.ele(rules_dict['seeding_list_table'].selector, timeout=10)
+                        if rules_dict['seeding_list_table'].location == 'index':
+                            # audiences做种表格中有两个table，第二个table是做种列表
+                            table_idx = int(rules_dict['seeding_list_table'].second_selector)
+                            table = container.ele(rules_dict['seeding_list_table'].selector, index=table_idx, timeout=3)
+                        else:
+                            table = container.ele(rules_dict['seeding_list_table'].selector, timeout=3)
                         if not table:
                             self.logger.warning(f"未找到表格: {rules_dict['seeding_list_table'].selector}")
                             break
@@ -170,7 +183,11 @@ class SiteCrawler(BaseCrawler):
                         self.logger.debug(f"找到表格: {table}")
                         
                         # 提取当前页面的体积数据
-                        rows = table.eles('tag:tr')
+                        
+                        if 'seeding_list_row' not in rules_dict:
+                            rows = table.eles('tag:tr')
+                        elif rules_dict['seeding_list_row'].location == 'grand-child':
+                            rows = table.child().children()
                         self.logger.debug(f"找到 {len(rows)-1} 行数据")
                         
                         vidx = rules_dict['seeding_list_table'].index
@@ -179,12 +196,17 @@ class SiteCrawler(BaseCrawler):
                             if cell:
                                 volumes.append(cell.text.strip())
                                     
-                        pagination = container.ele(rules_dict['seeding_list_pagination'].selector)
+                        # 检查是否有分页
+                        if rules_dict['seeding_list_pagination'].location == 'parent':
+                            # audiences找到分页的父元素
+                            pagination = container.ele(rules_dict['seeding_list_pagination'].selector).parent()
+                        else:
+                            pagination = container.ele(rules_dict['seeding_list_pagination'].selector)
                         # 检查是否有下一页
                         if not pagination:
                             self.logger.debug("没有分页，提取完成")
                             break
-                            
+                        
                         page_link = pagination.ele(f'@href$page={page + 1}')
                         if not page_link:
                             self.logger.debug("没有下一页，提取完成")
@@ -257,7 +279,7 @@ class SiteCrawler(BaseCrawler):
                 original_url = tab.url
                 # 如果规则指定了页面URL，先访问该页面
                 if rule.pre_action_type == 'goto' and rule.page_url:
-                    full_url = convert_url(self.task_config, rule.page_url)
+                    full_url = convert_url(self.task_config, rule.page_url, uid=self.uid)
                     self.logger.debug(f"访问页面: {full_url}")
                     tab.get(full_url)
                 
@@ -274,7 +296,7 @@ class SiteCrawler(BaseCrawler):
                 self.logger.error(f"提取 {rule.name} 时出错: {str(e)}")
                 if rule.required:
                     raise
-                    
+            
         return data
         
     async def _extract_element_value(self, tab: Chromium, rule: WebElement) -> Optional[str]:
@@ -312,13 +334,17 @@ class SiteCrawler(BaseCrawler):
                 value = element.text
             elif rule.type == "attribute" and rule.attribute:
                 value = element.attr(rule.attribute)
+            elif rule.type == "by_day":
+                # 用于u2临时提取UCoin值
+                self.logger.debug(f"提取 {rule.name} 时，元素文本: {element.texts()[-1]}")
+                match = re.search(r'UCoin(\d+\.\d+)', element.texts()[0])
+                if match:
+                    result = match.group(1)
+                    value = str(float(result)/24)
             elif rule.type == "html":
                 value = element.html
             elif rule.type == "src":
                 value = element.attr('src')
-            
-            # if value and rule.filter:
-            #     value = self._apply_filter(value, rule.filter)
                 
             self.logger.debug(f"提取到{rule.name}: {value}")
             return value.strip() if value else None

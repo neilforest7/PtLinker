@@ -9,7 +9,7 @@ from utils.logger import get_logger, setup_logger
 from ..base_handler import BaseCaptchaHandler
 
 class APIHandler(BaseCaptchaHandler):
-    """API验证码处理器，使用2captcha服务"""
+    """API验证码处理器, 使用2captcha服务"""
     
     def __init__(self, storage_dir: str):
         super().__init__(storage_dir)
@@ -46,12 +46,12 @@ class APIHandler(BaseCaptchaHandler):
             image_path = self._save_captcha_image(image_data, site_id)
             
             # 准备API请求参数
-            params = {
-                'numeric': 6,  # 假设是6位数字验证码
-                'min_len': 4,
-                'max_len': 8,
-                'language': 0,  # 0 = 任何语言
-            }
+            # params = {
+            #     'numeric': 6,  # 假设是6位数字验证码
+            #     'min_len': 4,
+            #     'max_len': 8,
+            #     'language': 0,  # 0 = 任何语言
+            # }
             
             # 将图片数据转换为base64字符串
             image_base64 = base64.b64encode(image_data).decode('utf-8')
@@ -60,7 +60,7 @@ class APIHandler(BaseCaptchaHandler):
             self.logger.debug("发送验证码识别请求到2captcha")
             result = self.solver.normal(
                 image_base64,
-                **params,
+                # **params,
                 timeout=self.timeout,
                 pollingInterval=self.polling_interval
             )

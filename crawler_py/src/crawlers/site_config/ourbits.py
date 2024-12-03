@@ -15,7 +15,7 @@ class OurBitsConfig(BaseSiteConfig):
                 'site_id': 'ourbits',
                 'site_url': 'https://ourbits.club',
                 'login_config': {
-                    'login_url': 'https://ourbits.club/login.php',
+                    'login_url': '/login.php',
                     'form_selector': '@action=takelogin.php',
                     'fields': {
                         'username': {
@@ -37,14 +37,14 @@ class OurBitsConfig(BaseSiteConfig):
                     },
                     'success_check': {
                         'name': 'login_result',
-                        'selector': '@class=User_Name',
+                        'selector': '@class$User_Name',
                         'type': 'text'
                     }
                 },
                 'extract_rules': [
                     {
                         'name': 'username',
-                        'selector': '@class=User_Name',
+                        'selector': '@class$User_Name',
                         'type': 'text',
                         'required': True
                     },
@@ -140,7 +140,7 @@ class OurBitsConfig(BaseSiteConfig):
                 ],
                 'checkin_config': 
                     {
-                        'checkin_url': 'https://ourbits.club/attendance.php',
+                        'checkin_url': '/attendance.php',
                         'checkin_button': {
                             'name': 'checkin_button',
                             'selector': '@href$attendance.php',

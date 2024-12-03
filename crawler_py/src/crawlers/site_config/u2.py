@@ -1,8 +1,8 @@
 from typing import Dict, Any, ClassVar
 from .base import BaseSiteConfig
 
-class HDHomeConfig(BaseSiteConfig):
-    """HDHome站点配置"""
+class U2Config(BaseSiteConfig):
+    """U2站点配置"""
     
     # 类级别的配置缓存
     _config: ClassVar[Dict[str, Any]] = None
@@ -12,11 +12,20 @@ class HDHomeConfig(BaseSiteConfig):
         """获取站点配置，使用缓存避免重复创建"""
         if cls._config is None:
             cls._config = {
-                'site_id': 'hdhome',
-                'site_url': 'https://hdhome.org',
+                'site_id': 'u2',
+                'site_url': 'https://u2.dmhy.org',
                 'login_config': {
-                    'login_url': '/login.php',
+                    'login_url': '/portal.php',
                     'form_selector': '@action=takelogin.php',
+                    'pre_login': {
+                        'actions': [
+                            {
+                                'type': 'click',
+                                'selector': '@alt=CAPTCHA Image',
+                                'wait_time': 1  # 点击后等待3秒让验证码出现
+                            }
+                        ]
+                    },
                     'fields': {
                         'username': {
                             'name': 'username',
@@ -30,22 +39,24 @@ class HDHomeConfig(BaseSiteConfig):
                             'type': 'password',
                             'required': True
                         },
-                        'ssl': {
-                            'name': 'ssl',
-                            'type': 'checkbox',
-                            'selector': '@name=ssl',
-                            'value': 'on'
-                        },
-                        'trackerssl': {
-                            'name': 'trackerssl',
-                            'type': 'checkbox',
-                            'selector': '@name=trackerssl',
-                            'value': 'on'
-                        },
                         'submit': {
-                            'name': 'submit',
-                            'selector': '@type=submit',
+                            'name': 'submit', 
+                            'selector': '@@text()^LINK@@type=button',
                         }
+                    },
+                    'captcha': {
+                        'type': 'custom',
+                        'element': {
+                            'name': 'captcha',
+                            'selector': '@src^captcha.php?sid=',
+                            'type': 'src'
+                        },
+                        'input': {
+                            'name': 'imagestring',
+                            'type': 'text',
+                            'selector': '@placeholder=CAPTCHA',
+                            'required': True
+                        },
                     },
                     'success_check': {
                         'name': 'login_result',
@@ -76,13 +87,19 @@ class HDHomeConfig(BaseSiteConfig):
                         'selector': '@tag()=table',
                         'type': 'text',
                         'need_pre_action': True,
-                        'index': 3
+                        'index': 5
                     },
                     {
                         'name': 'seeding_list_pagination',
                         'selector': '@class=nexus-pagination',
                         'type': 'text',
                         'need_pre_action': True
+                    },
+                    {
+                        'name': 'seeding_list_row',
+                        'selector': '@tag()=tr',
+                        'location': 'grand-child',
+                        'need_pre_action': True,
                     },
                     {
                         'name': 'user_class',
@@ -121,46 +138,26 @@ class HDHomeConfig(BaseSiteConfig):
                         'type': 'text'
                     },
                     {
-                        'name': 'ratio',
-                        'selector': '@text()=分享率',
-                        'location': 'next',
-                        'second_selector': '@tag()=font',
-                        'type': 'text'
-                    },
-                    {
                         'name': 'bonus',
-                        'selector': '@text()=魔力值',
-                        'location': 'next',
-                        'second_selector': '',
-                        'type': 'text',
-                    },
-                    {
-                        'name': 'seeding_score',
-                        'selector': '@text()=做种积分',
-                        'location': 'next',
-                        'second_selector': '',
-                        'type': 'text'
-                    },
-                    {
-                        'name': 'hr_count',
-                        'selector': '@title=查看HR详情',
-                        'type': 'text'
+                        'selector': '@class=ucoin-notation',
+                        'type': 'attribute',
+                        'attribute': 'title'
                     },
                     {
                         'name': 'bonus_per_hour',
-                        'selector': '@text()^你当前每小时能获取',
-                        'type': 'text',
+                        'selector': '@text():平均每次计算',
+                        'type': 'by_day',
                         'need_pre_action': True,
                         'pre_action_type': 'goto',
-                        'page_url': '/mybonus.php'
+                        'page_url': r'/mprecent.php?user={userid}'
                     },
                 ],
                 'checkin_config': 
                     {
-                        'checkin_url': '/attendance.php',
+                        'checkin_url': '/showup.php',
                         'checkin_button': {
                             'name': 'checkin_button',
-                            'selector': '@href$attendance.php',
+                            'selector': '@href=showup.php',
                         },
                         # 'success_check': {
                         #     'element':{

@@ -6,6 +6,8 @@ from typing import Any, Dict, Optional
 from urllib.parse import urljoin
 
 import DrissionPage
+import DrissionPage.errors
+from utils.url import convert_url
 from utils.logger import get_logger, setup_logger
 from utils.clouodflare_bypasser import CloudflareBypasser
 from DrissionPage import Chromium
@@ -54,10 +56,10 @@ class LoginHandler:
             tab = browser.new_tab()
             browser.activate_tab(tab)
             self.logger.debug(f"创建新标签页 - 标签页ID: {id(tab)}")
-            
+            self.login_url = convert_url(self.task_config, login_config.login_url)
             # 导航到登录页面
-            self.logger.debug(f"正在导航到登录页面: {login_config.login_url}")
-            tab.get(login_config.login_url)
+            self.logger.debug(f"正在导航到登录页面: {self.login_url}")
+            tab.get(self.login_url)
             self.logger.debug(f"页面标题: {tab.title}")
             self.logger.debug(f"页面URL: {tab.url}")
 
@@ -149,21 +151,18 @@ class LoginHandler:
 
             # 获取提交按钮
             submit_config = login_config.fields.get('submit')
-            self.logger.debug(f"------ 选择器: {submit_config.selector}")
             if not submit_config:
                 submit_config = f"{login_config.form_selector} [type=submit]"
-                self.logger.debug(f"使用默认提交按钮 - 选择器: {submit_config}")
-            if not submit_config:
-                self.logger.warning("未找到任何提交按钮")
-                return False
+                self.logger.debug(f"使用默认提交按钮: {submit_config}")
+
             submit_btn = tab.ele(submit_config.selector)
-            self.logger.debug(f"使用配置的提交按钮 - 选择器: {submit_config.selector}")
+            self.logger.debug(f"使用配置的提交按钮: {submit_config.selector}")
             if submit_btn:
-                self.logger.debug(f"找到提交按钮 - ID: {submit_btn.attr('id')}, 文本: {submit_btn.text}")
+                self.logger.debug(f"找到提交按钮: {submit_btn.text}")
                 submit_btn.click()
                 self.logger.debug("已点击提交按钮")
             else:
-                self.logger.warning(f"未找到配置的提交按钮: {submit_btn.selector}")
+                self.logger.warning(f"未找到配置的提交按钮: {submit_config.selector}")
 
             # 验证登录结果
             self.logger.debug("开始验证登录结果")
@@ -274,34 +273,16 @@ class LoginHandler:
         """验证登录是否成功"""
         try:
             self.logger.debug(f"开始验证登录状态")
-            
+            tab.wait.eles_loaded('@tag=body')
             # 1. 首先检查是否存在密码输入框（存在则说明未登录）
             if tab.ele('@type=password'):
                 self.logger.warning("页面上存在密码输入框，判定为未登录")
                 await self._check_login_error(tab)
                 return False
-                
-            # 2. 检查是否存在登出相关元素
-            logout_selectors = [
-                '@href:logout',  # 包含logout的链接
-                '@data-url:logout',  # data-url属性包含logout
-                '@onclick:logout',  # onclick事件包含logout
-                '@href:mybonus',  # 魔力值页面链接
-                '@href:usercp',  # 用户控制面板链接
-                '@lay-on:logout',  # layui的登出按钮
-                'form@action:logout',  # 登出表单
-                '@class:user-info-side',  # 用户信息侧栏
-                '#myitem'  # 我的项目链接
-            ]
             
-            for selector in logout_selectors:
-                if tab.ele(selector, timeout = 3):
-                    self.logger.debug(f"找到登录状态元素: {selector}")
-                    return True
-                    
-            # 3. 如果配置了特定的成功检查元素，也进行检查
+            # 2. 如果配置了特定的成功检查元素，也进行检查
             if success_check:
-                self.logger.debug(f"检查配置的成功标识 - 选择器: {success_check.selector}")
+                self.logger.debug(f"检查登录成功的标志: {success_check.selector}")
                 element = tab.ele(success_check.selector, timeout=3)
                 
                 if element:
@@ -314,7 +295,28 @@ class LoginHandler:
                             return True
                     else:
                         # 如果没有指定expected_text，元素存在即视为成功
-                        return True
+                        return True                
+            
+            # 3. 检查是否存在登出相关元素
+            logout_selectors = [
+                '@href$logout.php',
+                '@href:logout',  # 包含logout的链接
+                '@data-url:logout',  # data-url属性包含logout
+                '@onclick:logout',  # onclick事件包含logout
+                '@href$usercp.php',  # 用户控制面板链接
+                '@href:mybonus',  # 魔力值页面链接
+                '@lay-on:logout',  # layui的登出按钮
+                'form@action:logout',  # 登出表单
+                '@class:user-info-side',  # 用户信息侧栏
+                '#myitem'  # 我的项目链接
+            ]
+            
+            for selector in logout_selectors:
+                if tab.ele(selector, timeout = 3):
+                    self.logger.debug(f"找到登录成功的标志: {selector}")
+                    return True
+                    
+
                         
             # 4. 记录当前页面状态
             self.logger.debug(f"当前页面URL: {tab.url}")
@@ -665,6 +667,7 @@ class LoginHandler:
                     if wait_time > 0:
                         self.logger.debug(f"等待 {wait_time} 秒")
                         sleep(wait_time)
+                        
                 elif action_type == 'bypass-cf-turnstile':
                     cft = tab.ele(selector)
                     if not cft:
@@ -678,6 +681,19 @@ class LoginHandler:
                     if wait_time > 0:
                         self.logger.debug(f"等待 {wait_time} 秒")
                         sleep(wait_time)
+                        
+                elif action_type == 'wait':
+                    self.logger.debug(f"等待 {wait_time} 秒")
+                    sleep(wait_time)
+                    
+                elif action_type == 'bypass-ddg':
+                    sleep(wait_time)
+                    if selector and tab.ele(selector, timeout=3):
+                        tab.ele(selector).click()
+                    sleep(wait_time*0.2)
+                    tab.stop_load()
+                    tab.get(self.login_url)
+                    self.logger.debug(f"再次访问了登录页面: {self.task_config.login_config.login_url}")
                 else:
                     self.logger.warning(f"未知的pre-login动作类型: {action_type}")
                     

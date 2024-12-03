@@ -17,21 +17,17 @@ class CheckInHandler:
         setup_logger()
         self.logger = get_logger(name=__name__, site_id=self.task_config.site_id)
         self.logger.debug(f"初始化CheckInHandler - 任务ID: {self.task_config.task_id}, 站点ID: {self.task_config.site_id}")
-        # 验证并转换签到配置
-        # self.checkin_config = None
-        # if "checkin_config" in self.task_config:
-        #     try:
-        #         self.checkin_config = CheckInConfig(**self.task_config["checkin_config"])
-        #     except Exception as e:
-        #         self.logger.error(f"签到配置验证失败: {str(e)}")
+
 
     async def perform_checkin(self, browser: Chromium, task_config: CrawlerTaskConfig) -> None:
         """执行签到处理"""
         # 检查环境变量中的签到开关
         if not self._check_env_enabled():
-            self.logger.info(f"{self.task_config.site_id} 签到功能未在环境变量中启用")
+            self.logger.info("全局签到开关未在环境变量中打开")
             return
-            
+        if self.task_config.site_id not in os.getenv("CHECKIN_SITES", "").split(","):
+            self.logger.info(f"{self.task_config.site_id} 未在环境变量中配置签到")
+            return            
         # 检查站点配置中的签到设置，如果未配置(如frds)则不进行签到
         if not task_config.checkin_config:
             self.logger.info(f"{self.task_config.site_id} 未配置签到功能")
@@ -44,20 +40,20 @@ class CheckInHandler:
             tab = browser.new_tab()
             browser.activate_tab(tab)
             self.logger.trace(f"使用标签页 - 标签页ID: {id(tab)}")
-
-            try:
-                if await self._is_already_checked_in(tab):
-                    self.logger.success(f"{self.task_config.site_id} 今天已经签到")
-                    return
-                
-            except Exception as e:
-                self.logger.warning(f"{self.task_config.site_id} 检查签到状态时出错: {str(e)}")
-                
+            
             # 首先尝试通过访问签到URL的方式
             self.logger.info(f"开始签到流程 - URL:{checkin_config.checkin_url}")
             result = await self._try_checkin_by_url(tab, checkin_config, task_config)
             if result:
                 return result
+
+            # 中途检查是否已经签到
+            try:
+                if await self._is_already_checked_in(tab):
+                    self.logger.success(f"{self.task_config.site_id} 今天已经签到")
+                    return
+            except Exception as e:
+                self.logger.warning(f"{self.task_config.site_id} 检查签到状态时出错: {str(e)}")
                 
             # 如果URL方式失败，尝试通过点击按钮的方式
             result = await self._try_checkin_by_button(tab, checkin_config)
@@ -84,7 +80,7 @@ class CheckInHandler:
         try:
             # 在新标签页中打开签到URL
             tab.get(checkin_url)
-            
+
             if await self._is_cloudflare_present(tab):
                 self.logger.info("检测到Cloudflare验证页面")
                 if not await self._handle_cloudflare(tab):
@@ -131,15 +127,11 @@ class CheckInHandler:
                 button_config.selector,  # 配置的选择器
                 '@href$attendance.php',  # 包含attendance的链接
                 '@id:signed',  # 通用签到按钮ID
-                '@text:签到',  # 文本为"签到"的元素
-                '@text:签 到',  # 文本为"签 到"的元素
+                '@text():签到',  # 文本为"签到"的元素
+                '@text():签 到',  # 文本为"签 到"的元素
                 '@id:sign_in',  # 签到按钮ID
-                '@href:addbonus',  # 魔力值相关链接
-                '@class:dt_button@value:打卡',  # 打卡按钮
-                '@href:sign_in',  # 包含sign_in的链接
-                '@onclick:do_signin',  # 签到点击事件
-                '@id:do-attendance',  # 签到按钮ID
-                'shark-icon-button@href:attendance.php'  # 特殊签到按钮
+                '@href$action=addbonus',  # 魔力值相关链接
+                '@@class=dt_button@@value:打卡',  # 打卡按钮
             ]
             
             button = None
@@ -158,18 +150,9 @@ class CheckInHandler:
             if button.text and any(keyword in button.text for keyword in already_keywords):
                 self.logger.info(f"{self.task_config.site_id} [按钮方式] 今天已经签到")
                 return "already"
-
-            # 检查按钮是否可见和可点击
-            if not button.is_displayed():
-                self.logger.warning(f"{self.task_config.site_id} 签到按钮不可见")
-                return
-            if not button.is_enabled():
-                self.logger.warning(f"{self.task_config.site_id} 签到按钮不可点击")
-                return
             
             # 点击按钮并等待页面变化
             button.click()
-            tab.wait.load_complete()
             
             if await self._is_cloudflare_present(tab):
                 self.logger.info("检测到Cloudflare验证页面")
@@ -203,9 +186,10 @@ class CheckInHandler:
         """
         try:
             checked_selectors = [
-                '@text:签到已得',
-                '@text:今日已签',
-                '@text:今天已签到',
+                '@text():签到已得',
+                '@text():今日已签',
+                '@text():今天已签到',
+                '@value=已经打卡',
                 '@class:already-signed',
                 '@class:signed-in'
             ]
@@ -217,17 +201,15 @@ class CheckInHandler:
                     
             # 检查各种可能表示未签到的元素
             unchecked_selectors = [
-                '@href$attendance.php',  # 包含attendance的链接
+                '@href$attendance.php',
+                '@value=每日打卡',  # 包含attendance的链接
                 '@id:signed',  # 签到按钮ID
                 '@text:签到',  # 文本为"签到"的元素
                 '@text:签 到',  # 文本为"签 到"的元素
                 '@id:sign_in',  # 签到按钮ID
-                '@href:addbonus',  # 魔力值相关链接
-                '@class:dt_button@value:打卡',  # 打卡按钮
-                '@href:sign_in',  # 包含sign_in的链接
-                '@onclick:do_signin',  # 签到点击事件
-                '@id:do-attendance',  # 签到按钮ID
-                'shark-icon-button@href:attendance.php'  # 特殊签到按钮
+                '@href$addbonus',
+                '@text():回答按钮点击时即提交',  # 打卡按钮
+                # 魔力值相关链接
             ]
             
             # 如果找到任何一个未签到的元素，说明还没签到
@@ -236,8 +218,8 @@ class CheckInHandler:
                     self.logger.debug(f"找到未签到标识: {selector}")
                     return False
                 
-            self.logger.debug(f"{self.task_config.site_id} 未发现未签到标识, 默认已签到")
-            return True
+            self.logger.debug(f"{self.task_config.site_id} 未发现未签到标识")
+            return False
             
         except Exception as e:
             self.logger.error(f"检查签到状态时出错: {str(e)}")
@@ -260,35 +242,37 @@ class CheckInHandler:
         try:
             # 2. 检查常见的签到成功标识
             success_selectors = [
-                '@text:签到成功',
-                '@text:已签到',
-                '@text:今天已经签到',
-                '@text:签到已得',
-                '@text:已经打卡',
-                '@text:打卡成功',
+                '@text():签到成功',
+                '@text():已签到',
+                '@text():今天已经签到',
+                '@text():签到已得',
+                '@text():已经打卡',
+                '@value=已经打卡',
+                '@text():打卡成功',
                 '@class:signed',
                 '@class:checked',
                 '@class:success'
             ]
             
             for selector in success_selectors:
-                element = tab.ele(selector)
+                element = tab.ele(selector, timeout=2)
                 if element:
                     self.logger.debug(f"找到通用成功标识: {selector}")
                     return "success"
                     
             # 3. 检查常见的已签到标识
             already_selectors = [
-                '@text:今日已签',
-                '@text:今天已签到',
-                '@text:已经签到',
-                '@text:请明天再来',
+                '@text():今日已签',
+                '@text():今天已签到',
+                '@text():已经签到',
+                '@text():请明天再来',
+                '@value=已经打卡',
                 '@class:already-signed',
                 '@class:signed-in'
             ]
             
             for selector in already_selectors:
-                element = tab.ele(selector)
+                element = tab.ele(selector, timeout=2)
                 if element:
                     self.logger.debug(f"找到通用已签到标识: {selector}")
                     return "already"
@@ -297,14 +281,15 @@ class CheckInHandler:
             error_selectors = [
                 '@text:签到失败',
                 '@text:出错',
-                '@text:错误',
+                '@text():错误',
+                '@text():回答按钮点击时即提交',
                 '@class:error',
                 '@class:fail',
                 '@class:failed'
             ]
             
             for selector in error_selectors:
-                element = tab.ele(selector)
+                element = tab.ele(selector, timeout=2)
                 if element:
                     self.logger.debug(f"找到通用错误标识: {selector}")
                     return "error"
@@ -335,16 +320,13 @@ class CheckInHandler:
                 cf_bypasser = CloudflareBypasser(tab)
                 cf_bypasser.click_verification_button()
                 self.logger.debug("点击了验证码按钮")
-                tab.wait.load_complete()
                 # 递归检查结果
                 return await self._check_checkin_result(tab, checkin_config)
                 
             # 6. 如果都没找到，记录页面状态
-            self.logger.warning(f"未找到任何已知的结果标识")
+            self.logger.debug(f"未找到任何已知的结果标识")
             self.logger.debug(f"当前页面URL: {tab.url}")
-            self.logger.debug(f"当前页面标题: {tab.title}")
-            if tab.ele('body'):
-                self.logger.debug(f"页面文本: {tab.ele('body').text[:200]}...")  # 只记录前200个字符
+            self.logger.debug(f"当前页面标题: {tab.title}") # 只记录前200个字符
                 
             return "error"
                 
@@ -354,13 +336,7 @@ class CheckInHandler:
             return "error"
             
     async def _check_env_enabled(self) -> bool:
-        """
-        检查环境变量中的签到开关
-        
-        Returns:
-            bool: 是否启用签到
-        """
-        # 检查全局签到开关
+        """检查环境变量中的签到开关"""
         global_enabled = os.getenv("ENABLE_CHECKIN", "false").lower() == "true"
         if not global_enabled:
             return False
@@ -383,11 +359,16 @@ class CheckInHandler:
             if tab.ele('script[src*="challenge-platform"]') or tab.ele('@div#challenge-error-text'):
                 return True
 
+            if CloudflareBypasser(tab).is_bypassed():
+                return False
+            
             # 检查页面文本中是否包含 Cloudflare 验证相关提示
             body_text = tab.ele('@tag()=body').text
             if "Checking your browser before accessing" in body_text or "Verify you are human" in body_text:
                 return True
+            
             return False
+        
         except DrissionPage.errors.ElementNotFoundError:
             self.logger.debug("未找到Cloudflare页面的元素")
             return False
@@ -408,14 +389,8 @@ class CheckInHandler:
 
             # 检查是否需要处理Cloudflare验证
             self.logger.info("等待Cloudflare验证完成...")
-            # sleep(160)
-            tab.wait.load_start()
-            if not await self._is_cloudflare_present(tab):
-                self.logger.success("Cloudflare验证已完成")
-                return True
-            else:
-                self.logger.error("Cloudflare验证超时")
-                return False
+            tab.wait.title_change("Just a moment...", exclude = True)
+            return cf_bypasser.is_bypassed()
 
         except Exception as e:
             self.logger.error("Cloudflare验证处理出错", exc_info=True)

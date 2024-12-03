@@ -37,7 +37,7 @@ class CloudflareBypasser:
                 if "turnstile" in ele.attrs["name"] and ele.attrs["type"] == "hidden":
                     button = ele.parent().shadow_root.child()("tag:body").shadow_root("tag:input")
                     break
-            
+                
         if button:
             return button
         else:

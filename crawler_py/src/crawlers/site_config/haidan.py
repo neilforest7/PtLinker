@@ -1,8 +1,8 @@
 from typing import Dict, Any, ClassVar
 from .base import BaseSiteConfig
 
-class HDHomeConfig(BaseSiteConfig):
-    """HDHome站点配置"""
+class HaidanConfig(BaseSiteConfig):
+    """海胆站点配置"""
     
     # 类级别的配置缓存
     _config: ClassVar[Dict[str, Any]] = None
@@ -12,8 +12,8 @@ class HDHomeConfig(BaseSiteConfig):
         """获取站点配置，使用缓存避免重复创建"""
         if cls._config is None:
             cls._config = {
-                'site_id': 'hdhome',
-                'site_url': 'https://hdhome.org',
+                'site_id': 'haidan',
+                'site_url': 'https://www.haidan.video',
                 'login_config': {
                     'login_url': '/login.php',
                     'form_selector': '@action=takelogin.php',
@@ -30,20 +30,8 @@ class HDHomeConfig(BaseSiteConfig):
                             'type': 'password',
                             'required': True
                         },
-                        'ssl': {
-                            'name': 'ssl',
-                            'type': 'checkbox',
-                            'selector': '@name=ssl',
-                            'value': 'on'
-                        },
-                        'trackerssl': {
-                            'name': 'trackerssl',
-                            'type': 'checkbox',
-                            'selector': '@name=trackerssl',
-                            'value': 'on'
-                        },
                         'submit': {
-                            'name': 'submit',
+                            'name': 'submit', 
                             'selector': '@type=submit',
                         }
                     },
@@ -136,14 +124,9 @@ class HDHomeConfig(BaseSiteConfig):
                     },
                     {
                         'name': 'seeding_score',
-                        'selector': '@text()=做种积分',
+                        'selector': '@text()=等级积分',
                         'location': 'next',
                         'second_selector': '',
-                        'type': 'text'
-                    },
-                    {
-                        'name': 'hr_count',
-                        'selector': '@title=查看HR详情',
                         'type': 'text'
                     },
                     {
@@ -157,10 +140,9 @@ class HDHomeConfig(BaseSiteConfig):
                 ],
                 'checkin_config': 
                     {
-                        'checkin_url': '/attendance.php',
                         'checkin_button': {
                             'name': 'checkin_button',
-                            'selector': '@href$attendance.php',
+                            'selector': '@value=每日打卡',
                         },
                         # 'success_check': {
                         #     'element':{

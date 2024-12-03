@@ -1,18 +1,21 @@
 from urllib.parse import urljoin
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from models.crawler import CrawlerTaskConfig
 
-def convert_url(task_config: CrawlerTaskConfig, url: str) -> str:
+def convert_url(task_config: CrawlerTaskConfig, url: str, uid: Optional[str] = None) -> str:
     """
     将相对URL转换为绝对URL
     
     Args:
         task_config: 爬虫任务配置对象
         url: 原始URL
-        
+        uid: 用户ID
     Returns:
         str: 转换后的URL
     """
+    if uid:
+        url = url.replace('{userid}', uid)
+    
     if not url:
         return url
         

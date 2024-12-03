@@ -1,8 +1,10 @@
-from typing import Dict, Any, ClassVar
+from typing import Any, ClassVar, Dict
+
 from .base import BaseSiteConfig
 
-class HDHomeConfig(BaseSiteConfig):
-    """HDHome站点配置"""
+
+class RousiConfig(BaseSiteConfig):
+    """Rousi站点配置"""
     
     # 类级别的配置缓存
     _config: ClassVar[Dict[str, Any]] = None
@@ -12,8 +14,8 @@ class HDHomeConfig(BaseSiteConfig):
         """获取站点配置，使用缓存避免重复创建"""
         if cls._config is None:
             cls._config = {
-                'site_id': 'hdhome',
-                'site_url': 'https://hdhome.org',
+                'site_id': 'rousi',
+                'site_url': 'https://rousi.zip',
                 'login_config': {
                     'login_url': '/login.php',
                     'form_selector': '@action=takelogin.php',
@@ -30,22 +32,24 @@ class HDHomeConfig(BaseSiteConfig):
                             'type': 'password',
                             'required': True
                         },
-                        'ssl': {
-                            'name': 'ssl',
-                            'type': 'checkbox',
-                            'selector': '@name=ssl',
-                            'value': 'on'
-                        },
-                        'trackerssl': {
-                            'name': 'trackerssl',
-                            'type': 'checkbox',
-                            'selector': '@name=trackerssl',
-                            'value': 'on'
-                        },
                         'submit': {
-                            'name': 'submit',
+                            'name': 'submit', 
                             'selector': '@type=submit',
                         }
+                    },
+                    'captcha': {
+                        'type': 'custom',
+                        'element': {
+                            'name': 'captcha',
+                            'selector': '@alt=CAPTCHA',
+                            'type': 'src'
+                        },
+                        'input': {
+                            'name': 'imagestring',
+                            'type': 'text',
+                            'selector': '@name=imagestring',
+                            'required': True
+                        },
                     },
                     'success_check': {
                         'name': 'login_result',
@@ -76,7 +80,7 @@ class HDHomeConfig(BaseSiteConfig):
                         'selector': '@tag()=table',
                         'type': 'text',
                         'need_pre_action': True,
-                        'index': 3
+                        'index': 4
                     },
                     {
                         'name': 'seeding_list_pagination',
@@ -142,11 +146,6 @@ class HDHomeConfig(BaseSiteConfig):
                         'type': 'text'
                     },
                     {
-                        'name': 'hr_count',
-                        'selector': '@title=查看HR详情',
-                        'type': 'text'
-                    },
-                    {
                         'name': 'bonus_per_hour',
                         'selector': '@text()^你当前每小时能获取',
                         'type': 'text',
@@ -162,18 +161,6 @@ class HDHomeConfig(BaseSiteConfig):
                             'name': 'checkin_button',
                             'selector': '@href$attendance.php',
                         },
-                        # 'success_check': {
-                        #     'element':{
-                        #         'name': 'checkin_result',
-                        #         'selector': '@tag()=h2',
-                        #         'type': 'text'
-                        #     },
-                        #     'sign':{
-                        #         'success': '签到成功',
-                        #         'already': '今天已经签到过了',
-                        #         'error': '签到失败',
-                        #     }
-                        # }
                     }
             }
             

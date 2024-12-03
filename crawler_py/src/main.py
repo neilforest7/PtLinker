@@ -13,6 +13,16 @@ from crawlers.site_config.hdfans import HDFansConfig
 from crawlers.site_config.ubits import UBitsConfig
 from crawlers.site_config.frds import FrdsConfig
 from crawlers.site_config.hdhome import HDHomeConfig
+from crawlers.site_config.audiences import AudiencesConfig
+from crawlers.site_config.rousi import RousiConfig
+from crawlers.site_config.kylin import KylinConfig
+from crawlers.site_config.hdatoms import HdatomsConfig
+from crawlers.site_config.haidan import HaidanConfig
+from crawlers.site_config.nicept import NicePTConfig
+from crawlers.site_config.btschool import BTSchoolConfig
+from crawlers.site_config.carpt import CarptConfig
+from crawlers.site_config.zmpt import ZMPTConfig
+from crawlers.site_config.u2 import U2Config
 from dotenv import load_dotenv
 from DrissionPage import ChromiumOptions
 from utils.logger import get_logger, setup_logger
@@ -25,6 +35,16 @@ SITE_CONFIGS = {
     'hdfans': HDFansConfig,
     'frds': FrdsConfig,
     'hdhome': HDHomeConfig,
+    'audiences': AudiencesConfig,
+    'rousi': RousiConfig,
+    'kylin': KylinConfig,
+    'hdatoms': HdatomsConfig,
+    'haidan': HaidanConfig,
+    'nicept': NicePTConfig,
+    'btschool': BTSchoolConfig,
+    'carpt': CarptConfig,
+    'zmpt': ZMPTConfig,
+    'u2': U2Config,
     # 其他站点配置可以在这里添加
 }
 

@@ -248,10 +248,11 @@ class BaseCrawler(ABC):
     #     return data
 
     def _convert_size_to_gb(self, size_str: str) -> float:
-        """将带单位的数据量字符串转换为以GB为单位的float值
+        """
+        将字符串形式的大小转换为GB为单位的浮点数
         
         Args:
-            size_str: 包含数字和单位的字符串，如 "1.5 TB", "500 MB", "2.3GB"
+            size_str: 大小字符串，如 "1.5 TB", "800 MB", "2.3 GB", "1.5"
             
         Returns:
             float: 转换后的GB值
@@ -262,14 +263,18 @@ class BaseCrawler(ABC):
             >>> _convert_size_to_gb("2.3 GB")  # 返回 2.3
         """
         try:
-            # 提取数字和单位
-            size_match = re.search(r'([\d.]+)\s*(TB|GB|MB|kb|b)', size_str, re.IGNORECASE)
+            # 移除多余空格并转换为大写以统一处理
+            size_str = size_str.strip().upper()
+            
+            # 使用正则表达式匹配数字和单位
+            size_match = re.search(r'([\d.]+)\s*([TGMK]B|B)?', size_str, re.IGNORECASE)
             if not size_match:
                 self.logger.warning(f"无法解析的数据量格式: {size_str}")
                 return 0.0
-                
+            
             size_num = float(size_match.group(1))
-            size_unit = size_match.group(2).upper()
+            # 如果没有匹配到单位，默认为GB
+            size_unit = size_match.group(2) if size_match.group(2) else 'GB'
             
             # 转换为GB
             if size_unit == 'TB':
@@ -283,11 +288,10 @@ class BaseCrawler(ABC):
             elif size_unit == 'B':
                 return size_num / (1024 * 1024 * 1024)
             else:
-                self.logger.warning(f"未知的数据量单位: {size_unit}")
-                return 0.0
-                
+                return size_num  # 未知单位默认为GB
+            
         except Exception as e:
-            self.logger.error(f"转换数据量失败: {str(e)}, 原始字符串: {size_str}")
+            self.logger.error(f"转换数据量失败: {size_str}, 错误: {str(e)}")
             return 0.0
 
     def _clean_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
@@ -330,6 +334,10 @@ class BaseCrawler(ABC):
                 ratio_match = re.search(r'([\d.]+)', data['ratio'])
                 if ratio_match:
                     cleaned_data['ratio'] = float(ratio_match.group(1))
+            # 如果没有分享率数据，则根据上传下载计算分享率
+            elif cleaned_data.get('upload', None) and cleaned_data.get('download', None):
+                cleaned_data['ratio'] = cleaned_data.get('upload', None)/cleaned_data.get('download', None)
+            
             # 清洗魔力值（转换为float，处理带逗号的数值）
             if 'bonus' in data:
                 bonus_str = data['bonus'].replace(',', '')
@@ -343,6 +351,7 @@ class BaseCrawler(ABC):
                 score_match = re.search(r'([\d.]+)', score_str)
                 if score_match:
                     cleaned_data['seeding_score'] = float(score_match.group(1))
+            
             # 清洗HR数量（转换为int）
             if 'hr_count' in data:
                 hr_match = re.search(r'(\d+)', data['hr_count'])
