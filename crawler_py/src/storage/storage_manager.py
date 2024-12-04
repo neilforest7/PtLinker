@@ -73,3 +73,15 @@ class StorageManager:
     async def get_site_status(self, site_id: str, force_update: bool = False) -> Optional[SiteRunStatus]:
         """获取单个站点的状态"""
         return await self.site_status_manager.get_site_status(site_id)
+
+
+def get_storage_manager() -> StorageManager:
+    """获取存储管理器实例"""
+    storage_config = {
+        'storage_type': 'file',
+        'base_dir': 'storage',
+        'compress': False,
+        'backup': True,
+        'max_backups': 3,
+    }
+    return StorageManager(storage_config)

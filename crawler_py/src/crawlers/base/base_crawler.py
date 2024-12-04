@@ -68,68 +68,6 @@ class BaseCrawler(ABC):
         finally:
             # 清理资源
             await self._cleanup()
-            
-    @abstractmethod
-    def _get_site_id(self) -> str:
-        """返回站点ID"""
-        pass
-
-    # async def start(self):
-    #     """启动爬虫"""
-    #     try:
-    #         # 创建浏览器实例
-    #         self.browser = Chromium(self.chrome_options)
-    #         self.logger.debug(f"创建新的浏览器实例，端口: {self.chrome_options}")
-            
-    #         try:
-
-    #             # 检查登录状态并处理
-    #             if not os.getenv('FRESH_LOGIN', 'false').lower() == 'true':
-    #                 # 如果有browser_manager，尝试恢复浏览器状态
-    #                 if self.browser_manager and await self._restore_browser_state(self.browser):
-    #                     self.logger.success("成功恢复登录状态")
-    #                 else:
-    #                     self.logger.info("无法恢复登录状态，执行登录流程")
-    #                     if not await self.login_handler.perform_login(self.browser, self.task_config.login_config):
-    #                         raise Exception("登录失败")
-    #                     elif self.browser_manager: # 如果有browser_manager，保存新的登录状态
-    #                         await self._save_browser_state(self.browser)
-    #             else:
-    #                 self.logger.info("FRESH_LOGIN=true, 执行从头登录流程")
-    #                 if not await self.login_handler.perform_login(self.browser, self.task_config.login_config):
-    #                     raise Exception("登录失败")
-    #                 # 如果有browser_manager，保存新的登录状态
-    #                 elif self.browser_manager:
-    #                     await self._save_browser_state(self.browser)
-                
-    #             # 开始爬取
-    #             await self._crawl(self.browser)                
-                
-    #             # 执行签到
-    #             try:
-    #                 self.logger.info("开始执行签到")
-    #                 await self.checkin_handler.perform_checkin(self.browser, self.task_config)
-    #             except Exception as e:
-    #                 self.logger.error(f"签到失败: {str(e)}")
-                
-    #         finally:
-    #             # 如果有browser_manager，保存最终的浏览器状态
-    #             if self.browser_manager:
-    #                 await self._save_browser_state(self.browser)
-    #             # 清理浏览器资源
-    #             if self.browser:
-    #                 self.logger.debug("关闭浏览器实例")
-    #                 self.browser.quit()
-
-    #        except Exception as e:
-    #            error_info = {
-    #                'type': 'CRAWLER_ERROR',
-    #                'message': str(e),
-    #                'timestamp': datetime.now().isoformat(),
-    #                'traceback': traceback.format_exc()
-    #            }
-    #            await self._save_error(error_info)
-    #            raise e
 
     async def _init_browser(self) -> None:
         """初始化浏览器"""
@@ -138,34 +76,56 @@ class BaseCrawler(ABC):
             browser = await self._create_browser()
             self.logger.debug("浏览器实例创建成功")
             
-            # 检查登录状态
-            if not os.getenv('FRESH_LOGIN', 'false').lower() == 'true':
-                if await self._restore_browser_state(browser):
-                    tab = browser.new_tab()
-                    tab.set.load_mode.eager()
-                    tab.get(self.base_url)
-                    self.logger.info("已加载登录状态, 浏览器初始化完成")
-
+            MAX_RETRY = 3
+            RETRY_COUNT = 0
+            while RETRY_COUNT < MAX_RETRY:
+                if RETRY_COUNT > 0:
+                    self.logger.info(f"第 {RETRY_COUNT} 次尝试恢复登录状态")
+                
+                # 检查登录状态
+                if not (os.getenv('FRESH_LOGIN', 'false').lower() == 'true'):
+                    if await self._restore_browser_state(browser) and RETRY_COUNT < 2:
+                        tab = browser.new_tab()
+                        tab.set.load_mode.eager()
+                        tab.get(self.base_url)
+                        # 检查登录状态
+                        is_logged_in = await self.login_handler.check_login(browser)
+                        if not is_logged_in:
+                            login_success = await self.login_handler.perform_login(browser, self.task_config.login_config)
+                            if not login_success:
+                                self.logger.error(f"第 {RETRY_COUNT+1} 次登录失败，清除登录状态并重新登录...")
+                                await self.browser_manager.clear_state(self.site_id)
+                                RETRY_COUNT += 1
+                                continue
+                            else:
+                                self.logger.info("登录成功")
+                                break
+                        else:
+                            self.logger.info("恢复登录状态成功")
+                            break
+                    else:
+                        self.logger.info("未加载到登录状态，开始登录流程")
+                        # 执行登录
+                        login_success = await self.login_handler.perform_login(browser, self.task_config.login_config)
+                        if not login_success:
+                            self.logger.error(f"第 {RETRY_COUNT+1} 次登录失败，清除登录状态并重新登录...")
+                            await self.browser_manager.clear_state(self.site_id)
+                            RETRY_COUNT += 1
+                            continue
+                        else:
+                            self.logger.info("登录成功")
+                            break
                 else:
-                    # is_logged_in = await self.login_handler.check_login(browser)
-                    # if not is_logged_in or :
-                    self.logger.info("未加载到登录状态，开始登录流程")
-                    # 执行登录
+                    self.logger.info("环境变量强制重新登录")
                     login_success = await self.login_handler.perform_login(browser, self.task_config.login_config)
                     if not login_success:
-                        self.logger.error("登录失败，程序将退出")
-                        raise Exception("登录失败")
+                        self.logger.error(f"第 {RETRY_COUNT+1} 次登录失败，清除登录状态并重新登录...")
+                        await self.browser_manager.clear_state(self.site_id)
+                        RETRY_COUNT += 1
+                        continue
                     else:
                         self.logger.info("登录成功")
-
-            else:
-                self.logger.info("环境变量强制重新登录")
-                login_success = await self.login_handler.perform_login(browser, self.task_config.login_config)
-                if not login_success:
-                    self.logger.error("登录失败，程序将退出")
-                    raise Exception("登录失败")
-                else:
-                    self.logger.info("登录成功")
+                        break
                 
             # 保存浏览器实例
             self.browser = browser
@@ -305,7 +265,14 @@ class BaseCrawler(ABC):
             self.logger.debug("错误详情:", exc_info=True)
 
     async def _restore_browser_state(self, browser: Chromium) -> bool:
-        """恢复浏览器状态"""
+        """恢复浏览器状态
+        
+        Args:
+            browser: 浏览器实例
+            
+        Returns:
+            bool: 状态恢复是否成功
+        """
         try:
             # 获取浏览器状态
             browser_state = await self.browser_manager.restore_state(self.site_id)
@@ -541,4 +508,9 @@ class BaseCrawler(ABC):
     @abstractmethod
     async def _checkin(self, browser: Chromium):
         """执行签到"""
+        pass
+            
+    @abstractmethod
+    def _get_site_id(self) -> str:
+        """返回站点ID"""
         pass

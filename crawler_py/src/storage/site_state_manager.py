@@ -51,8 +51,8 @@ class SiteStatusManager:
             summary.last_updated = int(datetime.now().timestamp())
             
             # 保存汇总文件
-            await self.storage.save(summary.dict(), summary_path)
-            self.logger.info(f"已更新站点 {site_id} 的状态")
+            await self.storage.save(summary.model_dump(), summary_path)
+            self.logger.debug(f"已更新站点 {site_id} 的状态")
             
         except Exception as e:
             self.logger.error(f"Error updating site status for {site_id}: {str(e)}")

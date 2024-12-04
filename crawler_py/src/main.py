@@ -6,7 +6,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-# from crawlers.site_config import SITE_CONFIGS
 from crawlers.site.site_crawler import SiteCrawler
 from crawlers.site_config.audiences import AudiencesConfig
 from crawlers.site_config.btschool import BTSchoolConfig
@@ -27,7 +26,7 @@ from crawlers.site_config.zmpt import ZMPTConfig
 from dotenv import load_dotenv
 from DrissionPage import ChromiumOptions
 from storage.browser_state_manager import BrowserStateManager
-from storage.storage_manager import StorageManager
+from storage.storage_manager import get_storage_manager
 from utils.logger import get_logger, setup_logger
 
 # 站点配置映射
@@ -53,11 +52,11 @@ SITE_CONFIGS = {
 
 def init_drissionpage():
     """初始化DrissionPage配置"""
-    chrome_path = os.getenv('CHROME_PATH')
+    setup_logger()
     main_logger = get_logger(__name__, "Main")
+    chrome_path = os.getenv('CHROME_PATH')
     if chrome_path and Path(chrome_path).exists():
         try:
-            main_logger = get_logger(__name__, "Main")
             main_logger.info(f"设置Chrome路径: {chrome_path}")
             ChromiumOptions().set_browser_path(chrome_path).save()
             return True
@@ -67,19 +66,9 @@ def init_drissionpage():
     main_logger.warning(f"Chrome路径无效或不存在: {chrome_path}")
     return False
 
-def get_storage_manager() -> StorageManager:
-    """获取存储管理器实例"""
-    storage_config = {
-        'storage_type': 'file',
-        'base_dir': 'storage',
-        'compress': False,
-        'backup': True,
-        'max_backups': 3,
-    }
-    return StorageManager(storage_config)
-
 def run_crawler(site: str, task_config: dict):
     """在独立进程中运行爬虫"""
+    setup_logger()
     crawler_logger = get_logger(__name__, site_id=site)
     try:
         crawler_logger.info(f"开始爬取 {site} 站点数据...")

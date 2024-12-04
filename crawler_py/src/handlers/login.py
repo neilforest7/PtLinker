@@ -260,7 +260,7 @@ class LoginHandler:
             self.logger.debug(f"错误详情: {type(e).__name__}")
             raise
         
-    async def check_login(self, browser: Chromium) -> bool:
+    async def check_login(self, browser: Chromium, simple_check: Optional[bool] = False) -> bool:
         """检查是否已登录（公共接口）"""
         try:
             # 如果有browser_manager，先检查登录状态
@@ -276,8 +276,12 @@ class LoginHandler:
             if not tab:
                 return False
                 
-            # 使用verify_login的逻辑检查登录状态
-            return await self._verify_login(tab, None)
+            if not simple_check:
+                # 默认检查，使用verify_login的逻辑检查登录状态
+                return await self._verify_login(tab, None)
+            else:
+                # 简单检查，只要存在，即认为已登录
+                return True
             
         except Exception as e:
             self.logger.error(f"检查登录状态时发生错误: {str(e)}")

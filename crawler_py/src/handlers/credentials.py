@@ -9,7 +9,7 @@ from utils.logger import get_logger
 
 class CredentialsManager:
     def __init__(self):
-        self.logger = get_logger(__name__)
+        self.logger = get_logger(__name__, "Crdntial")
         self.credentials_file = Path(os.getenv('CREDENTIALS_PATH', 'config/credentials.json'))
         self._credentials: Dict = {}
         self._load_credentials()
