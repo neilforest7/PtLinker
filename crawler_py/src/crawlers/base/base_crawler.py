@@ -76,7 +76,7 @@ class BaseCrawler(ABC):
             browser = await self._create_browser()
             self.logger.debug("浏览器实例创建成功")
             
-            MAX_RETRY = 3
+            MAX_RETRY = int(os.getenv('LOGIN_MAX_RETRY_COUNT', 3))
             RETRY_COUNT = 0
             while RETRY_COUNT < MAX_RETRY:
                 if RETRY_COUNT > 0:

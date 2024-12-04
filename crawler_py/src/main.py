@@ -23,6 +23,8 @@ from crawlers.site_config.rousi import RousiConfig
 from crawlers.site_config.u2 import U2Config
 from crawlers.site_config.ubits import UBitsConfig
 from crawlers.site_config.zmpt import ZMPTConfig
+from crawlers.site_config.iloli import IloliConfig
+from crawlers.site_config.hdpt import HdptConfig
 from dotenv import load_dotenv
 from DrissionPage import ChromiumOptions
 from storage.browser_state_manager import BrowserStateManager
@@ -47,6 +49,8 @@ SITE_CONFIGS = {
     'carpt': CarptConfig,
     'zmpt': ZMPTConfig,
     'u2': U2Config,
+    'iloli': IloliConfig,
+    'hdpt': HdptConfig,
     # 其他站点配置可以在这里添加
 }
 
