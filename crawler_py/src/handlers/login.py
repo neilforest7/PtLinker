@@ -142,17 +142,18 @@ class LoginHandler:
             # 获取提交按钮
             submit_config = login_config.fields.get('submit')
             if not submit_config:
-                submit_config = f"{login_config.form_selector} [type=submit]"
-                self.logger.debug(f"使用默认提交按钮: {submit_config}")
-
-            submit_btn = tab.ele(submit_config.selector)
-            self.logger.debug(f"使用配置的提交按钮: {submit_config.selector}")
-            if submit_btn:
-                self.logger.debug(f"找到提交按钮: {submit_btn.text}")
-                submit_btn.click()
-                self.logger.debug("已点击提交按钮")
+                self.logger.trace(f"使用默认提交按钮: '@type=submit'")
+                submit_btn = tab.ele('@type=submit')
             else:
-                self.logger.warning(f"未找到配置的提交按钮: {submit_config.selector}")
+                self.logger.trace(f"使用配置的提交按钮: {submit_config.selector}")
+                submit_btn = tab.ele(submit_config.selector)
+
+            if submit_btn:
+                self.logger.debug(f"点击登录按钮: {submit_btn.text}")
+                submit_btn.click()
+                self.logger.trace("已点击登录按钮")
+            else:
+                self.logger.warning(f"未找到配置的登录按钮: {submit_config.selector}")
 
             # 验证登录结果
             self.logger.debug("开始验证登录结果")
