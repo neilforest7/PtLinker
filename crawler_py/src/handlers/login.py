@@ -7,33 +7,23 @@ from urllib.parse import urljoin
 
 import DrissionPage
 import DrissionPage.errors
-from utils.url import convert_url
-from utils.logger import get_logger, setup_logger
-from utils.clouodflare_bypasser import CloudflareBypasser
 from DrissionPage import Chromium
 from models.crawler import CrawlerTaskConfig, LoginConfig, WebElement
 from services.captcha.captcha_service import CaptchaService
-from storage.storage_manager import StorageManager
+from storage.browser_state_manager import BrowserStateManager
+from utils.clouodflare_bypasser import CloudflareBypasser
+from utils.logger import get_logger, setup_logger
+from utils.url import convert_url
 
 
 class LoginHandler:
-    def __init__(self, task_config: CrawlerTaskConfig):
+    def __init__(self, task_config: CrawlerTaskConfig, browser_manager: Optional[BrowserStateManager] = None):
         self.task_config = task_config
         setup_logger()
         self.logger = get_logger(name=__name__, site_id=task_config.site_id)
         self.logger.debug(f"初始化LoginHandler - 任务ID: {task_config.task_id}, 站点ID: {task_config.site_id}")
         self.captcha_service = CaptchaService()
-        
-        # 初始化站点状态存储（cookies等）
-        state_storage_config = {
-            'type': 'file',
-            'base_dir': f"storage/state/{task_config.site_id}",
-            'compress': False,  # cookies等状态数据不压缩，方便读取
-            'backup': True,
-            'max_backups': 5  # 保留更多的状态备份
-        }
-        self.logger.debug(f"初始化状态存储 - 配置: {state_storage_config}")
-        self.state_storage = StorageManager(state_storage_config)
+        self.browser_manager = browser_manager
 
     async def perform_login(self, browser: Chromium, login_config: LoginConfig) -> bool:
         """执行登录流程"""
@@ -83,7 +73,7 @@ class LoginHandler:
                         self.logger.error("Cloudflare验证失败")
                         return False
                     # 验证通过后重新检查登录表单
-                    form = tab.ele(login_config.form_selector, timeout=10)
+                    form = tab.ele(login_config.form_selector, timeout=5)
                     if not form:
                         self.logger.error(f"登录表单未找到 - 选择器: {login_config.form_selector}")
                         raise Exception("登录表单未找到")
@@ -169,16 +159,17 @@ class LoginHandler:
             success = await self._verify_login(tab, login_config.success_check)
             
             if success:
-                self.logger.success("登录成功，准备保存浏览器状态")
-                await self._save_browser_state(browser)
+                self.logger.success("登录成功")
                 # 关闭标签页
-                self.logger.debug("正在关闭登录标签页")
-                tab.close()
-                return success
+                # self.logger.debug("正在关闭登录标签页")
+                # tab.close()
+                await self._invoke_login_state(is_logged_in=True)
+                return True
             else:
                 self.logger.error("登录失败 - 未找到成功登录的标识")
                 self.logger.debug(f"当前页面URL: {tab.url}")
                 self.logger.debug(f"当前页面标题: {tab.title}")
+                await self._invoke_login_state(is_logged_in=False)
                 return False
         
         except DrissionPage.errors.ElementNotFoundError as e:
@@ -268,72 +259,147 @@ class LoginHandler:
             self.logger.error("验证码处理失败", exc_info=True)
             self.logger.debug(f"错误详情: {type(e).__name__}")
             raise
+        
+    async def check_login(self, browser: Chromium) -> bool:
+        """检查是否已登录（公共接口）"""
+        try:
+            # 如果有browser_manager，先检查登录状态
+            if self.browser_manager:
+                browser_state = await self.browser_manager.restore_state(self.task_config.site_id)
+                self.logger.trace(f"browser_state: {browser_state}")
+                self.logger.trace(f"browser_state.login_state: {browser_state.login_state}")
+                if browser_state and browser_state.login_state.is_logged_in:
+                    return True
+            
+            # 获取当前标签页
+            tab = browser.latest_tab
+            if not tab:
+                return False
+                
+            # 使用verify_login的逻辑检查登录状态
+            return await self._verify_login(tab, None)
+            
+        except Exception as e:
+            self.logger.error(f"检查登录状态时发生错误: {str(e)}")
+            return False
 
-    async def _verify_login(self, tab, success_check: WebElement) -> bool:
-        """验证登录是否成功"""
+    async def _verify_login(self, tab, success_check: Optional[WebElement] = None) -> bool:
+        """验证登录是否成功（内部接口）"""
         try:
             self.logger.debug(f"开始验证登录状态")
-            tab.wait.eles_loaded('@tag=body')
+            # tab.wait.eles_loaded('@tag=body')
+            
+            # 0. 检查最明显的登录成功标志
+            if tab.ele('@href^logout', timeout=1):
+                self.logger.debug("找到登录成功标志")
+                return True
+            
             # 1. 首先检查是否存在密码输入框（存在则说明未登录）
             if tab.ele('@type=password'):
                 self.logger.warning("页面上存在密码输入框，判定为未登录")
-                await self._check_login_error(tab)
                 return False
             
-            # 2. 如果配置了特定的成功检查元素，也进行检查
+            # 2. 如果配置了特定的成功检查元素，优先进行检查
             if success_check:
-                self.logger.debug(f"检查登录成功的标志: {success_check.selector}")
-                element = tab.ele(success_check.selector, timeout=3)
+                self.logger.debug(f"检查站点特有的登录成功的标志: {success_check.selector}")
+                element = tab.ele(success_check.selector, timeout=1)
                 
                 if element:
-                    if hasattr(success_check, 'expected_text'):
+                    if hasattr(success_check, 'expect_text'):
                         content = element.text
-                        self.logger.debug(f"检查登录成功文本:")
-                        self.logger.debug(f"  - 期望文本: {success_check.expected_text}")
+                        if not success_check.expect_text:
+                            expect = self.task_config.credentials.username
+                        else:
+                            expect = success_check.expect_text
+                        self.logger.debug(f"检查登录成功文本:{content}")
+                        self.logger.debug(f"  - 期望文本: {expect}")
                         self.logger.debug(f"  - 实际文本: {content}")
-                        if success_check.expected_text in (content or ""):
+                        if not isinstance(content, list):
+                            content = content.split(' ')
+                        if expect in content:
+                            # 更新登录状态为已登录
                             return True
-                    else:
-                        # 如果没有指定expected_text，元素存在即视为成功
-                        return True                
+                    # else:
+                    #     # 如果没有指定expected_text，元素存在即视为成功
+                    #     # 更新登录状态为已登录
+                    #     await self._invoke_login_state(is_logged_in=True)
+                    #     return True                
             
             # 3. 检查是否存在登出相关元素
+            range = tab.s_ele('@tag()=body')
             logout_selectors = [
+                '@href^logout',
                 '@href$logout.php',
                 '@href:logout',  # 包含logout的链接
+                '@href$usercp.php',  # 用户控制面板链接
                 '@data-url:logout',  # data-url属性包含logout
                 '@onclick:logout',  # onclick事件包含logout
-                '@href$usercp.php',  # 用户控制面板链接
                 '@href:mybonus',  # 魔力值页面链接
                 '@lay-on:logout',  # layui的登出按钮
-                'form@action:logout',  # 登出表单
-                '@class:user-info-side',  # 用户信息侧栏
-                '#myitem'  # 我的项目链接
+                '@action:logout',  # 登出表单
             ]
             
             for selector in logout_selectors:
-                if tab.ele(selector, timeout = 3):
+                if range.ele(selector, timeout=2):
                     self.logger.debug(f"找到登录成功的标志: {selector}")
                     return True
-                    
-
-                        
+            
             # 4. 记录当前页面状态
             self.logger.debug(f"当前页面URL: {tab.url}")
             self.logger.debug(f"当前页面标题: {tab.title}")
             
             # 5. 检查错误信息
             await self._check_login_error(tab)
+            
             return False
             
         except Exception as e:
             self.logger.error(f"验证登录状态时发生错误: {str(e)}")
             self.logger.debug(f"错误详情: ", exc_info=True)
             return False
-
+        
+    async def _invoke_login_state(self, is_logged_in: bool):
+        """更新登录状态"""
+        try:
+            if is_logged_in:
+                username = self.task_config.credentials.username
+                last_login_time = int(datetime.now().timestamp())
+            else:
+                username = None
+                last_login_time = None
+                
+            if self.browser_manager:
+                await self.browser_manager.update_login_state(
+                    self.task_config.site_id,
+                    is_logged_in=is_logged_in,
+                    username=username,
+                    last_login_time=last_login_time
+                )
+        except Exception as e:
+            self.logger.error(f"更新登录状态时发生错误: {str(e)}")
+    
     async def _check_login_error(self, tab) -> None:
         """检查登录失败的具体原因"""
         try:
+            self.logger.debug("开始检查登录错误原因")
+            # 检查特定的错误关键词
+            page_text = tab.s_eles('@class=text')
+            error_keywords = [
+                "图片代码无效",
+                "密码错误", "密码不正确",
+                "验证码错误", "验证码不正确", "验证码已过期",
+                "用户名不存在", "账号不存在",
+                "账号已被禁用", "账号已封禁",
+                "登录失败", "Login Failed",
+                "不要返回，图片代码已被清除！",
+                "点击这里获取新的图片代码。"
+            ]
+            for text in page_text:
+                for keyword in error_keywords:
+                    if keyword in text.text:
+                        self.logger.error(f"登录失败: {keyword}")
+                        return
+
             # 检查常见的错误信息
             error_selectors = {
                 # 错误提示框
@@ -348,8 +414,9 @@ class LoginHandler:
             
             # 检查所有可能的错误信息
             error_messages = []
+            range = tab.s_ele('@tag()=body')
             for selector in error_selectors.values():
-                elements = tab.eles(selector)
+                elements = range.eles(selector)
                 for element in elements:
                     if element and element.text.strip():
                         error_messages.append(element.text.strip())
@@ -359,245 +426,10 @@ class LoginHandler:
                 error_text = ' | '.join(error_messages)
                 self.logger.error(f"登录失败，错误信息: {error_text}")
                 return
-            
-            # 检查特定的错误关键词
-            page_text = tab.eles('@class=text')
-            error_keywords = [
-                "密码错误", "密码不正确",
-                "验证码错误", "验证码不正确", "验证码已过期",
-                "用户名不存在", "账号不存在",
-                "账号已被禁用", "账号已封禁",
-                "登录失败", "Login Failed",
-                "图片代码无效",
-                "不要返回，图片代码已被清除！",
-                "点击这里获取新的图片代码。"
-            ]
-            for text in page_text:
-                for keyword in error_keywords:
-                    if keyword in text.text:
-                        self.logger.error(f"登录失败: {keyword}")
-                        return
                     
         except Exception as e:
             self.logger.error(f"检查登录错误信息时发生错误: {str(e)}")
             self.logger.debug(f"错误详情: ", exc_info=True)
-
-    async def _save_browser_state(self, browser: Chromium) -> bool:
-        """保存浏览器状态（cookies等）"""
-        try:
-            self.logger.info("开始保存浏览器状态")
-            
-            # 获取当前标签页
-            tab = browser.latest_tab
-            self.logger.debug(f"当前签页 - URL: {tab.url}")
-            
-            # 获取cookies（使用DrissionPage的cookies方法）
-            cookies = tab.cookies(all_domains=False, all_info=True)
-            self.logger.debug(f"获取到cookies - 数量: {len(cookies)}")
-            
-            # 记录cookies的详细信息
-            for cookie in cookies:
-                self.logger.trace(f"Cookie: {cookie.get('name')} = {cookie.get('value')} "
-                                f"[domain: {cookie.get('domain')}, "
-                                f"path: {cookie.get('path')}, "
-                                f"expires: {cookie.get('expires')}]")
-            
-            # 获取localStorage
-            local_storage = tab.run_js("return Object.entries(localStorage)")
-            self.logger.debug(f"获取到localStorage项 - 数量: {len(local_storage) if local_storage else 0}")
-            
-            # 获取sessionStorage
-            session_storage = tab.run_js("return Object.entries(sessionStorage)")
-            self.logger.debug(f"获取到sessionStorage项 - 数量: {len(session_storage) if session_storage else 0}")
-            
-            # 准备状态数据
-            state_data = {
-                'cookies': cookies.as_dict() if hasattr(cookies, 'as_dict') else cookies,
-                'cookies_full': cookies,
-                'localStorage': dict(local_storage) if local_storage else {},
-                'sessionStorage': dict(session_storage) if session_storage else {},
-                'loginState': {
-                    'isLoggedIn': True,
-                    'lastLoginTime': datetime.now().timestamp() * 1000,
-                    'username': self.task_config.credentials.username if self.task_config.credentials else None
-                },
-                'timestamp': datetime.now().isoformat(),
-                'siteId': self.task_config.site_id
-            }
-            
-            self.logger.debug(f"准备保存状态数据:")
-            self.logger.debug(f"  - 时间戳: {state_data['timestamp']}")
-            self.logger.debug(f"  - 用户名: {state_data['loginState']['username']}")
-            self.logger.debug(f"  - Cookies数量: {len(state_data['cookies'])}")
-            
-            # 保存状态数据到固定位置
-            success = await self.state_storage.save(
-                state_data,
-                'browser_state.json',
-                backup=True
-            )
-            
-            if success:
-                self.logger.info("浏览器状态保存成功")
-                self.logger.debug(f"保存位置: storage/state/{self.task_config.site_id}/browser_state.json")
-            else:
-                self.logger.error("浏览器状态保存失败")
-            
-            return success
-            
-        except Exception as e:
-            self.logger.error("保存浏览器状态失败", exc_info=True)
-            self.logger.debug(f"错误详情: {type(e).__name__}")
-            return False
-
-    async def load_browser_state(self) -> Optional[Dict[str, Any]]:
-        """加载浏览器状态"""
-        try:
-            self.logger.info("开始加载浏览器状态")
-            self.logger.debug(f"状态文件路径: storage/state/{self.task_config.site_id}/browser_state.json")
-            
-            # 从固定位置加载状态数据
-            state_data = await self.state_storage.load('browser_state.json')
-            
-            if not state_data:
-                self.logger.warning("未找到浏览器状态数据")
-                return None
-            
-            # 验证数据完整性
-            required_fields = ['cookies', 'loginState', 'timestamp']
-            self.logger.debug("验证状态数据完整性")
-            for field in required_fields:
-                if field not in state_data:
-                    self.logger.warning(f"状态数据缺少必需字段: {field}")
-                    return None
-            
-            # 检查登录状态是否过期
-            timestamp = datetime.fromisoformat(state_data['timestamp'])
-            days_old = (datetime.now() - timestamp).days
-            self.logger.debug(f"状态数据年龄: {days_old}天")
-            
-            if days_old > 7:  # 7天过期
-                self.logger.warning(f"浏览器状态已过期 ({days_old}天)")
-                return None
-            
-            self.logger.success("浏览器状态加载成功")
-            self.logger.debug(f"状态数据概览:")
-            self.logger.debug(f"  - Cookies数量: {len(state_data['cookies'])}")
-            self.logger.debug(f"  - localStorage项数: {len(state_data.get('localStorage', {}))}")
-            self.logger.debug(f"  - sessionStorage项数: {len(state_data.get('sessionStorage', {}))}")
-            self.logger.debug(f"  - 最后登录时间: {datetime.fromtimestamp(state_data['loginState']['lastLoginTime']/1000)}")
-            
-            return state_data
-            
-        except Exception as e:
-            self.logger.error("加载浏览器状态失败", exc_info=True)
-            self.logger.debug(f"错误详情: {type(e).__name__}")
-            return None
-
-    async def restore_browser_state(self, browser: Chromium) -> bool:
-        """恢复浏览器状态"""
-        try:
-            self.logger.info("开始恢复浏览器状态")
-            self.logger.debug(f"浏览器例ID: {id(browser)}")
-            
-            # 加载状态数据
-            state_data = await self.load_browser_state()
-            if not state_data:
-                self.logger.warning("无法加载浏览器状态")
-                return False
-            
-            # 获取当前标签页
-            tab = browser.latest_tab
-            self.logger.debug(f"当前标签页 - URL: {tab.url}")
-            
-            # 恢复cookies
-            if 'cookies_full' in state_data:
-                cookies_list = state_data['cookies_full']
-                self.logger.debug(f"开始恢复完整cookies - 数量: {len(cookies_list)}")
-                
-                # 将cookies按域名分组
-                cookies_by_domain = {}
-                for cookie in cookies_list:
-                    domain = cookie.get('domain', '')
-                    if domain not in cookies_by_domain:
-                        cookies_by_domain[domain] = []
-                    cookies_by_domain[domain].append(cookie)
-                
-                # 按域名设置cookies
-                for domain, domain_cookies in cookies_by_domain.items():
-                    self.logger.debug(f"设置域名 {domain} 的cookies - 数量: {len(domain_cookies)}")
-                    try:
-                        # 使用dict格式设置cookies
-                        cookies_dict = {
-                            cookie['name']: cookie['value']
-                            for cookie in domain_cookies
-                        }
-                        cookies_dict['domain'] = domain
-                        tab.set.cookies(cookies_dict)
-                        
-                        # 设置每个cookie的其他属性（如过期时间、路径等）
-                        for cookie in domain_cookies:
-                            cookie_str = f"{cookie['name']}={cookie['value']}; "
-                            if 'domain' in cookie:
-                                cookie_str += f"domain={cookie['domain']}; "
-                            if 'path' in cookie:
-                                cookie_str += f"path={cookie['path']}; "
-                            if 'expires' in cookie:
-                                cookie_str += f"expires={cookie['expires']}; "
-                            if 'secure' in cookie and cookie['secure']:
-                                cookie_str += "secure; "
-                            if 'httpOnly' in cookie and cookie['httpOnly']:
-                                cookie_str += "httpOnly; "
-                            tab.set.cookies(cookie_str)
-                            
-                    except Exception as e:
-                        self.logger.warning(f"设置域名 {domain} 的cookies时出错: {str(e)}")
-                        continue
-                
-                self.logger.info("完整Cookies恢复完成")
-            else:
-                # 使用基本cookie信息（向后兼容）
-                cookies_dict = state_data['cookies']
-                self.logger.debug(f"开始恢复基本cookies - 数量: {len(cookies_dict)}")
-                try:
-                    tab.set.cookies(cookies_dict)
-                    self.logger.debug("基本Cookies恢复完成")
-                except Exception as e:
-                    self.logger.error(f"恢复基本cookies时出错: {str(e)}")
-            
-            # 恢复localStorage
-            if state_data.get('localStorage'):
-                self.logger.debug(f"开始恢复localStorage - 项数: {len(state_data['localStorage'])}")
-                js_code = """
-                (state) => {
-                    for (const [key, value] of Object.entries(state)) {
-                        localStorage.setItem(key, value);
-                    }
-                }
-                """
-                tab.run_js(js_code, state_data['localStorage'])
-                self.logger.debug("localStorage恢复完成")
-            
-            # 恢复sessionStorage
-            if state_data.get('sessionStorage'):
-                self.logger.debug(f"开始恢复sessionStorage - 项数: {len(state_data['sessionStorage'])}")
-                js_code = """
-                (state) => {
-                    for (const [key, value] of Object.entries(state)) {
-                        sessionStorage.setItem(key, value);
-                    }
-                }
-                """
-                tab.run_js(js_code, state_data['sessionStorage'])
-                self.logger.debug("sessionStorage恢复完成")
-            
-            self.logger.success("浏览器状态恢复成功")
-            return True
-            
-        except Exception as e:
-            self.logger.error("恢复浏览器状态失败", exc_info=True)
-            self.logger.debug(f"错误详情: {type(e).__name__}")
-            return False
 
     async def _is_cloudflare_present(self, tab) -> bool:
         """检查是否存在Cloudflare验证页面"""

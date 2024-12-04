@@ -157,7 +157,7 @@ class BTSchoolConfig(BaseSiteConfig):
                         'checkin_url': '/attendance.php',
                         'checkin_button': {
                             'name': 'checkin_button',
-                            'selector': 'href$action=addbonus',
+                            'selector': '@href$action=addbonus',
                         },
                         # 'success_check': {
                         #     'element':{

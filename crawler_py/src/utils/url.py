@@ -1,6 +1,8 @@
+from logging import Logger
 from urllib.parse import urljoin
 from typing import Dict, Any, Optional
 from models.crawler import CrawlerTaskConfig
+from urllib.parse import urlparse
 
 def convert_url(task_config: CrawlerTaskConfig, url: str, uid: Optional[str] = None) -> str:
     """
@@ -26,3 +28,29 @@ def convert_url(task_config: CrawlerTaskConfig, url: str, uid: Optional[str] = N
             return urljoin(base_url, url)
             
     return url
+
+def get_site_domain(task_config: CrawlerTaskConfig, logger: Logger) -> str:
+    """安全地获取站点域名"""
+    try:
+        # 获取站点URL
+        site_url = task_config.site_url
+        if not site_url:
+            logger.error("站点URL未配置")
+            return ""
+            
+        # 确保site_url是列表且不为空
+        if not isinstance(site_url, (list, tuple)) or not site_url:
+            logger.error(f"站点URL格式错误: {site_url}")
+            return ""
+            
+        # 解析URL
+        parsed_url = urlparse(site_url[0])
+        if not parsed_url.netloc:
+            logger.error(f"无法从URL解析出域名: {site_url[0]}")
+            return ""
+            
+        return parsed_url.netloc
+        
+    except Exception as e:
+        logger.error(f"获取站点域名失败: {str(e)}")
+        return ""

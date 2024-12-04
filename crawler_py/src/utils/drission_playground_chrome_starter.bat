@@ -1,0 +1,1 @@
+"C:\Users\Lukee\AppData\Local\pyppeteer\pyppeteer\local-chromium\1263111\chrome-win\chrome.exe" --remote-debugging-port=9333

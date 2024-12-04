@@ -61,7 +61,8 @@ class U2Config(BaseSiteConfig):
                     'success_check': {
                         'name': 'login_result',
                         'selector': '@class$User_Name',
-                        'type': 'text'
+                        'type': 'text',
+                        'expect_text': 'neilforest'
                     }
                 },
                 'extract_rules': [

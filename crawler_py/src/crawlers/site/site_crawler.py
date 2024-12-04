@@ -3,9 +3,10 @@ from typing import Any, Dict, Optional
 from urllib.parse import urljoin
 
 from DrissionPage import Chromium
-from utils.url import convert_url
 from models.crawler import WebElement
+from storage.browser_state_manager import BrowserStateManager
 from utils.logger import get_logger
+from utils.url import convert_url
 
 from ..base.base_crawler import BaseCrawler
 
@@ -13,10 +14,11 @@ from ..base.base_crawler import BaseCrawler
 class SiteCrawler(BaseCrawler):
     """统一的站点爬虫类"""
     
-    def __init__(self, task_config: Dict[str, Any]):
-        super().__init__(task_config)
-        self.logger = get_logger(name=__name__, site_id=self._get_site_id())
-        self.base_url = task_config['site_url'][0]
+    def __init__(self, task_config: Dict[str, Any], browser_manager: Optional[BrowserStateManager] = None):
+        # 先调用父类的初始化
+        super().__init__(task_config, browser_manager)
+        # 设置基础URL
+        # self.base_url = task_config['site_url'][0]
 
     def _get_site_id(self) -> str:
         """从配置中获取站点ID"""
@@ -24,7 +26,12 @@ class SiteCrawler(BaseCrawler):
     
     async def _checkin(self, browser: Chromium):
         """执行签到流程"""
-        pass
+        tab = await self._create_and_navigate_tab(browser)
+        try:
+            await self.checkin_handler.perform_checkin(tab, self.task_config)
+        finally:
+            self.logger.debug("关闭标签页")
+            tab.close()
     
     async def _crawl(self, browser: Chromium):
         """统一的爬取逻辑"""
@@ -62,16 +69,18 @@ class SiteCrawler(BaseCrawler):
         browser.activate_tab(tab)
         self.logger.debug("创建新标签页")
         
-        # 访问用户主页
-        self.logger.debug(f"访问用户主页: {self.base_url}")
-        tab.get(self.base_url)
+        # 访问站点主页
+        if tab.url != self.base_url:
+            self.logger.debug(f"访问站点主页: {self.base_url}")
+            tab.get(self.base_url)
         
         # 获取用户资料页面URL
         self.profile_url, self.uid = await self._get_profile_url(tab)
 
         # 访问用户资料页面
         tab.get(self.profile_url)
-        
+        self.logger.debug(f"访问用户资料页面: {self.profile_url}")
+
         return tab
 
     async def _get_profile_url(self, tab: Chromium) -> str:
@@ -82,6 +91,7 @@ class SiteCrawler(BaseCrawler):
         self.logger.debug("查找用户资料链接")
         profile_element = tab.ele(selector)
         if not profile_element:
+            self.logger.error("未找到用户资料链接")
             raise Exception("未找到用户资料链接")
             
         profile_url = profile_element.attr('href')

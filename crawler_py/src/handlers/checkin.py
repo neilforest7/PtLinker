@@ -19,7 +19,7 @@ class CheckInHandler:
         self.logger.debug(f"初始化CheckInHandler - 任务ID: {self.task_config.task_id}, 站点ID: {self.task_config.site_id}")
 
 
-    async def perform_checkin(self, browser: Chromium, task_config: CrawlerTaskConfig) -> None:
+    async def perform_checkin(self, tab: Chromium, task_config: CrawlerTaskConfig) -> None:
         """执行签到处理"""
         # 检查环境变量中的签到开关
         if not self._check_env_enabled():
@@ -37,8 +37,6 @@ class CheckInHandler:
         
         try:
             self.logger.debug(f"开始签到流程 - checkin_config: {checkin_config}")
-            tab = browser.new_tab()
-            browser.activate_tab(tab)
             self.logger.trace(f"使用标签页 - 标签页ID: {id(tab)}")
             
             # 首先尝试通过访问签到URL的方式
@@ -190,6 +188,8 @@ class CheckInHandler:
                 '@text():今日已签',
                 '@text():今天已签到',
                 '@value=已经打卡',
+                '@text():簽到成功',
+                '@text():已簽到',
                 '@class:already-signed',
                 '@class:signed-in'
             ]

@@ -37,6 +37,7 @@ aiosqlite
 tenacity
 aiohttp
 pillow
+aiofiles
 
 # Captcha
 tesseract

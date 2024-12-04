@@ -33,7 +33,7 @@ def setup_logger():
         sys.stdout,
         format="<green>{time:HH:mm:ss}</green> | "
                 "<level>{level: <8}</level> | "
-                "<blue>{extra[site_id]:<8}</blue> | "
+                "<blue>{extra[site_id]:<10}</blue> | "
                 "<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> | "
                 "<level>{message}</level>",
         level=console_log_level,
@@ -51,7 +51,7 @@ def setup_logger():
         compression="zip",
         colorize=True,
         format="{time:HH:mm:ss} | {level: <8} | "
-                "{extra[site_id]:<8} | "
+                "{extra[site_id]:<10} | "
                 "{name}:{function}:{line} | {message}",
         level=file_log_level,
         encoding="utf-8",
@@ -67,7 +67,7 @@ def setup_logger():
         compression="zip",
         colorize=True,
         format="{time:HH:mm:ss} | {level: <8} | "
-                "{extra[site_id]:<8} | "
+                "{extra[site_id]:<10} | "
                 "{name}:{function}:{line} | {message}",
         level=error_log_level,
         encoding="utf-8",

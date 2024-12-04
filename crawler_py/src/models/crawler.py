@@ -18,6 +18,7 @@ class WebElement(BaseModel):
     url_pattern: Optional[str] = None  # 用于验证码背景图片URL提取
     page_url: Optional[str] = None  # 需要访问的页面URL
     pre_action_type: Optional[str] = None  # 预处理类型
+    expect_text: Optional[str] = None  # 预期文本
 
 class CaptchaConfig(BaseModel):
     """验证码配置"""
