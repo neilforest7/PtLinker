@@ -10,12 +10,16 @@ from app.schemas.crawler import (
 )
 from app.schemas.site import SiteSummary
 from app.services.crawler_manager import CrawlerManager
+from app.core.logger import get_logger
 
 router = APIRouter(tags=["crawlers"])
+_logger = get_logger(service="crawlers_api")
 
 @router.get("", response_model=CrawlerListResponse)
 async def list_crawlers(db: AsyncSession = Depends(get_db)):
     """获取所有可用的爬虫列表"""
+    logger_ctx = get_logger(service="list_crawlers")
+    logger_ctx.info("Fetching crawler list")
     try:
         crawler_manager = CrawlerManager(db)
         return await crawler_manager.list_crawlers()
@@ -25,6 +29,8 @@ async def list_crawlers(db: AsyncSession = Depends(get_db)):
 @router.get("/{crawler_id}", response_model=CrawlerDetailResponse)
 async def get_crawler(crawler_id: str, db: AsyncSession = Depends(get_db)):
     """获取特定爬虫的详细信息"""
+    logger_ctx = get_logger(crawler_id=crawler_id)
+    logger_ctx.info("Fetching crawler details")
     try:
         crawler_manager = CrawlerManager(db)
         return await crawler_manager.get_crawler_detail(crawler_id)

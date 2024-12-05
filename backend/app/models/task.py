@@ -1,7 +1,11 @@
-from sqlalchemy import Column, String, DateTime, JSON, Enum as SQLAEnum
-from datetime import datetime
 import enum
+from datetime import datetime
+
 from app.core.database import Base
+from sqlalchemy import JSON, Column, DateTime
+from sqlalchemy import Enum as SQLAEnum
+from sqlalchemy import String
+
 
 class TaskStatus(str, enum.Enum):
     PENDING = "pending"

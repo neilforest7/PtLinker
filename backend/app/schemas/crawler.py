@@ -41,4 +41,52 @@ class CrawlerListResponse(BaseModel):
 class CrawlerDetailResponse(CrawlerInfo):
     """爬虫详细信息响应"""
     status: CrawlerStatus
-    latest_result: Optional[TaskResult] = None 
+    latest_result: Optional[TaskResult] = None
+
+class CrawlerConfig(BaseModel):
+    """爬虫配置模型"""
+    site_id: str = Field(..., description="站点ID")
+    name: str = Field(..., description="站点名称")
+    url: str = Field(..., description="站点URL")
+    login_config: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="登录配置"
+    )
+    extract_rules: Optional[Dict[str, Any]] = Field(
+        None,
+        description="数据提取规则"
+    )
+    browser_config: Optional[Dict[str, Any]] = Field(
+        None,
+        description="浏览器配置"
+    )
+    
+    class Config:
+        json_encoders = {
+            # 自定义JSON编码器
+        }
+        json_schema_extra = {
+            "example": {
+                "site_id": "example",
+                "name": "Example Site",
+                "url": "https://example.com",
+                "login_config": {
+                    "username": "your_username",
+                    "password": "your_password",
+                    "captcha": True
+                },
+                "extract_rules": {
+                    "user_info": {
+                        "selector": "#user-info",
+                        "fields": {
+                            "username": ".username",
+                            "ratio": ".ratio"
+                        }
+                    }
+                },
+                "browser_config": {
+                    "headless": True,
+                    "timeout": 30
+                }
+            }
+        } 

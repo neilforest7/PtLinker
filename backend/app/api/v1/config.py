@@ -5,8 +5,10 @@ from app.core.config import get_settings
 import os
 from dotenv import load_dotenv, set_key
 import json
+from app.core.logger import get_logger
 
 router = APIRouter(tags=["config"])
+_logger = get_logger(service="config_api")
 
 def _convert_to_env_key(key: str) -> str:
     """将配置键转换为环境变量格式"""
@@ -55,15 +57,19 @@ def _update_env_file(updates: Dict[str, Any]) -> None:
 @router.get("/crawler", response_model=CrawlerConfig)
 async def get_crawler_config():
     """获取爬虫配置"""
+    logger_ctx = get_logger(service="get_crawler_config")
     try:
         config = _load_current_config()
+        logger_ctx.info("Fetching crawler configuration")
         return CrawlerConfig(**config)
     except Exception as e:
+        logger_ctx.error(f"Failed to get crawler configuration: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to load config: {str(e)}")
 
 @router.patch("/crawler", response_model=ConfigUpdateResponse)
 async def update_crawler_config(updates: Dict[str, Any]):
     """更新爬虫配置"""
+    logger_ctx = get_logger(service="update_crawler_config")
     try:
         # 验证更新的字段
         current_config = _load_current_config()
@@ -77,25 +83,30 @@ async def update_crawler_config(updates: Dict[str, Any]):
         # 更新配置文件
         _update_env_file(validated_updates)
         
+        logger_ctx.info("Configuration updated successfully")
         return ConfigUpdateResponse(
             success=True,
             message="Configuration updated successfully",
             updated_fields=validated_updates
         )
     except Exception as e:
+        logger_ctx.error(f"Failed to update crawler configuration: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to update config: {str(e)}")
 
 @router.post("/crawler/reset", response_model=ConfigUpdateResponse)
 async def reset_crawler_config():
     """重置爬虫配置为默认值"""
+    logger_ctx = get_logger(service="reset_crawler_config")
     try:
         default_config = CrawlerConfig().model_dump()
         _update_env_file(default_config)
         
+        logger_ctx.info("Configuration reset to defaults")
         return ConfigUpdateResponse(
             success=True,
             message="Configuration reset to defaults",
             updated_fields=default_config
         )
     except Exception as e:
+        logger_ctx.error(f"Failed to reset crawler configuration: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to reset config: {str(e)}") 

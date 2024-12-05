@@ -7,6 +7,8 @@ from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.task import Task, TaskStatus
 from app.services.logger import TaskLogger
+from app.services.websocket_manager import manager
+from app.core.logger import get_logger
 
 class CrawlerExecutor:
     def __init__(self, db: AsyncSession, task: Task):
@@ -62,6 +64,7 @@ class CrawlerExecutor:
 class CrawlerExecutorManager:
     _running_tasks: Dict[str, asyncio.Task] = {}
     _task_events: Dict[str, asyncio.Event] = {}
+    _logger = get_logger(service="crawler_executor")
 
     @classmethod
     def get_running_tasks_count(cls) -> int:
@@ -81,17 +84,22 @@ class CrawlerExecutorManager:
         crawler_func: Callable[[str, dict, str, AsyncSession], Coroutine[Any, Any, Any]]
     ):
         """启动新的爬虫任务"""
-        logger = TaskLogger(db, task.task_id)
+        task_id = task.task_id
+        logger_ctx = get_logger(task_id=task_id, crawler_id=task.crawler_id)
         
         # 创建取消事件
         cancel_event = asyncio.Event()
-        cls._task_events[task.task_id] = cancel_event
+        cls._task_events[task_id] = cancel_event
         
         try:
             # 更新任务状态为运行中
             task.status = TaskStatus.RUNNING
-            task.created_at = datetime.utcnow()
+            task.started_at = datetime.utcnow()
             await db.commit()
+            
+            # 通过WebSocket发送状态更新
+            await manager.send_status(task_id, "running")
+            logger_ctx.info("Starting crawler task")
             
             # 创建异步任务
             async def wrapped_task():
@@ -101,10 +109,11 @@ class CrawlerExecutorManager:
                         return
                     
                     # 执行爬虫任务
+                    logger_ctx.debug("Executing crawler function")
                     result = await crawler_func(
                         task.crawler_id,
                         task.config,
-                        task.task_id,
+                        task_id,
                         db
                     )
                     
@@ -114,27 +123,33 @@ class CrawlerExecutorManager:
                     task.result = result
                     await db.commit()
                     
+                    # 发送完成状态
+                    await manager.send_status(task_id, "success")
+                    logger_ctx.info("Task completed successfully", result_summary=result)
+                    
                 except Exception as e:
                     # 记录错误并更新任务状态
-                    await logger.error(f"Task execution failed: {str(e)}")
+                    error_msg = str(e)
                     task.status = TaskStatus.FAILED
-                    task.error = str(e)
+                    task.error = error_msg
                     task.completed_at = datetime.utcnow()
                     await db.commit()
+                    
+                    # 发送错误状态
+                    await manager.send_status(task_id, "failed")
+                    logger_ctx.error(f"Task failed: {error_msg}", exc_info=True)
                     raise
                 finally:
                     # 清理任务记录
-                    cls._running_tasks.pop(task.task_id, None)
-                    cls._task_events.pop(task.task_id, None)
+                    cls._running_tasks.pop(task_id, None)
+                    cls._task_events.pop(task_id, None)
             
             # 启动任务
             task_obj = asyncio.create_task(wrapped_task())
-            cls._running_tasks[task.task_id] = task_obj
-            
-            await logger.info("Task started successfully")
+            cls._running_tasks[task_id] = task_obj
             
         except Exception as e:
-            await logger.error(f"Failed to start task: {str(e)}")
+            logger_ctx.error(f"Failed to start task: {str(e)}", exc_info=True)
             task.status = TaskStatus.FAILED
             task.error = str(e)
             await db.commit()
@@ -143,7 +158,10 @@ class CrawlerExecutorManager:
     @classmethod
     async def cancel_task(cls, task_id: str) -> bool:
         """取消运行中的任务"""
+        logger_ctx = get_logger(task_id=task_id)
+        
         if task_id not in cls._running_tasks:
+            logger_ctx.warning("Attempted to cancel non-existent task")
             return False
         
         # 设置取消事件
@@ -153,10 +171,14 @@ class CrawlerExecutorManager:
         # 取消任务
         task = cls._running_tasks[task_id]
         if not task.done():
+            logger_ctx.info("Cancelling running task")
             task.cancel()
             try:
                 await task
             except asyncio.CancelledError:
+                # 发送取消状态
+                await manager.send_status(task_id, "cancelled")
+                logger_ctx.info("Task was cancelled by user")
                 pass
         
         # 清理任务记录

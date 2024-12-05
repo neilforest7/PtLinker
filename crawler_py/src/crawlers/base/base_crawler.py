@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from DrissionPage import Chromium, ChromiumOptions
 from handlers.checkin import CheckInHandler
 from handlers.login import LoginHandler
+from handlers.websocket import WebSocketLogSink
 from models.crawler import CrawlerTaskConfig, ExtractRuleSet
 from models.storage import LoginState
 from storage.browser_state_manager import BrowserStateManager
@@ -30,30 +31,39 @@ class BaseCrawler(ABC):
         setup_logger()
         self.logger = get_logger(name=__name__, site_id=self.site_id)
         
-        # 4. 其他组件初始化
+        # 4. WebSocket日志处理器初始化
+        self.ws_sink = None
+        if task_config.get('task_id'):
+            self.ws_sink = WebSocketLogSink(task_config['task_id'])
+        
+        # 5. 其他组件初始化
         self.base_url = self.task_config.site_url[0]
         self.browser_manager = browser_manager
         self.site_domain = get_site_domain(self.task_config, self.logger)
         
-        # 5. 存储路径初始化
+        # 6. 存储路径初始化
         self.task_storage_path = self.storage_dir / 'tasks' / self.site_id / str(task_config['task_id'])
         self.task_storage_path.mkdir(parents=True, exist_ok=True)
         
-        # 6. 处理器初始化
+        # 7. 处理器初始化
         self.login_handler = LoginHandler(self.task_config, self.browser_manager)
         self.checkin_handler = CheckInHandler(self.task_config)
         
-        # 7. 配置转换
+        # 8. 配置转换
         self.extract_rules = self.task_config.extract_rules
         if not self.extract_rules:
             self.logger.warning(f"{self.site_id} 未配置数据提取规则")
         
-        # 8. 浏览器初始化
+        # 9. 浏览器初始化
         self.browser: Optional[Chromium] = None
         
     async def start(self):
         """启动爬虫"""
         try:
+            # 连接WebSocket（如果有task_id）
+            if self.ws_sink:
+                await self.ws_sink.connect()
+            
             # 初始化浏览器
             await self._init_browser()
             
@@ -68,6 +78,10 @@ class BaseCrawler(ABC):
         finally:
             # 清理资源
             await self._cleanup()
+            
+            # 断开WebSocket连接
+            if self.ws_sink:
+                await self.ws_sink.disconnect()
 
     async def _init_browser(self) -> None:
         """初始化浏览器"""
