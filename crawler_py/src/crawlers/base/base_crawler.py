@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from DrissionPage import Chromium, ChromiumOptions
 from handlers.checkin import CheckInHandler
 from handlers.login import LoginHandler
-from handlers.websocket import WebSocketLogSink
+from handlers.websocket import WebSocketLogSink, WebSocketStatusSink
 from models.crawler import CrawlerTaskConfig, ExtractRuleSet
 from models.storage import LoginState
 from storage.browser_state_manager import BrowserStateManager
@@ -31,10 +31,12 @@ class BaseCrawler(ABC):
         setup_logger()
         self.logger = get_logger(name=__name__, site_id=self.site_id)
         
-        # 4. WebSocket日志处理器初始化
+        # 4. WebSocket处理器初始化
         self.ws_sink = None
+        self.ws_status = None
         if task_config.get('task_id'):
             self.ws_sink = WebSocketLogSink(task_config['task_id'])
+            self.ws_status = WebSocketStatusSink(task_config['task_id'], self.site_id)
         
         # 5. 其他组件初始化
         self.base_url = self.task_config.site_url[0]
@@ -63,17 +65,27 @@ class BaseCrawler(ABC):
             # 连接WebSocket（如果有task_id）
             if self.ws_sink:
                 await self.ws_sink.connect()
+            if self.ws_status:
+                await self.ws_status.connect()
+                await self.ws_status.update_status("running")
             
             # 初始化浏览器
             await self._init_browser()
             
             # 执行具体的爬取任务
-            await self._crawl(self.browser)
+            result = await self._crawl(self.browser)
             await self._checkin(self.browser)
+            
+            # 发送成功状态和结果
+            if self.ws_status:
+                await self.ws_status.update_status("finished", result)
             
         except Exception as e:
             self.logger.error(f"爬虫运行失败: {str(e)}")
             self.logger.debug("错误详情:", exc_info=True)
+            # 发送错误状态
+            if self.ws_status:
+                await self.ws_status.update_status("error", {"error": str(e)})
             raise
         finally:
             # 清理资源
@@ -82,6 +94,8 @@ class BaseCrawler(ABC):
             # 断开WebSocket连接
             if self.ws_sink:
                 await self.ws_sink.disconnect()
+            if self.ws_status:
+                await self.ws_status.disconnect()
 
     async def _init_browser(self) -> None:
         """初始化浏览器"""

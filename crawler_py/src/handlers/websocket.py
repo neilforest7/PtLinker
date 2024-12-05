@@ -3,7 +3,70 @@ import websockets
 import json
 from datetime import datetime
 from loguru import logger
-from typing import Optional
+from typing import Optional, Dict, Any
+
+class WebSocketStatusSink:
+    def __init__(self, task_id: str, site_id: str):
+        self.task_id = task_id
+        self.site_id = site_id
+        self.websocket = None
+        self._connected = False
+        self._status = "idle"
+        self._result = None
+
+    async def connect(self) -> bool:
+        """连接到WebSocket服务器"""
+        if self._connected:
+            return True
+            
+        try:
+            self.websocket = await websockets.connect(
+                f"ws://localhost:8000/ws/tasks/{self.task_id}",
+                ping_interval=20,
+                ping_timeout=10
+            )
+            self._connected = True
+            # 发送初始状态
+            await self.update_status("idle")
+            return True
+        except Exception as e:
+            print(f"Failed to connect to WebSocket status sink: {str(e)}")
+            return False
+
+    async def disconnect(self):
+        """断开WebSocket连接"""
+        self._connected = False
+        if self.websocket:
+            try:
+                await self.websocket.close()
+            except Exception:
+                pass
+            self.websocket = None
+
+    async def update_status(self, status: str, result: Dict[str, Any] = None):
+        """更新爬虫状态"""
+        if not self._connected:
+            return
+
+        self._status = status
+        if result is not None:
+            self._result = result
+
+        message = {
+            "type": "status",
+            "timestamp": datetime.utcnow().isoformat(),
+            "data": {
+                "site_id": self.site_id,
+                "status": self._status,
+                "result": self._result
+            }
+        }
+
+        try:
+            await self.websocket.send(json.dumps(message))
+        except Exception as e:
+            print(f"Failed to send status update: {str(e)}")
+            self._connected = False
 
 class WebSocketLogSink:
     def __init__(self, task_id: str):
