@@ -1,10 +1,8 @@
-import json
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
-from app.models.task import TaskStatus
-from pydantic import BaseModel, Field, conlist
+from pydantic import BaseModel, Field
 
 
 class TaskStatus(str, Enum):
@@ -12,31 +10,17 @@ class TaskStatus(str, Enum):
     RUNNING = "running"
     SUCCESS = "success"
     FAILED = "failed"
+    CANCELLED = "cancelled"
 
 class TaskBase(BaseModel):
-    crawler_id: str
-    config: Optional[Dict[str, Any]] = None
-
-class TaskCreate(TaskBase):
     crawler_id: str = Field(
         ...,
-        description="爬虫ID，对应爬虫配置文件名",
+        description="爬虫ID",
         example="bilibili"
     )
-    config: Dict[str, Any] = Field(
-        ...,
-        description="爬虫配置参数",
-        example={
-            "user_id": "12345678",
-            "max_videos": 50,
-            "include_replies": True,
-            "fetch_details": True,
-            "credentials": {
-                "cookie": "your_cookie_here",
-                "csrf": "your_csrf_token"
-            }
-        }
-    )
+
+class TaskCreate(TaskBase):
+    pass
 
 class BatchTaskCreate(BaseModel):
     site_ids: List[str] = Field(
@@ -45,21 +29,10 @@ class BatchTaskCreate(BaseModel):
         example=["bilibili", "youtube"],
         min_items=1
     )
-    config: Optional[Dict[str, Any]] = Field(
-        None,
-        description="所有任务共用的基础配置参数（可选）",
-        example={
-            "max_items": 100,
-            "fetch_details": True
-        }
-    )
 
 class TaskResponse(TaskBase):
     task_id: str = Field(..., description="任务唯一标识")
-    crawler_id: str = Field(..., description="爬虫ID")
-    config: Dict[str, Any] = Field(..., description="爬虫配置")
     status: TaskStatus = Field(..., description="任务状态")
-    result: Optional[Dict[str, Any]] = Field(None, description="任务执行结果")
     error: Optional[str] = Field(None, description="错误信息")
     created_at: datetime = Field(..., description="创建时间")
     updated_at: datetime = Field(..., description="更新时间")
@@ -74,5 +47,6 @@ class TaskResponse(TaskBase):
 
 class BatchTaskResponse(BaseModel):
     tasks: List[TaskResponse] = Field(..., description="创建的任务列表")
-    total_count: int = Field(..., description="创建的任务总数")
     failed_sites: List[str] = Field(default_factory=list, description="创建失败的站点ID列表")
+    total_created: int = Field(..., description="成功创建的任务数量")
+    total_failed: int = Field(..., description="创建失败的任务数量")

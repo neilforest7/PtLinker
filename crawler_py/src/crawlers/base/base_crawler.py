@@ -10,7 +10,6 @@ from typing import Any, Dict, List, Optional, Tuple
 from DrissionPage import Chromium, ChromiumOptions
 from handlers.checkin import CheckInHandler
 from handlers.login import LoginHandler
-from handlers.websocket import WebSocketLogSink, WebSocketStatusSink
 from models.crawler import CrawlerTaskConfig, ExtractRuleSet
 from models.storage import LoginState
 from storage.browser_state_manager import BrowserStateManager
@@ -31,71 +30,44 @@ class BaseCrawler(ABC):
         setup_logger()
         self.logger = get_logger(name=__name__, site_id=self.site_id)
         
-        # 4. WebSocket处理器初始化
-        self.ws_sink = None
-        self.ws_status = None
-        if task_config.get('task_id'):
-            self.ws_sink = WebSocketLogSink(task_config['task_id'])
-            self.ws_status = WebSocketStatusSink(task_config['task_id'], self.site_id)
-        
-        # 5. 其他组件初始化
+        # 4. 其他组件初始化
         self.base_url = self.task_config.site_url[0]
         self.browser_manager = browser_manager
         self.site_domain = get_site_domain(self.task_config, self.logger)
         
-        # 6. 存储路径初始化
+        # 5. 存储路径初始化
         self.task_storage_path = self.storage_dir / 'tasks' / self.site_id / str(task_config['task_id'])
         self.task_storage_path.mkdir(parents=True, exist_ok=True)
         
-        # 7. 处理器初始化
+        # 6. 处理器初始化
         self.login_handler = LoginHandler(self.task_config, self.browser_manager)
         self.checkin_handler = CheckInHandler(self.task_config)
         
-        # 8. 配置转换
+        # 7. 配置转换
         self.extract_rules = self.task_config.extract_rules
         if not self.extract_rules:
             self.logger.warning(f"{self.site_id} 未配置数据提取规则")
         
-        # 9. 浏览器初始化
+        # 8. 浏览器初始化
         self.browser: Optional[Chromium] = None
         
     async def start(self):
         """启动爬虫"""
         try:
-            # 连接WebSocket（如果有task_id）
-            if self.ws_sink:
-                await self.ws_sink.connect()
-            if self.ws_status:
-                await self.ws_status.connect()
-                await self.ws_status.update_status("running")
-            
             # 初始化浏览器
             await self._init_browser()
             
             # 执行具体的爬取任务
-            result = await self._crawl(self.browser)
+            await self._crawl(self.browser)
             await self._checkin(self.browser)
-            
-            # 发送成功状态和结果
-            if self.ws_status:
-                await self.ws_status.update_status("finished", result)
             
         except Exception as e:
             self.logger.error(f"爬虫运行失败: {str(e)}")
             self.logger.debug("错误详情:", exc_info=True)
-            # 发送错误状态
-            if self.ws_status:
-                await self.ws_status.update_status("error", {"error": str(e)})
             raise
         finally:
             # 清理资源
             await self._cleanup()
-            
-            # 断开WebSocket连接
-            if self.ws_sink:
-                await self.ws_sink.disconnect()
-            if self.ws_status:
-                await self.ws_status.disconnect()
 
     async def _init_browser(self) -> None:
         """初始化浏览器"""
@@ -355,14 +327,31 @@ class BaseCrawler(ABC):
             self.logger.debug("错误详情:", exc_info=True)
             return False
 
-    async def _save_data(self, data: Dict[str, Any]):
-        """保存爬取的数据到任务目录"""
-        data_file = self.task_storage_path / f'data_{datetime.now().strftime("%Y%m%d_%H%M%S")}.json'
-        data_file.write_text(json.dumps(data, ensure_ascii=False, indent=2))
+    async def _save_data(self, data: Dict[str, Any]) -> None:
+        """保存提取的数据"""
+        try:
+            # 使用当前时间生成文件名
+            timestamp = datetime.now().strftime("%y%m%d_%H%M%S")
+            result_file = self.task_storage_path / f'result_{timestamp}.json'
+            
+            with open(result_file, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            self.logger.info(f"数据已保存到 {result_file}")
+            
+            # 保存结果到内存中
+            self._result_data = data
+            
+        except Exception as e:
+            self.logger.error(f"保存数据失败: {str(e)}")
+            raise
+
+    def get_result(self) -> Dict[str, Any]:
+        """获取爬虫结果"""
+        return getattr(self, '_result_data', {})
 
     async def _save_error(self, error: Dict[str, Any]):
         """保存错误信息到任务目录"""
-        error_file = self.task_storage_path / f'error_{datetime.now().strftime("%Y%m%d_%H%M%S")}.json'
+        error_file = self.task_storage_path / f'error_{datetime.now().strftime("%y%m%d_%H%M%S")}.json'
         error_file.write_text(json.dumps(error, ensure_ascii=False, indent=2))
 
     async def _save_screenshot(self, browser: Chromium, name: str):
@@ -372,7 +361,7 @@ class BaseCrawler(ABC):
             if not tab:
                 raise Exception("未找到活动标签页")
                 
-            screenshot_path = self.task_storage_path / f'{name}_{datetime.now().strftime("%Y%m%d_%H%M%S")}.png'
+            screenshot_path = self.task_storage_path / f'{name}_{datetime.now().strftime("%y%m%d_%H%M%S")}.png'
             tab.get_screenshot(screenshot_path)
             self.logger.info(f"页面截图已保存: {screenshot_path}")
         except Exception as e:
@@ -385,7 +374,7 @@ class BaseCrawler(ABC):
             if not tab:
                 raise Exception("未找到活动标签页")
                 
-            html_path = self.task_storage_path / f'{name}_{datetime.now().strftime("%Y%m%d_%H%M%S")}.html'
+            html_path = self.task_storage_path / f'{name}_{datetime.now().strftime("%y%m%d_%H%M%S")}.html'
             html_path.write_text(tab.html, encoding='utf-8')
             self.logger.info(f"页面源码已保存: {html_path}")
         except Exception as e:

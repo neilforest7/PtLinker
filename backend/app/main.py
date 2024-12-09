@@ -1,10 +1,10 @@
-
 from contextlib import asynccontextmanager
 from app.core.database import engine, Base
 from app.api.v1 import tasks, websockets, crawlers, config
 from app.core.logger import setup_logger, get_logger
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
 _logger = get_logger(service="app")
 
 # 启动时创建数据库表

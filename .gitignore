@@ -19,3 +19,4 @@ crawler_py/storage
 crawler_py/logs
 crawler_py/config/credentials.json
 backend/logs
+logs
