@@ -21,3 +21,5 @@ crawler_py/config/credentials.json
 backend/logs
 logs
 backend/ptlinker.db
+backend/migrations
+backend/alembic.ini

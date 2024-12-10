@@ -144,6 +144,13 @@ class BaseCrawler(ABC):
             else:
                 options = ChromiumOptions().auto_port()
             
+            if os.getenv('ENABLE_PROXY', 'false').lower() == 'true':
+                if proxy_url := os.getenv('PROXY_URL', ''):
+                    options.set_proxy(proxy_url)
+                    self.logger.info(f"{self.site_id} 已设置代理: {proxy_url}")
+                else:
+                    self.logger.warning(f"{self.site_id} 开启了代理但未设置代理URL, 跳过代理设置")
+                
             # 设置User-Agent
             options.set_argument('--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36 Edg/129.0.0.0')
             

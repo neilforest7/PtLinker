@@ -28,7 +28,7 @@ async def create_task(
     """创建新的爬虫任务"""
     logger_ctx = get_logger(crawler_id=task.crawler_id)
     
-    # 检查是否有太多运行中的任务
+    # 检查是否有太多���行中的任务
     if CrawlerExecutorManager.get_running_tasks_count() >= 20:
         logger_ctx.warning("Too many running tasks")
         raise HTTPException(
@@ -138,8 +138,17 @@ async def get_task(task_id: str, db: AsyncSession = Depends(get_db)):
     return task
 
 @router.post("/{task_id}/cancel")
-async def cancel_task(task_id: str, db: AsyncSession = Depends(get_db)):
-    """取消正在运行的任务"""
+async def cancel_task(
+    task_id: str, 
+    force: bool = False,
+    db: AsyncSession = Depends(get_db)
+):
+    """取消正在运行的任务
+    
+    Args:
+        task_id: 任务ID
+        force: 是否强制取消（发送系统级停止信号）
+    """
     logger_ctx = get_logger(task_id=task_id)
     
     # 检查任务是否存在
@@ -177,22 +186,43 @@ async def cancel_task(task_id: str, db: AsyncSession = Depends(get_db)):
         }
     
     # 取消任务
-    success = await CrawlerExecutorManager.cancel_task(task_id)
+    success = await CrawlerExecutorManager.cancel_task(
+        task_id,
+        force=force,
+        metadata={
+            "cancel_time": datetime.utcnow().isoformat(),
+            "force_cancel": force
+        }
+    )
+    
     if success:
         # 更新任务状态
         task.status = TaskStatus.CANCELLED
         task.completed_at = datetime.utcnow()
+        task.metadata = {
+            **(task.metadata or {}),
+            "cancel_type": "force" if force else "normal",
+            "cancel_time": datetime.utcnow().isoformat()
+        }
         await db.commit()
         
         # 发送取消状态到WebSocket
-        await manager.send_status(task_id, "cancelled")
-        logger_ctx.info("Task cancelled successfully")
+        await manager.send_status(
+            task_id, 
+            "cancelled",
+            {
+                "force_cancelled": force,
+                "cancel_time": datetime.utcnow().isoformat()
+            }
+        )
+        logger_ctx.info(f"Task cancelled successfully (force={force})")
         
         return {
             "status": "success",
             "message": "Task cancelled successfully",
             "task_id": task_id,
-            "task_status": TaskStatus.CANCELLED
+            "task_status": TaskStatus.CANCELLED,
+            "force_cancelled": force
         }
     else:
         logger_ctx.error("Failed to cancel task")
@@ -200,9 +230,96 @@ async def cancel_task(task_id: str, db: AsyncSession = Depends(get_db)):
             status_code=500,
             detail={
                 "message": "Failed to cancel task",
-                "task_id": task_id
+                "task_id": task_id,
+                "force_attempted": force
             }
         )
+
+@router.post("/{task_id}/pause")
+async def pause_task(task_id: str, db: AsyncSession = Depends(get_db)):
+    """暂停正在运行的任务"""
+    logger_ctx = get_logger(task_id=task_id)
+    
+    # 检查任务是否存在并正在运行
+    result = await db.execute(select(Task).filter(Task.task_id == task_id))
+    task = result.scalar_one_or_none()
+    
+    if task is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+        
+    if task.status != TaskStatus.RUNNING:
+        return {
+            "status": "info",
+            "message": f"Task is not running (current status: {task.status})",
+            "task_id": task_id
+        }
+    
+    # 发送暂停信号
+    success = await CrawlerExecutorManager.pause_task(task_id)
+    if success:
+        task.status = TaskStatus.PAUSED
+        task.metadata = {
+            **(task.metadata or {}),
+            "pause_time": datetime.utcnow().isoformat()
+        }
+        await db.commit()
+        
+        await manager.send_status(
+            task_id,
+            "paused",
+            {"pause_time": datetime.utcnow().isoformat()}
+        )
+        
+        return {
+            "status": "success",
+            "message": "Task paused successfully",
+            "task_id": task_id
+        }
+    else:
+        raise HTTPException(status_code=500, detail="Failed to pause task")
+
+@router.post("/{task_id}/resume")
+async def resume_task(task_id: str, db: AsyncSession = Depends(get_db)):
+    """恢复暂停的任务"""
+    logger_ctx = get_logger(task_id=task_id)
+    
+    # 检查任务是否存在并已暂停
+    result = await db.execute(select(Task).filter(Task.task_id == task_id))
+    task = result.scalar_one_or_none()
+    
+    if task is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+        
+    if task.status != TaskStatus.PAUSED:
+        return {
+            "status": "info",
+            "message": f"Task is not paused (current status: {task.status})",
+            "task_id": task_id
+        }
+    
+    # 发送恢复信号
+    success = await CrawlerExecutorManager.resume_task(task_id)
+    if success:
+        task.status = TaskStatus.RUNNING
+        task.metadata = {
+            **(task.metadata or {}),
+            "resume_time": datetime.utcnow().isoformat()
+        }
+        await db.commit()
+        
+        await manager.send_status(
+            task_id,
+            "resumed",
+            {"resume_time": datetime.utcnow().isoformat()}
+        )
+        
+        return {
+            "status": "success",
+            "message": "Task resumed successfully",
+            "task_id": task_id
+        }
+    else:
+        raise HTTPException(status_code=500, detail="Failed to resume task")
 
 @router.get("", response_model=List[TaskResponse])
 async def list_tasks(

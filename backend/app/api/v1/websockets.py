@@ -100,16 +100,27 @@ async def process_crawler_status(message: dict, logger, db: AsyncSession):
     try:
         status = message.get("status")
         data = message.get("data", {})
+        message_type = message.get("type")
         
+        # 处理系统级控制消息
+        if message_type == "system_control":
+            crawler_id = data.get("crawler_id")
+            control_action = data.get("action")
+            if crawler_id and control_action:
+                await crawler_manager.handle_system_control(crawler_id, control_action, data)
+                logger.info(f"Processed system control message: {control_action} for crawler {crawler_id}")
+            return
+            
         # 处理服务状态更新
         if status == "service_status":
             crawler_id = data.get("crawler_id")
             if crawler_id:
-                # 更新爬虫状态
                 status_data = {
                     "is_connected": True,
                     "status": data.get("status", "unknown"),
-                    "last_updated": datetime.utcnow().isoformat()
+                    "last_updated": datetime.utcnow().isoformat(),
+                    "system_status": data.get("system_status", {}),  # 添加系统状态信息
+                    "config_status": data.get("config_status", {})   # 添加配置状态信息
                 }
                 await crawler_manager.update_crawler_status(crawler_id, status_data)
                 logger.debug(f"Updated service status for crawler {crawler_id}: {status_data}")
@@ -125,48 +136,51 @@ async def process_crawler_status(message: dict, logger, db: AsyncSession):
         
         # 处理不同类型的状态更新
         if status == "task_started":
-            # 更新任务开始时间
             stmt = update(Task).where(Task.task_id == task_id).values(
                 status=TaskStatus.RUNNING,
-                started_at=datetime.utcnow()
+                started_at=datetime.utcnow(),
+                task_metadata=data.get("metadata", {})  # 更新字段名
             )
             await db.execute(stmt)
             await db.commit()
             await manager.send_status(task_id, "running", data)
             
         elif status == "task_completed":
-            # 更新任务状态和完成时间
             stmt = update(Task).where(Task.task_id == task_id).values(
                 status=TaskStatus.SUCCESS,
-                completed_at=datetime.utcnow()
+                completed_at=datetime.utcnow(),
+                result=data.get("result", {}),
+                task_metadata=data.get("metadata", {})  # 更新字段名
             )
             await db.execute(stmt)
             await db.commit()
             await manager.send_status(task_id, "success", data)
             
         elif status == "task_failed":
-            # 更新任务状态、错误信息和完成时间
             stmt = update(Task).where(Task.task_id == task_id).values(
                 status=TaskStatus.FAILED,
                 completed_at=datetime.utcnow(),
-                error=data.get("error", "Unknown error")
+                error=data.get("error", "Unknown error"),
+                error_details=data.get("error_details", {}),
+                task_metadata=data.get("metadata", {})  # 更新字段名
             )
             await db.execute(stmt)
             await db.commit()
             await manager.send_status(task_id, "failed", data)
             
         elif status == "task_cancelled":
-            # 更新任务状态和完成时间
             stmt = update(Task).where(Task.task_id == task_id).values(
                 status=TaskStatus.CANCELLED,
                 completed_at=datetime.utcnow(),
-                error="Task cancelled"
+                error="Task cancelled",
+                task_metadata=data.get("metadata", {})  # 更新字段名
             )
             await db.execute(stmt)
             await db.commit()
             await manager.send_status(task_id, "cancelled", data)
             
         else:
+            # 处理其他状态更新
             await manager.send_status(task_id, status, data)
                 
     except Exception as e:
