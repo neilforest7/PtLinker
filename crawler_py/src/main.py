@@ -4,55 +4,82 @@ import os
 from concurrent.futures import ProcessPoolExecutor
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict, Type
 
-from crawlers.site.site_crawler import SiteCrawler
-from crawlers.site_config.audiences import AudiencesConfig
-from crawlers.site_config.btschool import BTSchoolConfig
-from crawlers.site_config.carpt import CarptConfig
-from crawlers.site_config.frds import FrdsConfig
-from crawlers.site_config.haidan import HaidanConfig
-from crawlers.site_config.hdatoms import HdatomsConfig
-from crawlers.site_config.hdfans import HDFansConfig
-from crawlers.site_config.hdhome import HDHomeConfig
-from crawlers.site_config.kylin import KylinConfig
-from crawlers.site_config.nicept import NicePTConfig
-from crawlers.site_config.ourbits import OurBitsConfig
-from crawlers.site_config.qingwapt import QingwaPTConfig
-from crawlers.site_config.rousi import RousiConfig
-from crawlers.site_config.u2 import U2Config
-from crawlers.site_config.ubits import UBitsConfig
-from crawlers.site_config.zmpt import ZMPTConfig
-from crawlers.site_config.iloli import IloliConfig
-from crawlers.site_config.hdpt import HdptConfig
+from crawlers.site_crawler import SiteCrawler
+# from crawlers.site_config.audiences import AudiencesConfig
+# from crawlers.site_config.btschool import BTSchoolConfig
+# from crawlers.site_config.carpt import CarptConfig
+# from crawlers.site_config.frds import FrdsConfig
+# from crawlers.site_config.haidan import HaidanConfig
+# from crawlers.site_config.hdatoms import HdatomsConfig
+# from crawlers.site_config.hdfans import HDFansConfig
+# from crawlers.site_config.hdhome import HDHomeConfig
+# from crawlers.site_config.kylin import KylinConfig
+# from crawlers.site_config.nicept import NicePTConfig
+# from crawlers.site_config.ourbits import OurBitsConfig
+# from crawlers.site_config.qingwapt import QingwaPTConfig
+# from crawlers.site_config.rousi import RousiConfig
+# from crawlers.site_config.u2 import U2Config
+# from crawlers.site_config.ubits import UBitsConfig
+# from crawlers.site_config.zmpt import ZMPTConfig
+# from crawlers.site_config.iloli import IloliConfig
+# from crawlers.site_config.hdpt import HdptConfig
 from dotenv import load_dotenv
 from DrissionPage import ChromiumOptions
 from storage.browser_state_manager import BrowserStateManager
 from storage.storage_manager import get_storage_manager
 from utils.logger import get_logger, setup_logger
+from crawlers.base_config import BaseSiteConfig
 
-# 站点配置映射
-SITE_CONFIGS = {
-    'ubits': UBitsConfig,
-    'ourbits': OurBitsConfig,
-    'qingwapt': QingwaPTConfig,
-    'hdfans': HDFansConfig,
-    'frds': FrdsConfig,
-    'hdhome': HDHomeConfig,
-    'audiences': AudiencesConfig,
-    'rousi': RousiConfig,
-    'kylin': KylinConfig,
-    'hdatoms': HdatomsConfig,
-    'haidan': HaidanConfig,
-    'nicept': NicePTConfig,
-    'btschool': BTSchoolConfig,
-    'carpt': CarptConfig,
-    'zmpt': ZMPTConfig,
-    'u2': U2Config,
-    'iloli': IloliConfig,
-    'hdpt': HdptConfig,
-    # 其他站点配置可以在这里添加
-}
+
+class SiteConfigManager:
+    """站点配置管理器"""
+    def __init__(self):
+        self._configs: Dict[str, Type[BaseSiteConfig]] = {}
+        self._load_site_configs()
+
+    def _load_site_configs(self):
+        """加载所有站点配置"""
+        # 获取配置目录
+        config_dir = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),"config","site")
+        
+        # 遍历目录下的所有JSON文件
+        for filename in os.listdir(config_dir):
+            if filename.endswith('.json'):
+                site_id = filename[:-5]  # 移除.json后缀
+                try:
+                    # 创建动态配置类
+                    config_class = type(
+                        f"{site_id.capitalize()}Config",
+                        (BaseSiteConfig,),
+                        {
+                            # 使用classmethod装饰器创建get_config方法
+                            'get_config': classmethod(lambda cls, sid=site_id: cls.load_json_config(sid))
+                        }
+                    )
+                    self._configs[site_id] = config_class
+                except Exception as e:
+                    print(f"Error loading config for site {site_id}: {str(e)}")
+
+    def get_site_config(self, site_id: str) -> Type[BaseSiteConfig]:
+        """获取指定站点的配置类"""
+        if site_id not in self._configs:
+            raise ValueError(f"Configuration not found for site {site_id}")
+        return self._configs[site_id]
+
+    def get_all_site_ids(self) -> list:
+        """获取所有站点ID"""
+        return list(self._configs.keys())
+
+    def get_all_configs(self) -> Dict[str, Type[BaseSiteConfig]]:
+        """获取所有站点配置"""
+        return self._configs
+
+
+# 创建全局配置管理器实例
+SITE_CONFIGS = SiteConfigManager().get_all_configs()
 
 def init_drissionpage():
     """初始化DrissionPage配置"""

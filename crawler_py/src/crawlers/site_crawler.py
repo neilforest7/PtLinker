@@ -8,7 +8,7 @@ from storage.browser_state_manager import BrowserStateManager
 from utils.logger import get_logger
 from utils.url import convert_url
 
-from ..base.base_crawler import BaseCrawler
+from .base_crawler import BaseCrawler
 
 
 class SiteCrawler(BaseCrawler):

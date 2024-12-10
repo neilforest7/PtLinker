@@ -1,6 +1,8 @@
 from dataclasses import dataclass
+import json
+import os
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, ClassVar
 
 from models.crawler import (CheckInConfig, CrawlerTaskConfig, ExtractRuleSet,
                             LoginConfig, WebElement)
@@ -15,7 +17,48 @@ class BaseSiteConfig:
     login_config: Dict[str, Any]
     extract_rules: Dict[str, Any]
     checkin_config: Dict[str, Any]
-    _credentials_manager = CredentialsManager()
+    _credentials_manager: ClassVar = CredentialsManager()
+    _config_cache: ClassVar[Dict[str, Dict[str, Any]]] = {}
+
+    @classmethod
+    def load_json_config(cls, site_id: str) -> Dict[str, Any]:
+        """
+        从JSON文件加载站点配置
+        
+        Args:
+            site_id: 站点ID
+            
+        Returns:
+            Dict[str, Any]: 站点配置
+        """
+        # 如果配置已经缓存，直接返回
+        if site_id in cls._config_cache:
+            return cls._config_cache[site_id]
+            
+        # 构建配置文件路径
+        self_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        config_dir = os.path.join(self_dir, "config", "site")
+        config_file = os.path.join(config_dir, f"{site_id}.json")
+        
+        try:
+            # 读取并解析JSON文件
+            with open(config_file, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+                
+            # 验证配置
+            if not cls.validate_config(config):
+                raise ValueError(f"Invalid configuration for site {site_id}")
+                
+            # 缓存配置
+            cls._config_cache[site_id] = config
+            return config
+            
+        except FileNotFoundError:
+            raise FileNotFoundError(f"Configuration file not found for site {site_id}")
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Invalid JSON in configuration file for site {site_id}: {str(e)}")
+        except Exception as e:
+            raise Exception(f"Error loading configuration for site {site_id}: {str(e)}")
 
     @classmethod
     def get_config(cls) -> Dict[str, Any]:

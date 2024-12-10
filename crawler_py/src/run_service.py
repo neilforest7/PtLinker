@@ -2,7 +2,6 @@ import asyncio
 import argparse
 from service import CrawlerService
 from utils.logger import setup_logger, get_logger
-from main import SITE_CONFIGS
 
 async def main():
     # 设置日志

@@ -2,6 +2,7 @@ import asyncio
 import json
 import signal
 import uuid
+import os
 from datetime import datetime
 from typing import Any, Dict, Optional, List
 from pathlib import Path
@@ -11,7 +12,6 @@ from process_manager import ProcessManager
 from queue_manager import QueueManager
 from utils.logger import get_logger, setup_logger
 from ws_client import WebSocketClient
-from main import SITE_CONFIGS
 
 
 class CrawlerService:
@@ -28,16 +28,33 @@ class CrawlerService:
         # 创建一个共享的进程管理器
         self.process_manager = ProcessManager()
         
-        # 为每个站点创建WebSocket客户端和队列管理器
+        # 加载所有站点配置
         self.sites = {}
-        for site_id in SITE_CONFIGS.keys():
-            site_id = site_id.lower()
-            self.sites[site_id] = {
-                'ws_client': WebSocketClient(crawler_id=site_id),
-                'queue_manager': QueueManager(),
-                'logger': get_logger(name=__name__, site_id=site_id)
-            }
-            self.logger.info(f"Initialized services for site: {site_id}")
+        self._load_site_configs()
+        
+    def _load_site_configs(self):
+        """加载所有站点配置"""
+        config_dir = os.path.join(os.path.dirname(__file__),"config","site")
+        
+        # 遍历目录下的所有JSON文件
+        for filename in os.listdir(config_dir):
+            if filename.endswith('.json'):
+                try:
+                    # 读取JSON配置文件
+                    with open(os.path.join(config_dir, filename), 'r', encoding='utf-8') as f:
+                        config = json.load(f)
+                    
+                    site_id = config.get('site_id', '').lower()
+                    if site_id:
+                        self.sites[site_id] = {
+                            'ws_client': WebSocketClient(crawler_id=site_id),
+                            'queue_manager': QueueManager(),
+                            'logger': get_logger(name=__name__, site_id=site_id),
+                            'config': config
+                        }
+                        self.logger.info(f"Loaded configuration for site: {site_id}")
+                except Exception as e:
+                    self.logger.error(f"Error loading config from {filename}: {str(e)}")
 
     async def _handle_task(self, task_data: Dict[str, Any], site_id: str):
         """处理接收到的任务"""
@@ -51,6 +68,13 @@ class CrawlerService:
                 return
             
             site['logger'].info(f"Received task {task_id} for site {site_id}")
+            
+            # 合并站点配置和任务配置
+            task_config = {
+                **site['config'],  # 基础站点配置
+                **config  # 任务特定配置
+            }
+            task_data['config'] = task_config
             
             # 发送任务开始状态
             await site['ws_client'].send_status("task_started", {
@@ -91,6 +115,105 @@ class CrawlerService:
                     "failed_at": datetime.utcnow().isoformat()
                 })
 
+    async def _handle_control_message(self, control_data: Dict[str, Any]):
+        """统一处理控制消息"""
+        try:
+            control_type = control_data.get("control_type")
+            if not control_type:
+                self.logger.error("Invalid control data: missing control_type")
+                return
+            
+            self.logger.info(f"Received control message: {control_type}")
+            
+            # 处理不同类型的��制消息
+            if control_type == "stop":
+                # 停止所有服务
+                await self.stop()
+                response_data = {"status": "stopping"}
+            
+            elif control_type == "get_configs":
+                # 获取所有站点配置
+                configs = {}
+                for site_id, site in self.sites.items():
+                    try:
+                        site_config = await site['ws_client'].get_available_configs()
+                        if site_config.get("status") == "success":
+                            configs[site_id] = site_config.get("configs", {})
+                    except Exception as e:
+                        self.logger.error(f"Error getting config for site {site_id}: {str(e)}")
+                
+                response_data = {
+                    "status": "success",
+                    "configs": configs
+                }
+            
+            elif control_type == "status":
+                # 获取所有站点状态
+                statuses = {}
+                for site_id, site in self.sites.items():
+                    try:
+                        queue_size = await site['queue_manager'].get_queue_size()
+                        process_info = self.process_manager.get_process_info()
+                        statuses[site_id] = {
+                            "status": "running" if process_info else "ready",
+                            "queue_size": queue_size,
+                            "process_info": process_info if process_info else {}
+                        }
+                    except Exception as e:
+                        self.logger.error(f"Error getting status for site {site_id}: {str(e)}")
+                        statuses[site_id] = {"status": "error", "error": str(e)}
+                
+                response_data = {
+                    "status": "success",
+                    "statuses": statuses
+                }
+            
+            else:
+                self.logger.warning(f"Unhandled control type: {control_type}")
+                response_data = {
+                    "status": "error",
+                    "error": f"Unsupported control type: {control_type}"
+                }
+            
+            # 向所有站点广播控制响应
+            for site in self.sites.values():
+                try:
+                    await site['ws_client'].send_control_response(control_type, response_data)
+                except Exception as e:
+                    self.logger.error(f"Error sending control response: {str(e)}")
+                    
+        except Exception as e:
+            self.logger.error(f"Error handling control message: {str(e)}")
+            # 发送错误响应
+            response_data = {
+                "status": "error",
+                "error": str(e)
+            }
+            for site in self.sites.values():
+                try:
+                    await site['ws_client'].send_control_response(control_type, response_data)
+                except Exception as send_error:
+                    self.logger.error(f"Error sending error response: {str(send_error)}")
+
+    async def stop_site(self, site_id: str):
+        """停止指定站点的服务"""
+        try:
+            site = self.sites.get(site_id)
+            if not site:
+                self.logger.error(f"Invalid site_id: {site_id}")
+                return
+                
+            # 停止WebSocket客户端
+            await site['ws_client'].disconnect()
+            
+            # 停止队列管理器
+            await site['queue_manager'].stop()
+            
+            self.logger.info(f"Stopped services for site {site_id}")
+            
+        except Exception as e:
+            self.logger.error(f"Error stopping services for site {site_id}: {str(e)}")
+
     async def _update_status_loop(self):
         """定期更新所有爬虫状态"""
         while not self._stop_event.is_set():
@@ -109,19 +232,16 @@ class CrawlerService:
                         
                         # 构建状态数据
                         status_data = {
-                            "crawler_id": site_id,
-                            "status": "ready",  # 默认状态为ready
-                            "queue_size": queue_size,
-                            "timestamp": datetime.utcnow().isoformat()
+                            "status": "ready" if not process_info else "running",
+                            "data": {
+                                "queue_size": queue_size,
+                                "process_info": process_info if process_info else {},
+                                "timestamp": datetime.utcnow().isoformat()
+                            }
                         }
                         
-                        # 如果有进程信息，添加到状态数据中
-                        if process_info:
-                            status_data["status"] = "running"
-                            status_data["process_info"] = process_info
-                        
-                        # 发送状态更新
-                        await site['ws_client'].send_status("status_update", status_data)
+                        # 发送控制响应
+                        await site['ws_client'].send_control_response("status_update", status_data)
                         
                     except Exception as e:
                         site['logger'].error(f"Error updating status for site {site_id}: {str(e)}")
@@ -129,8 +249,7 @@ class CrawlerService:
             except Exception as e:
                 self.logger.error(f"Error in status update loop: {str(e)}")
             
-            # 等待下一次更新
-            await asyncio.sleep(5)  # 每5秒更新一次状态
+            await asyncio.sleep(5)
 
     async def start(self):
         """启动所有站点的服务"""
@@ -155,6 +274,12 @@ class CrawlerService:
                 # 注册任务处理器
                 site['ws_client'].register_task_handler(
                     lambda data, sid=site_id: self._handle_task(data, sid)
+                )
+                
+                # 注册统一的控制消息处理器
+                site['ws_client'].register_control_handler(
+                    "control",  # 控制消息类型
+                    lambda data: self._handle_control_message(data)  # 处理函数
                 )
                 
                 # 启动消息接收循环

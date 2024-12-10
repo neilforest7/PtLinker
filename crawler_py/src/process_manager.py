@@ -1,14 +1,16 @@
 import asyncio
 import multiprocessing
-from concurrent.futures import ProcessPoolExecutor
-from typing import Dict, Any, List, Optional, Callable
-from datetime import datetime
-import psutil
-from utils.logger import get_logger
-from pathlib import Path
-from dotenv import load_dotenv
 import os
 import platform
+from concurrent.futures import ProcessPoolExecutor
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional
+
+import psutil
+from dotenv import load_dotenv
+from utils.logger import get_logger
+
 
 class ProcessManager:
     def __init__(
@@ -58,8 +60,9 @@ class ProcessManager:
             raise RuntimeError(f"Failed to start process manager: {str(e)}")
 
     async def stop(self):
-        """停止进程管理器"""
+        """停止进程管理器并优雅地终止所有进程"""
         self._stop_event.set()
+        terminated_processes = []
         
         if self._monitor_task:
             self._monitor_task.cancel()
@@ -69,19 +72,99 @@ class ProcessManager:
                 pass
 
         if self.pool:
+            # 优雅地关闭进程池
             self.pool.shutdown(wait=True)
             self.pool = None
             
-        # 终止所有活动进程
+        # 优雅地终止所有活动进程
         for process_id, process in self._active_processes.items():
             try:
+                # 首先尝试优雅地终止
                 process.terminate()
+                try:
+                    process.wait(timeout=5)  # 等待进程终止
+                except psutil.TimeoutExpired:
+                    # 如果超时，强制终止
+                    process.kill()
+                
+                terminated_processes.append(process_id)
                 self.logger.info(f"Terminated process {process_id}")
             except Exception as e:
                 self.logger.error(f"Error terminating process {process_id}: {str(e)}")
 
         self._active_processes.clear()
-        self.logger.info("Process manager stopped")
+        self.logger.info(f"Process manager stopped, {len(terminated_processes)} processes terminated")
+        return terminated_processes
+
+    async def get_process_status(self) -> Dict[str, Any]:
+        """获取所有进程的详细状态"""
+        try:
+            processes_info = {}
+            system_info = {
+                "cpu_percent": psutil.cpu_percent(interval=1),
+                "memory_percent": psutil.virtual_memory().percent,
+                "max_workers": self.max_workers,
+                "active_workers": len(self._active_processes)
+            }
+            
+            # 获取每个进程的详细信息
+            for process_id, process in self._active_processes.items():
+                try:
+                    if process.is_running():
+                        processes_info[process_id] = {
+                            "cpu_percent": process.cpu_percent(),
+                            "memory_percent": process.memory_percent(),
+                            "status": "running",
+                            "create_time": datetime.fromtimestamp(process.create_time()).isoformat(),
+                            "pid": process.pid
+                        }
+                    else:
+                        processes_info[process_id] = {
+                            "status": "stopped",
+                            "pid": process.pid
+                        }
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    processes_info[process_id] = {
+                        "status": "error",
+                        "error": "Process not accessible"
+                    }
+            
+            return {
+                "system": system_info,
+                "processes": processes_info,
+                "timestamp": datetime.utcnow().isoformat()
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error getting process status: {str(e)}")
+            return {
+                "error": str(e),
+                "timestamp": datetime.utcnow().isoformat()
+            }
+
+    async def terminate_process(self, process_id: str) -> bool:
+        """终止指定的进程"""
+        try:
+            process = self._active_processes.get(process_id)
+            if not process:
+                self.logger.warning(f"Process {process_id} not found")
+                return False
+                
+            # 尝试优雅地终止进程
+            process.terminate()
+            try:
+                process.wait(timeout=5)  # 等待进程终止
+            except psutil.TimeoutExpired:
+                # 如果超时，强制终止
+                process.kill()
+            
+            self._active_processes.pop(process_id, None)
+            self.logger.info(f"Process {process_id} terminated")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Error terminating process {process_id}: {str(e)}")
+            return False
 
     async def execute_task(self, task_data: Dict[str, Any]) -> Dict[str, Any]:
         """执行任务"""
@@ -116,14 +199,14 @@ class ProcessManager:
     @staticmethod
     def _run_crawler_process(task_data: Dict[str, Any]) -> Dict[str, Any]:
         """在新进程中运行爬虫"""
-        from crawlers.site.site_crawler import SiteCrawler
+        import asyncio
+        from pathlib import Path
+
+        from crawlers.site_crawler import SiteCrawler
+        from dotenv import load_dotenv
         from storage.browser_state_manager import BrowserStateManager
         from storage.storage_manager import get_storage_manager
         from utils.logger import get_logger
-        from pathlib import Path
-        from dotenv import load_dotenv
-        import asyncio
-        from main import SITE_CONFIGS
 
         try:
             # 加载环境变量
@@ -146,22 +229,12 @@ class ProcessManager:
             storage_manager = get_storage_manager()
             browser_manager = BrowserStateManager(storage_manager)
 
-            # 获取站点配置
-            site_id = site_id.lower()
-            if site_id not in SITE_CONFIGS:
-                raise ValueError(f"Site configuration not found for {site_id}")
-                
             # 创建任务配置
-            config_class = SITE_CONFIGS[site_id]
-            task_config = config_class.create_task_config()
-            task_config_dict = task_config.dict()
-            
-            # 合并用户提供的配置
-            task_config_dict.update({
+            task_config_dict = {
                 "task_id": task_id,
                 "site_id": site_id,
                 **config
-            })
+            }
 
             # 使用统一的SiteCrawler
             crawler = SiteCrawler(task_config_dict, browser_manager=browser_manager)

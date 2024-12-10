@@ -2,8 +2,11 @@ import asyncio
 import json
 import websockets
 import time
+import os
+import importlib
+import inspect
 from datetime import datetime
-from typing import Dict, Any, Optional, Callable, Awaitable
+from typing import Dict, Any, Optional, Callable, Awaitable, List
 from utils.logger import get_logger
 
 class WebSocketClient:
@@ -19,6 +22,7 @@ class WebSocketClient:
         self._task_handlers = {}
         self._control_handlers = {}
         self._start_time = time.time()  # 初始化启动时间
+        self.site_config_path = os.path.join(os.path.dirname(__file__), "crawlers", "site_config")
 
     def register_task_handler(self, handler: Callable[[Dict[str, Any]], Awaitable[None]]):
         """注册任务处理器"""
@@ -26,7 +30,7 @@ class WebSocketClient:
         self.logger.debug("Task handler registered")
 
     def register_control_handler(self, control_type: str, handler: Callable[[Dict[str, Any]], Awaitable[None]]):
-        """注册控制消息处���器"""
+        """注册控制消息处理器"""
         self._control_handlers[control_type] = handler
         self.logger.debug(f"Control handler registered for type: {control_type}")
 
@@ -208,6 +212,21 @@ class WebSocketClient:
                 self.logger.error("Received task message without task_id")
                 return
 
+            task_type = data.get("task_type")
+            
+            # 处理任务停止请求
+            if task_type == "stop_task":
+                reason = data.get("reason", "user request")
+                self.logger.info(f"Stopping task {task_id}: {reason}")
+                # 发送任务停止确认
+                await self.send_status("task_stopping", {
+                    "task_id": task_id,
+                    "reason": reason
+                })
+                # 实际停止任务的逻辑
+                await self._stop_specific_task(task_id)
+                return
+
             self.logger.info(f"Processing task: {task_id}")
             
             # 发送任务接收确认
@@ -239,6 +258,29 @@ class WebSocketClient:
         except Exception as e:
             self.logger.error(f"Error handling task message: {str(e)}")
 
+    async def send_control_response(self, control_type: str, data: Dict[str, Any]):
+        """发送控制消息的响应"""
+        if not self.websocket:
+            self.logger.error("WebSocket connection not established")
+            return False
+            
+        try:
+            message = {
+                "type": "control_response",
+                "control_type": control_type,
+                "data": data,
+                "crawler_id": self.crawler_id,
+                "timestamp": datetime.utcnow().isoformat()
+            }
+            
+            await self.websocket.send(json.dumps(message))
+            self.logger.debug(f"Control response sent: {control_type}")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Failed to send control response: {str(e)}")
+            return False
+
     async def _handle_control_message(self, data: Dict[str, Any]):
         """处理控制消息"""
         try:
@@ -251,16 +293,28 @@ class WebSocketClient:
 
             # 处理内置控制命令
             if control_type == "ping":
-                await self.send_status("pong", {
-                    "timestamp": datetime.utcnow().isoformat()
+                await self.send_control_response("pong", {
+                    "status": "success"
                 })
                 return
 
             if control_type == "stop":
-                await self.send_status("stopping", {
-                    "timestamp": datetime.utcnow().isoformat()
+                reason = data.get("data", {}).get("reason", "normal shutdown")
+                self.logger.info(f"Stopping crawler client: {reason}")
+                await self.send_control_response("stop", {
+                    "status": "stopping",
+                    "reason": reason
                 })
+                # 设置停止标志
                 self._stop_event.set()
+                # 清理所有正在运行的任务
+                await self._cleanup_running_tasks()
+                return
+                
+            # 处理获取配置请求
+            if control_type == "get_configs":
+                configs = await self.get_available_configs()
+                await self.send_control_response("get_configs", configs)
                 return
 
             # 调用注册的控制消息处理器
@@ -270,19 +324,23 @@ class WebSocketClient:
                     await handler(data)
                 except Exception as e:
                     self.logger.error(f"Control handler error for type {control_type}: {str(e)}")
-                    await self.send_status("control_failed", {
-                        "control_type": control_type,
+                    await self.send_control_response(control_type, {
+                        "status": "error",
                         "error": str(e)
                     })
             else:
                 self.logger.warning(f"No handler registered for control type: {control_type}")
-                await self.send_status("control_rejected", {
-                    "control_type": control_type,
-                    "reason": "Unsupported control type"
+                await self.send_control_response(control_type, {
+                    "status": "error",
+                    "error": "Unsupported control type"
                 })
 
         except Exception as e:
             self.logger.error(f"Error handling control message: {str(e)}")
+            await self.send_control_response(control_type, {
+                "status": "error",
+                "error": str(e)
+            })
 
     def _get_uptime(self) -> float:
         """获取服务运行时间（秒）"""
@@ -297,3 +355,55 @@ class WebSocketClient:
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """异步上下文管理器退出"""
         await self.disconnect()
+
+    async def get_available_configs(self) -> Dict[str, Any]:
+        """获取所有可用的站点配置信息"""
+        try:
+            configs = {}
+            config_dir = os.path.join(os.path.dirname(__file__), "config", "site")
+            
+            # 遍历site_config目录下的所有JSON文件
+            for filename in os.listdir(config_dir):
+                if filename.endswith('.json'):
+                    try:
+                        with open(os.path.join(config_dir, filename), 'r', encoding='utf-8') as f:
+                            config = json.load(f)
+                            
+                            # 移除敏感信息
+                            config_copy = config.copy()
+                            if 'login_config' in config_copy:
+                                login_config = config_copy['login_config']
+                                if 'fields' in login_config:
+                                    fields = login_config['fields']
+                                    if 'password' in fields:
+                                        del fields['password']
+                                        
+                            configs[config.get('site_id')] = config_copy
+                            
+                    except Exception as e:
+                        self.logger.error(f"Error reading config file {filename}: {str(e)}")
+            
+            return {
+                "status": "success",
+                "configs": configs,
+                "crawler_id": self.crawler_id
+            }
+        except Exception as e:
+            self.logger.error(f"Error getting configs: {str(e)}")
+            return {
+                "status": "error",
+                "error": str(e),
+                "crawler_id": self.crawler_id
+            }
+
+    async def _cleanup_running_tasks(self):
+        """清理所有正在运行的任务"""
+        # 这里添加清理正在运行任务的逻辑
+        self.logger.info("Cleaning up running tasks")
+        # TODO: 实现具体的任务清理逻辑
+
+    async def _stop_specific_task(self, task_id: str):
+        """停止特定的任务"""
+        # 这里添加停止特定任务的逻辑
+        self.logger.info(f"Stopping specific task: {task_id}")
+        # TODO: 实现具体的任务停止逻辑
