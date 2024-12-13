@@ -8,18 +8,10 @@ node_modules
 .env.*
 !.env.example
 
-crawler/storage/*
-crawler/*.png
-crawler/debug/*.png
 
-crawler_py/*.png
-crawler_py/.venv
-crawler_py/.vscode
-crawler_py/storage
-crawler_py/logs
-crawler_py/config/credentials.json
-backend/logs
 logs
-backend/ptlinker.db
-backend/migrations
-backend/alembic.ini
+app/services/sites/credentials/credentials.json
+app/storage/
+app/ptlinker.db
+app/ptlinker.db-shm
+app/ptlinker.db-wal
