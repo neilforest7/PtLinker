@@ -2,7 +2,7 @@
     "site_id": "hdfans",
     "site_url": "https://hdfans.org",
     "login_config": {
-        "login_url": "https://hdfans.org/login.php",
+        "login_url": "/login.php",
         "form_selector": "@action=takelogin.php",
         "fields": {
             "username": {

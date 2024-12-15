@@ -12,7 +12,7 @@ from .handlers.ocr_handler import OCRHandler
 
 class CaptchaService:
     def __init__(self):
-        setup_logger()
+        # setup_logger()
         self.logger = get_logger(name=__name__, site_id="Captcha")
         
         # 初始化处理器

@@ -17,7 +17,7 @@ class QueueManager:
         self._task_info: Dict[str, Dict] = {}  # task_id -> task_info
         self._lock = asyncio.Lock()
         self._max_concurrency = 1
-        setup_logger()
+        # setup_logger()
         self.logger = get_logger(name=__name__, site_id="queue_manager")
 
     async def initialize(self, max_concurrency: int = 1) -> None:

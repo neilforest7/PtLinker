@@ -1,19 +1,20 @@
-import os
-from typing import Optional
 import base64
 import io
-from twocaptcha import TwoCaptcha
+import os
+from typing import Optional
 
 from core.logger import get_logger, setup_logger
+from twocaptcha import TwoCaptcha
 
 from ..base_handler import BaseCaptchaHandler
+
 
 class APIHandler(BaseCaptchaHandler):
     """API验证码处理器, 使用2captcha服务"""
     
     def __init__(self, storage_dir: str):
         super().__init__(storage_dir)
-        setup_logger()
+        # setup_logger()
         self.logger = get_logger(name=__name__, site_id="api")
         
         # 初始化2captcha客户端
@@ -73,7 +74,7 @@ class APIHandler(BaseCaptchaHandler):
             self.logger.info(f"API识别结果: {captcha_text}")
             
             # 保存成功识别的验证码图片
-            self._save_captcha_image(image_data, site_id, captcha_text)
+            # self._save_captcha_image(image_data, site_id, captcha_text)
             
             return captcha_text
             

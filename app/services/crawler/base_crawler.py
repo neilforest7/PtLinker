@@ -7,28 +7,28 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
+from core.logger import get_logger, setup_logger
 from DrissionPage import Chromium, ChromiumOptions
 from handlers.checkin import CheckInHandler
 from handlers.login import LoginHandler
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from core.logger import get_logger, setup_logger
-from models.models import BrowserState
+from schemas.browserstate import BrowserState
 from schemas.result import ResultCreate
 from schemas.sitesetup import SiteSetup
+from services.managers.browserstate_manager import BrowserStateManager
 from services.managers.result_manager import ResultManager
-from utils.url import get_site_domain
+from sqlalchemy.ext.asyncio import AsyncSession
 
 CheckInResult = Literal["not_set", "already", "success", "failed"]
 
 class BaseCrawler(ABC):
-    def __init__(self, site_setup: SiteSetup):
+    def __init__(self, site_setup: SiteSetup, task_id: str):
         # 1. 基础配置初始化
         self.site_setup = site_setup
         self.site_id = site_setup.site_id
+        self.task_id = task_id
         
         # 2. 设置日志
-        setup_logger()
+        # setup_logger()
         self.logger = get_logger(name=__name__, site_id=self.site_id)
         
         # 3. 其他组件初始化
@@ -55,12 +55,14 @@ class BaseCrawler(ABC):
         """启动爬虫"""
         try:
             # 初始化浏览器
-            await self._init_browser()
+            init_result = await self._init_browser()
             
             # 执行具体的爬取任务
-            await self._crawl(self.browser)
-            await self._checkin(self.browser)
-            
+            if init_result:
+                await self._crawl(self.browser)
+                await self._checkin(self.browser)
+            else:
+                self.logger.warning(f"{self.site_id} 初始化浏览器失败，跳过爬取")
         except Exception as e:
             self.logger.error(f"爬虫运行失败: {str(e)}")
             self.logger.debug("错误详情:", exc_info=True)
@@ -86,34 +88,50 @@ class BaseCrawler(ABC):
                 
                 # 检查是否需要强制重新登录
                 if not self.site_setup.crawler_config.fresh_login:
-                    if self.site_setup.browser_state.cookies:
-                        self.logger.info("找到站点cookies")
-                        if await self._restore_browser_state(browser):
-                            if await self.login_handler.check_login(browser):
-                                self.logger.info("恢复登录状态成功")
-                                break
+                    if self.site_setup.browser_state:
+                        if self.site_setup.browser_state.cookies:
+                            self.logger.info("找到站点cookies")
+                            if await self._restore_browser_state(browser):
+                                if await self.login_handler.check_login(browser):
+                                    self.logger.info("恢复登录状态成功")
+                                    await self._save_browser_state(browser)
+                                    # 更新登录状态
+                                    # self.site_setup.crawler = self.site_setup.crawler.model_copy(
+                                    #     update={
+                                    #         'is_logged_in': True,
+                                    #         'last_login_time': datetime.now()
+                                    #     }
+                                    # )
+                                    self.browser = browser
+                                    return True
                 
                 # 执行登录
                 self.logger.info("开始执行登录")
-                login_success = await self.login_handler.perform_login(
-                    browser, 
-                    self.site_setup.crawler_credential
-                )
+                login_success = await self.login_handler.perform_login(browser)
                 
                 if login_success:
                     self.logger.info("登录成功")
-                    break
+                    # 更新登录状态
+                    # self.site_setup.crawler = self.site_setup.crawler.model_copy(
+                    #     update={
+                    #         'is_logged_in': True,
+                    #         'last_login_time': datetime.now()
+                    #     }
+                    # )
+                    self.browser = browser
+                    await self._save_browser_state(browser)
+                    return True
                 else:
                     self.logger.error(f"第 {RETRY_COUNT+1} 次登录失败")
-                    await self._clear_browser_state()
+                    # await self._clear_browser_state()
                     RETRY_COUNT += 1
                     
-            self.browser = browser
-            
+            return False
         except Exception as e:
             self.logger.error(f"浏览器初始化失败: {str(e)}")
             await self._cleanup()
-            raise
+            return False
+            
         
     async def _create_browser(self) -> Chromium:
         """创建浏览器实例"""
@@ -137,7 +155,13 @@ class BaseCrawler(ABC):
                 
             # 设置User-Agent
             options.set_argument('--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36 Edg/129.0.0.0')
-            
+
+            # 阻止"自动保存密码"的提示气泡
+            options.set_pref('credentials_enable_service', False)
+
+            # 阻止"Chrome未正确关闭"的提示气泡
+            options.set_argument('--hide-crash-restore-bubble')
+
             # 添加其他启动参数
             arguments = [
                 "--no-first-run",
@@ -173,8 +197,9 @@ class BaseCrawler(ABC):
         try:
             if hasattr(self, 'browser') and self.browser:
                 # 只有在登录成功的情况下才保存浏览器状态
-                if await self.login_handler.check_login(self.browser):
-                    await self._save_browser_state(self.browser)
+                # 流程结束后site_setup中没有crawler.is_logged_in, 跳过
+                # if await self.login_handler.check_login(self.browser):
+                #     await self._save_browser_state(self.browser)
                 # 关闭浏览器
                 try:
                     await self.browser.quit()
@@ -237,15 +262,16 @@ class BaseCrawler(ABC):
             except Exception as e:
                 self.logger.error(f"获取sessionStorage失败: {str(e)}")
                 session_storage = {}
-            
-            # 更新浏览器状态
-            self.site_setup.browser_state = BrowserState(
+
+            # 使用 browserstate_manager 保存浏览器状态
+            browserstate_manager = BrowserStateManager.get_instance()
+            state = BrowserState(
                 site_id=self.site_id,
-                cookies=json.dumps(cookies),
-                local_storage=json.dumps(local_storage),
-                session_storage=json.dumps(session_storage)
+                cookies=cookies,
+                local_storage=local_storage,
+                session_storage=session_storage
             )
-            self.site_setup.update_site_setup(self.site_id, new_browser_state=self.site_setup.browser_state)
+            await browserstate_manager.save_state(self.site_id, state)
             self.logger.info("浏览器状态保存完成")
             
         except Exception as e:
@@ -255,7 +281,11 @@ class BaseCrawler(ABC):
     async def _restore_browser_state(self, browser: Chromium) -> bool:
         """恢复浏览器状态"""
         try:
-            if not self.site_setup.browser_state:
+            # 使用 browserstate_manager 获取浏览器状态
+            browserstate_manager = BrowserStateManager.get_instance()
+            browser_state : BrowserState = await browserstate_manager.get_state(self.site_id)
+            
+            if not browser_state:
                 self.logger.info("未找到浏览器状态，将使用新会话")
                 return False
                 
@@ -266,8 +296,8 @@ class BaseCrawler(ABC):
                 return False
             
             # 恢复cookies
-            if self.site_setup.browser_state.cookies:
-                cookies = json.loads(self.site_setup.browser_state.cookies)
+            if browser_state.cookies:
+                cookies = browser_state.cookies
                 self.logger.debug(f"正在恢复 {len(cookies)} 个cookies")
                 for name, cookie_data in cookies.items():
                     try:
@@ -278,8 +308,8 @@ class BaseCrawler(ABC):
                         continue
             
             # 恢复local storage
-            if self.site_setup.browser_state.local_storage:
-                local_storage = json.loads(self.site_setup.browser_state.local_storage)
+            if browser_state.local_storage:
+                local_storage = browser_state.local_storage
                 self.logger.debug(f"正在恢复 {len(local_storage)} 个localStorage项")
                 for key, value in local_storage.items():
                     try:
@@ -287,10 +317,10 @@ class BaseCrawler(ABC):
                     except Exception as e:
                         self.logger.error(f"设置localStorage {key} 失败: {str(e)}")
                         continue
-            
+
             # 恢复session storage
-            if self.site_setup.browser_state.session_storage:
-                session_storage = json.loads(self.site_setup.browser_state.session_storage)
+            if browser_state.session_storage:
+                session_storage = browser_state.session_storage
                 self.logger.debug(f"正在恢复 {len(session_storage)} 个sessionStorage项")
                 for key, value in session_storage.items():
                     try:
@@ -309,8 +339,13 @@ class BaseCrawler(ABC):
 
     async def _clear_browser_state(self) -> None:
         """清除浏览器状态"""
-        self.site_setup.browser_state = None
-        self.logger.info("浏览器状态已清除")
+        try:
+            browserstate_manager = BrowserStateManager.get_instance()
+            await browserstate_manager.delete_browser_state(self.site_id)
+            self.logger.info("浏览器状态已清除")
+        except Exception as e:
+            self.logger.error(f"清除浏览器状态失败: {str(e)}")
+            self.logger.debug("错误详情:", exc_info=True)
 
     async def get_result(self) -> Dict[str, Any]:
         """获取爬虫结果"""
@@ -409,11 +444,11 @@ class BaseCrawler(ABC):
             
             # 清洗上传下载数据
             if 'upload' in data:
-                size_in_gb = self._convert_size_to_gb(data['upload'])
+                size_in_gb = await self._convert_size_to_gb(data['upload'])
                 cleaned_data['upload'] = size_in_gb
             
             if 'download' in data:
-                size_in_gb = self._convert_size_to_gb(data['download'])
+                size_in_gb = await self._convert_size_to_gb(data['download'])
                 cleaned_data['download'] = size_in_gb
             
             # 清洗分享率
@@ -451,10 +486,10 @@ class BaseCrawler(ABC):
             
             # 清洗做种体积数据
             if 'seeding_size' in data:
-                size_in_gb = self._convert_size_to_gb(data['seeding_size'])
+                size_in_gb = await self._convert_size_to_gb(data['seeding_size'])
                 cleaned_data['seeding_size'] = size_in_gb
             if 'official_seeding_size' in data:
-                size_in_gb = self._convert_size_to_gb(data['official_seeding_size'])
+                size_in_gb = await self._convert_size_to_gb(data['official_seeding_size'])
                 cleaned_data['official_seeding_size'] = size_in_gb
             
             # 转换做种数量为int
@@ -498,7 +533,7 @@ class BaseCrawler(ABC):
             
             # 2. 保存到数据库
             result_data = ResultCreate(
-                task_id=str(timestamp),  # 使用时间戳作为任务ID
+                task_id=self.task_id,
                 site_id=self.site_id,
                 username=data.get('username'),
                 user_class=data.get('user_class'),
@@ -529,20 +564,18 @@ class BaseCrawler(ABC):
             self.logger.error(f"保存数据失败: {str(e)}")
             raise
 
-    async def _save_checkin_data(self, result: str) -> None:
+    async def _save_checkin_data(self, checkin_result: CheckInResult) -> None:
         """保存签到结果"""
         try:
-            # 保存签到结果到数据库
-            checkin_result = await self.result_manager.save_checkin_result(
+            res = await self.result_manager.save_checkin_result(
                 site_id=self.site_id,
-                result=result,
-                checkin_date=datetime.now()
+                task_id=self.task_id,  # 添加task_id
+                result=checkin_result
             )
-            
-            if checkin_result:
-                self.logger.info(f"签到结果已保存: {result}")
+            if res:
+                self.logger.info("签到结果已保存到数据库")
             else:
-                self.logger.error("保存签到结果失败")
+                self.logger.error("保存签到结果到数据库失败")
                 
         except Exception as e:
             self.logger.error(f"保存签到结果失败: {str(e)}")

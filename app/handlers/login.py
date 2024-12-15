@@ -21,7 +21,7 @@ class LoginHandler:
     def __init__(self, site_setup: SiteSetup):
         self.site_setup : SiteSetup = site_setup
         self.login_config : LoginConfig = self.site_setup.site_config.login_config
-        setup_logger()
+        # setup_logger()
         self.logger = get_logger(name=__name__, site_id=site_setup.site_id)
         self.logger.debug(f"初始化LoginHandler - 站点ID: {site_setup.site_id}")
         self.captcha_service = CaptchaService()
@@ -53,7 +53,7 @@ class LoginHandler:
             tab = browser.new_tab()
             browser.activate_tab(tab)
             self.logger.debug(f"创建新标签页 - 标签页ID: {id(tab)}")
-            self.login_url = convert_url(self.site_setup.site_config, self.login_config.login_url)
+            self.login_url = convert_url(site_url=str(self.site_setup.site_config.site_url), short_url=str(self.login_config.login_url))
             # 导航到登录页面
             self.logger.debug(f"正在导航到登录页面: {self.login_url}")
             tab.get(self.login_url)
@@ -104,6 +104,8 @@ class LoginHandler:
                     continue
                     
                 # 根据字段类型处理输入
+                if field_config.type == "submit":
+                    continue
                 if field_config.type == "checkbox":
                     input_ele = tab.ele(field_config.selector)
                     if input_ele:
@@ -136,7 +138,6 @@ class LoginHandler:
             if self.site_setup.crawler_config.captcha_skip:
                 self.logger.info(f"站点 {self.site_setup.site_id} 配置为跳过验证码")
             elif self.login_config.captcha:
-                self.logger.debug("开始处理验证码")
                 try:
                     self.logger.debug("开始验证码处理流程")
                     await self._handle_captcha(tab, self.login_config)
@@ -167,24 +168,19 @@ class LoginHandler:
             
             if success:
                 self.logger.success("登录成功")
-                # 更新登录状态
-                self.site_setup.crawler.is_logged_in = True
-                self.site_setup.crawler.last_login_time = datetime.now()
-                return True
             else:
                 self.logger.error("登录失败 - 未找到成功登录的标识")
                 self.logger.debug(f"当前页面URL: {tab.url}")
                 self.logger.debug(f"当前页面标题: {tab.title}")
-                # 更新登录状态
-                self.site_setup.crawler.is_logged_in = False
-                return False
+        
+            return success
         
         except DrissionPage.errors.ElementNotFoundError as e:
-            self.logger.error("登录过程找不到元素", exc_info=True)
+            self.logger.error("登录过程找不到元素", {e})
             self.logger.debug(f"错误详情: {type(e).__name__}")
             return False
         except Exception as e:
-            self.logger.error("登录过程发生错误", exc_info=True)
+            self.logger.error("登录过程发生错误", {e})
             self.logger.debug(f"错误详情: {type(e).__name__}")
             return False
 
@@ -201,7 +197,7 @@ class LoginHandler:
             element_selector = captcha_config.element.selector
             self.logger.debug(f"等待验证码元素 - 选择器: {element_selector}")
             
-            captcha_element = tab.ele(element_selector, timeout=3)
+            captcha_element = tab.ele(element_selector)
             if not captcha_element:
                 self.logger.error(f"验证码元素未找到 - 选择器: {element_selector}")
                 raise Exception("验证码元素未找到")
@@ -271,8 +267,9 @@ class LoginHandler:
         """检查是否已登录（公共接口）"""
         try:
             # 检查登录状态
-            if self.site_setup.crawler.is_logged_in:
-                return True
+            if self.site_setup:
+                if self.site_setup.crawler.is_logged_in:
+                    return True
             
             # 获取当前标签页
             tab = browser.latest_tab

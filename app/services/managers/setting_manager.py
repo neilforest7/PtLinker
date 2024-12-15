@@ -1,12 +1,12 @@
-from typing import Optional, Dict, Any
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 import os
 from pathlib import Path
-from dotenv import load_dotenv
+from typing import Any, Dict, Optional
 
 from core.logger import get_logger, setup_logger
+from dotenv import load_dotenv
 from models.settings import Settings as DBSettings
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 # 加载.env文件
 env_path = Path(__file__).parent.parent.parent / '.env'
@@ -27,7 +27,7 @@ class SettingManager:
             self._settings: Optional[DBSettings] = None
             self._cache: Dict[str, Any] = {}
             SettingManager._initialized = True
-            setup_logger()
+            # setup_logger()
             self.logger = get_logger(name=__name__, site_id="settingmanager")
             
     def _get_env_value(self, key: str) -> Any:

@@ -14,7 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter()
-setup_logger()
+# setup_logger()
 logger = get_logger(__name__, "TaskAPI")
 
 def get_site_manager():

@@ -6,11 +6,10 @@ import DrissionPage
 import DrissionPage.errors
 from core.logger import get_logger, setup_logger
 from DrissionPage import Chromium
-from utils.clouodflare_bypasser import CloudflareBypasser
-from utils.url import convert_url
-
 from schemas.siteconfig import CheckInConfig
 from schemas.sitesetup import SiteSetup
+from utils.clouodflare_bypasser import CloudflareBypasser
+from utils.url import convert_url
 
 CheckInResult = Literal["not_set", "already", "success", "failed"]
 
@@ -18,7 +17,7 @@ CheckInResult = Literal["not_set", "already", "success", "failed"]
 class CheckInHandler:
     def __init__(self, site_setup: SiteSetup):
         self.site_setup = site_setup
-        setup_logger()
+        # setup_logger()
         self.logger = get_logger(name=__name__, site_id=self.site_setup.site_id)
         self.logger.debug(f"初始化CheckInHandler - 站点ID: {self.site_setup.site_id}")
 
@@ -30,7 +29,7 @@ class CheckInHandler:
             return "not_set"
             
         # 检查站点是否启用签到
-        if not self.site_setup.crawler_config.checkin_enabled:
+        if not self.site_setup.site_config.checkin_config.enabled:
             self.logger.info(f"{self.site_setup.site_id} 未启用签到功能")
             return "not_set"
         
@@ -67,7 +66,7 @@ class CheckInHandler:
         尝试通过直接访问签到URL的方式签到
         """
         checkin_url = checkin_config.checkin_url
-        checkin_url = convert_url(self.site_setup.site_config, checkin_url)
+        checkin_url = convert_url(self.site_setup.site_config.site_url, checkin_url)
         if not checkin_url:
             self.logger.debug(f"{self.site_setup.site_id} 未配置签到URL")
             return "failed"
@@ -93,7 +92,6 @@ class CheckInHandler:
                 self.logger.info(f"{self.site_setup.site_id} [URL方式] 今天已经签到")
                 return "already"
             else:
-                tab.get(checkin_url)
                 self.logger.warning(f"{self.site_setup.site_id} [URL方式] 将尝试按钮方式")
                 return "failed"
                 

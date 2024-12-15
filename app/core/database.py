@@ -10,7 +10,7 @@ DB_PATH = os.path.join(BASE_DIR, "ptlinker.db")
 
 # 数据库URL
 DATABASE_URL = f"sqlite+aiosqlite:///{DB_PATH}"
-setup_logger()
+# setup_logger()
 _logger = get_logger(name=__name__, site_id="database")
 
 # 声明基类

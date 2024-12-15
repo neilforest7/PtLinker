@@ -2,7 +2,7 @@
     "site_id": "frds",
     "site_url": "https://pt.keepfrds.com",
     "login_config": {
-        "login_url": "https://pt.keepfrds.com/login.php",
+        "login_url": "/login.php",
         "form_selector": "@action=takelogin.php",
         "pre_login": {
             "actions": [

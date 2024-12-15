@@ -5,13 +5,13 @@ from typing import Any, Dict, List, Optional
 
 from core.logger import get_logger, setup_logger
 from models.models import (BrowserState, Crawler, CrawlerConfig,
-                            CrawlerCredential, SiteConfig)
-from schemas.sitesetup import SiteSetup
-from schemas.crawlerschemas import CrawlerBase
-from schemas.siteconfig import SiteConfigBase
+                           CrawlerCredential, SiteConfig)
+from schemas.browserstate import BrowserState as BrowserStateBase
 from schemas.crawlerconfig import CrawlerConfigBase
 from schemas.crawlercredential import CrawlerCredentialBase
-from schemas.browserstate import BrowserState as BrowserStateBase
+from schemas.crawlerschemas import CrawlerBase
+from schemas.siteconfig import SiteConfigBase
+from schemas.sitesetup import SiteSetup
 from services.managers.setting_manager import settings
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -31,7 +31,7 @@ class SiteManager:
     def __init__(self):
         if not self._initialized:
             self._sites = {}
-            setup_logger()
+            # setup_logger()
             self.logger = get_logger(name=__name__, site_id="site_manager")
             self._initialized = True
             

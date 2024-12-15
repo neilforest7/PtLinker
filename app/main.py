@@ -16,7 +16,7 @@ from services.managers.site_manager import SiteManager
 from sqlalchemy.ext.asyncio import AsyncSession
 
 setup_logger()
-_logger = get_logger(name=__name__, site_id="app")
+_logger = get_logger(name=__name__, site_id="main")
 
 # 全局管理器实例
 process_manager = ProcessManager()
@@ -30,7 +30,8 @@ async def lifespan(app: FastAPI):
     db: AsyncSession | None = None
     try:
         _logger.info("Starting application")
-        
+        # setup_logger()
+        # _logger = get_logger(name=__name__, site_id="lifespan")
         # 1. 初始化数据库
         _logger.info("Initializing database")
         try:

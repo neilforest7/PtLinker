@@ -2,7 +2,7 @@
     "site_id": "qingwapt",
     "site_url": "https://www.qingwapt.com",
     "login_config": {
-        "login_url": "https://www.qingwapt.com/login.php",
+        "login_url": "/login.php",
         "form_selector": "@action=takelogin.php",
         "pre_login": {
             "actions": [

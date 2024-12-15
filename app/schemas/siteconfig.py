@@ -41,16 +41,12 @@ class ExtractRuleSet(BaseModel):
     """数据提取规则"""
     rules: List[WebElement]
 
-class CheckInResultConfig(BaseModel):
-    """签到结果检查配置"""
-    element: Optional[WebElement] = None  # 结果容器选择器
-    sign: Optional[Dict[str, str]] = None
-
 class CheckInConfig(BaseModel):
     """签到配置"""
+    enabled: bool = False
     checkin_url: Optional[str] = None  # 直接访问的签到URL
     checkin_button: Optional[WebElement] = None  # 签到按钮配置
-    success_check: Optional[CheckInResultConfig] = None  # 签到结果检查配置（必需）
+    success_check: Optional[WebElement] = None  # 签到结果检查配置
     
 # Site Config Schemas
 class SiteConfigBase(BaseModel):

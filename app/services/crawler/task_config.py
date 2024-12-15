@@ -1,6 +1,6 @@
 from typing import Dict, Optional, Any, ClassVar
-from loguru import logger
 
+from core.logger import get_logger
 from services.managers.site_manager import SiteManager
 from schemas.sitesetup import SiteSetup
 from models.models import SiteConfig, CrawlerConfig, CrawlerCredential, BrowserState
@@ -19,6 +19,7 @@ class BaseTaskConfig:
         self.crawler_config: Optional[CrawlerConfig] = None
         self.crawler_credential: Optional[CrawlerCredential] = None
         self.browser_state: Optional[BrowserState] = None
+        self.logger = get_logger(name=__name__, site_id="taskconf")
         self.load_config()
         
     @classmethod
@@ -41,11 +42,11 @@ class BaseTaskConfig:
         # 从任务配置缓存中获取配置
         site_setup = self._task_config.get(self.site_id)
         if not site_setup:
-            logger.warning(f"Site setup not found for {self.site_id}")
+            self.logger.warning(f"Site setup not found for {self.site_id}")
             return
             
         if not site_setup.is_valid():
-            logger.warning(f"Invalid site setup for {self.site_id}")
+            self.logger.warning(f"Invalid site setup for {self.site_id}")
             return
             
         # 保存配置到实例属性

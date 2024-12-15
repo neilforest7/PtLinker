@@ -1,12 +1,11 @@
 from datetime import datetime, timedelta
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional
 
 from core.logger import get_logger, setup_logger
-from sqlalchemy import and_, select, desc
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from models.models import CheckInResult, Result, Task
 from schemas.result import CheckInResultBase, ResultCreate
+from sqlalchemy import and_, desc, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class ResultManager:
@@ -22,11 +21,17 @@ class ResultManager:
     
     def __init__(self):
         if not self._initialized:
-            setup_logger()
+            # setup_logger()
             self.logger = get_logger(name=__name__, site_id="ResultMgr")
             self._session = None
             ResultManager._initialized = True
-            
+    
+    @classmethod
+    def get_instance(cls):
+        if cls._instance is None:
+            cls._instance = cls()
+        return cls._instance
+    
     async def initialize(self, session: AsyncSession) -> None:
         """初始化管理器"""
         self._session = session
@@ -83,39 +88,23 @@ class ResultManager:
             await self.session.rollback()
             return None
             
-    async def save_checkin_result(
-        self, 
-        site_id: str,
-        result: str,
-        checkin_date: Optional[datetime] = None
-    ) -> Optional[CheckInResult]:
-        """
-        保存签到结果，每次都创建新记录
-        
-        Args:
-            site_id: 站点ID
-            result: 签到结果
-            checkin_date: 签到日期，默认为当前日期
-        """
+    async def save_checkin_result(self, site_id: str, task_id: str, result: str) -> Optional[CheckInResult]:
+        """保存签到结果"""
         try:
-            # 使用当前日期作为签到日期（如果未提供）
-            if not checkin_date:
-                checkin_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-            
-            # 创建签到结果记录
+            # 创建新的签到结果
+            now = datetime.now()
             checkin_result = CheckInResult(
+                task_id=task_id,  # 添加task_id
                 site_id=site_id,
                 result=result,
-                checkin_date=checkin_date,
-                last_run_at=datetime.now()
+                checkin_date=now,
+                last_run_at=now
             )
             
-            # 保存到数据库
             self.session.add(checkin_result)
             await self.session.commit()
-            await self.session.refresh(checkin_result)
             
-            self.logger.info(f"保存签到结果成功 - 站点ID: {site_id}")
+            self.logger.info(f"签到结果已保存: {site_id} - {result}")
             return checkin_result
             
         except Exception as e:
@@ -204,7 +193,7 @@ class ResultManager:
             return list(result.scalars().all())
             
         except Exception as e:
-            self.logger.error(f"获取日期范围内的爬虫结果��败: {str(e)}")
+            self.logger.error(f"获取日期范围内的爬虫结果失败: {str(e)}")
             return []
             
     async def get_checkin_result_by_date(
@@ -292,3 +281,4 @@ class ResultManager:
                 "site_id": site_id,
                 "error": str(e)
             } 
+            

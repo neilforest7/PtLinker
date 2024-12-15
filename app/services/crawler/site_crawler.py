@@ -14,9 +14,9 @@ from .base_crawler import BaseCrawler
 class SiteCrawler(BaseCrawler):
     """统一的站点爬虫类"""
     
-    def __init__(self, site_setup: SiteSetup):
+    def __init__(self, site_setup: SiteSetup, task_id: str):
         # 先调用父类的初始化
-        super().__init__(site_setup)
+        super().__init__(site_setup, task_id)
 
     def _get_site_id(self) -> str:
         """从配置中获取站点ID"""
@@ -33,7 +33,7 @@ class SiteCrawler(BaseCrawler):
                 data = await self._extract_all_data(tab)
                 
                 # 清洗数据
-                cleaned_data = self._clean_data(data)
+                cleaned_data = await self._clean_data(data)
                 
                 # 保存数据
                 self.logger.debug("保存提取的数据")
@@ -113,7 +113,7 @@ class SiteCrawler(BaseCrawler):
             self.logger.warning("未能从URL中提取用户ID")
         
         # 确保使用完整URL
-        full_profile_url = convert_url(self.site_setup.site_config, profile_url, uid=uid)
+        full_profile_url = convert_url(self.site_setup.site_config.site_url, profile_url, uid=uid)
         self.logger.debug(f"访问用户资料页面: {full_profile_url}")
         
         return full_profile_url, uid
@@ -177,7 +177,7 @@ class SiteCrawler(BaseCrawler):
                 original_url = tab.url
                 # 如果规则指定了页面URL，先访问该页面
                 if rule.pre_action_type == 'goto' and rule.page_url:
-                    full_url = convert_url(self.site_setup.site_config, rule.page_url, uid=self.uid)
+                    full_url = convert_url(self.site_setup.site_config.site_url, rule.page_url, uid=self.uid)
                     self.logger.debug(f"访问页面: {full_url}")
                     tab.get(full_url)
                 
@@ -279,7 +279,7 @@ class SiteCrawler(BaseCrawler):
                 # 假设需要预处理，方式为访问做种列表页面，代表站点audiences
                 elif rules_dict['seeding_list'].pre_action_type == 'goto':
                     self.logger.debug(f"需要预处理，访问页面: {rules_dict['seeding_list'].page_url}")
-                    tab.get(convert_url(self.site_setup.site_config, rules_dict['seeding_list'].page_url, uid=self.uid))
+                    tab.get(convert_url(self.site_setup.site_config.site_url, rules_dict['seeding_list'].page_url, uid=self.uid))
                     self.logger.debug(f"访问converted页面: {tab.url}")
                     
                 # 提取做种数据
@@ -355,7 +355,11 @@ class SiteCrawler(BaseCrawler):
                 
                 # 统计做种数量和总体积
                 seeding_count = len(volumes)
-                seeding_size = sum(self._convert_size_to_gb(v) for v in volumes)
+                
+                # 使用asyncio.gather来并行处理所有的体积转换
+                import asyncio
+                sizes = await asyncio.gather(*[self._convert_size_to_gb(v) for v in volumes])
+                seeding_size = sum(sizes)
                 
                 seeding_data['seeding_count'] = seeding_count
                 self.logger.info(f"提取到做种数量: {seeding_data['seeding_count']}")

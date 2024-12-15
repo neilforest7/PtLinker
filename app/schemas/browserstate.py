@@ -9,6 +9,7 @@ class BrowserState(BaseModel):
     cookies: Dict[str, Any] = Field(default_factory=dict)
     local_storage: Dict[str, str] = {}
     session_storage: Dict[str, str] = {}
+    updated_at: Optional[datetime] = None
 
     def validate_state(self) -> Tuple[bool, str]:
         """验证状态数据的有效性
@@ -41,24 +42,6 @@ class BrowserState(BaseModel):
                     return False, f"sessionStorage键必须是字符串，而不是 {type(key)}"
                 if not isinstance(value, str):
                     return False, f"sessionStorage值必须是字符串，而不是 {type(value)}"
-            
-            # 3. 验证登录状态的一致性
-            if self.login_state.is_logged_in:
-                if not self.login_state.username:
-                    return False, "登录状态为已登录但缺少用户名"
-                if not self.login_state.last_login_time:
-                    return False, "登录状态为已登录但缺少登录时间"
-            else:
-                if self.login_state.username or self.login_state.last_login_time:
-                    return False, "登录状态为未登录但存在用户名或登录时间"
-            
-            # 4. 验证时间戳的有效性
-            if self.login_state.last_login_time:
-                current_time = int(datetime.now().timestamp())
-                if self.login_state.last_login_time > current_time:
-                    return False, "登录时间戳无效（未来时间）"
-                if current_time - self.login_state.last_login_time > 90 * 24 * 3600:  # 90天
-                    return False, "登录时间戳过期（超过90天）"
             
             return True, ""
             

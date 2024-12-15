@@ -102,14 +102,15 @@ class BrowserState(Base):
     cookies = Column(JSON, nullable=True)
     local_storage = Column(JSON, nullable=True)
     session_storage = Column(JSON, nullable=True)
-    
+    updated_at = Column(DateTime, nullable=True)
+
     crawler = relationship("Crawler", back_populates="browser_state")
 
 class Task(Base, TimestampMixin):
     __tablename__ = "tasks"
     
     task_id = Column(String(500), primary_key=True)
-    site_id = Column(String(500), ForeignKey("crawlers.site_id", ondelete="CASCADE"))
+    site_id = Column(String(500), ForeignKey("crawlers.site_id", ondelete="CASCADE"), nullable=False)
     status = Column(Enum(TaskStatus), nullable=False)
     created_at = Column(DateTime, nullable=True)
     updated_at = Column(DateTime, nullable=True)
@@ -121,6 +122,7 @@ class Task(Base, TimestampMixin):
     
     crawler = relationship("Crawler", back_populates="tasks")
     result = relationship("Result", back_populates="task", uselist=False, cascade="all, delete-orphan")
+    checkin_result = relationship("CheckInResult", back_populates="task", uselist=False, cascade="all, delete-orphan")
 
     # 混合属性
     # @hybrid_property
@@ -156,7 +158,7 @@ class Result(Base):
     seeding_size = Column(Float, nullable=True)
     seeding_count = Column(Integer, nullable=True)
     
-    task = relationship("Task", back_populates="result")
+    task = relationship("Task", back_populates="result", uselist=False)
     crawler = relationship("Crawler", back_populates="results")
 
     # 混合属性
@@ -182,11 +184,19 @@ class Result(Base):
 class CheckInResult(Base):
     __tablename__ = "checkin_results"
     
-    site_id = Column(String(500), ForeignKey("crawlers.site_id", ondelete="CASCADE"), primary_key=True)
+    task_id = Column(String(500), ForeignKey("tasks.task_id", ondelete="CASCADE"), primary_key=True)
+    site_id = Column(String(500), ForeignKey("crawlers.site_id", ondelete="CASCADE"), nullable=False)
     result = Column(String(500), nullable=False)
     checkin_date = Column(DateTime, nullable=False)
     last_run_at = Column(DateTime, nullable=False, index=True)
     
     # 关系
     crawler = relationship("Crawler", back_populates="checkin_results")
+    task = relationship("Task", back_populates="checkin_result", uselist=False)
+    
+    # 索引
+    __table_args__ = (
+        Index('ix_checkin_results_site_id', 'site_id'),
+        Index('ix_checkin_results_dates', 'checkin_date', 'last_run_at'),
+    )
 
