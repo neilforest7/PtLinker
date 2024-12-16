@@ -4,7 +4,7 @@ from typing import List, Optional
 
 from core.database import get_db
 from core.logger import get_logger, setup_logger
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from models.models import Task, TaskStatus
 from schemas.task import TaskCreate, TaskResponse, TaskUpdate
 from services.managers.process_manager import ProcessManager
@@ -106,6 +106,96 @@ async def create_site_task(
         logger.error(f"创建任务失败: {str(e)}", exc_info=True)
         await db.rollback()
         raise HTTPException(status_code=500, detail=f"创建任务失败: {str(e)}")
+
+@router.post("", response_model=List[TaskResponse])
+async def create_task(
+    site_id: Optional[str] = None,
+    create_for_all_sites: bool = Query(False, description="是否为所有站点创建任务"),
+    db: AsyncSession = Depends(get_db),
+    site_manager: SiteManager = Depends(get_site_manager),
+    queue_manager: QueueManager = Depends(lambda: QueueManager())
+) -> List[TaskResponse]:
+    """创建任务
+    
+    如果指定了 site_id，则只为该站点创建任务
+    如果设置了 create_for_all_sites=True，则为所有站点创建任务
+    如果两者都未指定，则返回错误
+    """
+    try:
+        responses = []
+        
+        if not site_id and not create_for_all_sites:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="必须指定 site_id 或设置 create_for_all_sites=true"
+            )
+        
+        # 获取需要创建任务的站点列表
+        if create_for_all_sites:
+            logger.info("正在为所有站点创建任务")
+            site_setups = await site_manager.get_available_sites()
+            site_ids = list(site_setups.keys())
+        else:
+            logger.info(f"正在为站点 {site_id} 创建任务")
+            site_ids = [site_id]
+            
+        # 为每个站点创建任务
+        for current_site_id in site_ids:
+            try:
+                # 1. 验证站点是否存在且已配置
+                site_setup = await site_manager.get_site_setup(current_site_id)
+                if not site_setup:
+                    logger.error(f"站点不存在: {current_site_id}")
+                    continue
+                    
+                if not site_setup.crawler_config or not site_setup.crawler_config.enabled:
+                    logger.error(f"站点未启用或未配置: {current_site_id}")
+                    continue
+                    
+                # 2. 生成任务ID：{site_id}-YYYYMMDD-HHMMSS-4位uuid
+                current_time = datetime.now(timezone.utc)
+                task_id = f"{current_site_id}-{current_time.strftime('%Y%m%d-%H%M%S')}-{str(uuid.uuid4())[:4]}"
+                
+                # 3. 创建任务
+                task_create = TaskCreate(
+                    task_id=task_id,
+                    site_id=current_site_id,
+                    status=TaskStatus.READY,
+                    created_at=current_time,
+                    updated_at=current_time
+                )
+                
+                # 4. 将任务添加到队列
+                logger.debug(f"将任务添加到队列 - 任务ID: {task_id}")
+                response = await queue_manager.add_task(task_create, db)
+                
+                if response:
+                    responses.append(response)
+                    logger.info(f"站点 {current_site_id} 的任务 {task_id} 创建成功")
+                else:
+                    logger.error(f"站点 {current_site_id} 的任务创建失败")
+                    
+            except Exception as e:
+                logger.error(f"站点 {current_site_id} 的任务创建失败: {str(e)}", exc_info=True)
+                # 继续处理其他站点，不中断整个流程
+                continue
+        
+        if not responses:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="所有任务创建均失败"
+            )
+            
+        return responses
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"创建任务失败: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"创建任务失败: {str(e)}"
+        )
         
 @router.get("/{task_id}", response_model=TaskResponse, summary="获取任务信息")
 async def get_task(

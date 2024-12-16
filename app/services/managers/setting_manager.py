@@ -52,55 +52,82 @@ class SettingManager:
         return value
     
     async def initialize(self, db: AsyncSession) -> None:
-        """初始化设置管理器"""
+        """初始化设置管理器
+        
+        优先级顺序：
+        1. 数据库中的现有设置
+        2. 环境变量中的设置
+        3. 模型定义的默认值
+        """
         try:
-            # 获取最新的配置
+            # 1. 获取最新的配置
             stmt = select(DBSettings).order_by(DBSettings.updated_at.desc()).limit(1)
             result = await db.execute(stmt)
             settings = result.scalar_one_or_none()
             
+            # 2. 如果数据库中没有配置，创建新的配置实例
             if not settings:
-                # 如果没有配置，创建默认配置
+                self.logger.info("No settings found in database, creating new settings")
                 settings = DBSettings()
-                
-            # 获取所有可配置的字段
+                is_new = True
+            else:
+                self.logger.info("Found existing settings in database")
+                is_new = False
+            
+            # 3. 获取所有可配置的字段
             settable_fields = [
                 column.key for column in DBSettings.__table__.columns
                 if not column.key.startswith('_')
             ]
             
-            # 遍历所有字段，检查空值并从环境变量补充
-            added_fields = 0
-            
-            for field in settable_fields:
-                current_value = getattr(settings, field, None)
-                if current_value is None or current_value == '':
+            # 4. 如果是新配置，从环境变量和默认值初始化
+            if is_new:
+                for field in settable_fields:
+                    # 首先尝试从环境变量获取
                     env_value = self._get_env_value(field)
                     if env_value is not None:
                         setattr(settings, field, env_value)
-                        added_fields += 1
-                        self.logger.debug(f"Setting {field} loaded from .env: {env_value}")
-            
-            # if not settings.id:
-            # 如果是新创建的配置，保存到数据库
-            db.add(settings)
-            await db.commit()
-            if added_fields > 0:
-                self.logger.debug(f"Created new settings with {added_fields} values from .env")
+                        self.logger.debug(f"Setting {field} initialized from .env: {env_value}")
+                    else:
+                        # 使用模型定义的默认值
+                        current_value = getattr(settings, field, None)
+                        if current_value is not None:
+                            self.logger.debug(f"Setting {field} using default value: {current_value}")
+                
+                # 保存新配置到数据库
+                db.add(settings)
+                await db.commit()
+                self.logger.info("New settings saved to database")
             else:
-                self.logger.debug("No new settings created from .env")
+                # 5. 如果是现有配置，记录日志但不修改值
+                for field in settable_fields:
+                    current_value = getattr(settings, field, None)
+                    env_value = self._get_env_value(field)
+                    if env_value is not None and env_value != current_value:
+                        self.logger.debug(
+                            f"Note: Environment variable for {field} ({env_value}) "
+                            f"differs from database value ({current_value})"
+                        )
             
+            # 6. 保存到实例并清空缓存
             self._settings = settings
-            # 清空缓存
             self._cache.clear()
-            self.logger.info("Settings initialized successfully")
+            
+            self.logger.info(
+                "Settings initialized successfully "
+                f"({'new settings created' if is_new else 'existing settings loaded'})"
+            )
             
         except Exception as e:
             self.logger.error(f"Failed to initialize settings: {str(e)}", exc_info=True)
             raise
     
-    async def get_setting(self, key: str) -> Any:
-        """获取配置值"""
+    async def get_setting(self, key: str) -> Any | list[str]:
+        """
+        获取配置值
+        
+        如果配置项为列表,如CAPTCHA_SKIP_SITES, CHECKIN_SITES, 则返回列表
+        """
         # 先从缓存获取
         if key in self._cache:
             return self._cache[key]
@@ -112,7 +139,12 @@ class SettingManager:
         value = getattr(self._settings, key, None)
         if value is not None:
             self._cache[key] = value
-            
+        
+        # 如果配置项为列表,如CAPTCHA_SKIP_SITES, CHECKIN_SITES, 则返回列表
+        if key.upper() in ['CAPTCHA_SKIP_SITES', 'CHECKIN_SITES']:
+            value: list[str] = value.split(',')
+            return value
+        
         return value
     
     async def set_setting(self, db: AsyncSession, key: str, value: Any) -> None:
@@ -203,6 +235,59 @@ class SettingManager:
     def enable_checkin(self) -> bool:
         """获取是否启用签到"""
         return self._settings.enable_checkin if self._settings else True
+
+    async def reset_settings(self, db: AsyncSession) -> None:
+        """重置所有设置到环境变量和默认值
+        
+        重置顺序：
+        1. 清除现有设置
+        2. 从环境变量加载设置
+        3. 使用模型定义的默认值
+        4. 保存到数据库
+        """
+        try:
+            self.logger.info("Starting settings reset process")
+            
+            # 1. 创建新的设置实例（使用模型默认值）
+            new_settings = DBSettings()
+            
+            # 2. 获取所有可配置字段
+            settable_fields = [
+                column.key for column in DBSettings.__table__.columns
+                if not column.key.startswith('_')
+            ]
+            
+            # 3. 从环境变量加载设置
+            for field in settable_fields:
+                env_value = self._get_env_value(field)
+                if env_value is not None:
+                    setattr(new_settings, field, env_value)
+                    self.logger.debug(f"Reset {field} to env value: {env_value}")
+                else:
+                    default_value = getattr(new_settings, field, None)
+                    self.logger.debug(f"Reset {field} to default value: {default_value}")
+            
+            # 4. 删除现有设置
+            stmt = select(DBSettings)
+            result = await db.execute(stmt)
+            existing_settings = result.scalars().all()
+            for setting in existing_settings:
+                await db.delete(setting)
+            
+            # 5. 保存新设置到数据库
+            db.add(new_settings)
+            await db.commit()
+            
+            # 6. 更新实例和缓存
+            self._settings = new_settings
+            self._cache.clear()
+            
+            self.logger.info("Settings have been reset successfully")
+            
+        except Exception as e:
+            await db.rollback()
+            self.logger.error(f"Failed to reset settings: {str(e)}", exc_info=True)
+            raise
 
 
 # 全局设置管理器实例

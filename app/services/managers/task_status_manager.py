@@ -81,17 +81,17 @@ class TaskStatusManager:
                 
         except Exception as e:
             error_msg = str(e)
-            error_details = {
-                "error_type": type(e).__name__,
-                "error_message": str(e),
-                "traceback": traceback.format_exc()
-            }
             log_context = f"[站点: {site_id}] " if site_id else ""
             self.logger.error(f"{log_context}更新任务 {task_id} 状态失败: {error_msg}")
-            self.logger.debug("错误详情:", exc_info=True)
             await db.rollback()
             return False
-
+    
+    async def get_task_status(self, db: AsyncSession, task_id: str) -> TaskStatus:
+        """获取任务状态"""
+        stmt = select(Task).where(Task.task_id == task_id)
+        result = await db.execute(stmt)
+        task = result.scalar_one_or_none()
+        return task.status if task else TaskStatus.READY
 
 # 全局任务状态管理器实例
 task_status_manager = TaskStatusManager.get_instance() 

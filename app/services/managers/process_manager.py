@@ -96,13 +96,16 @@ class CrawlerProcess(Process):
                 # 创建并启动爬虫
                 logger.debug(f"创建爬虫实例: {site_setup.site_id}")
                 crawler = SiteCrawler(site_setup=site_setup, task_id=self.task_id)
+                # 设置数据库会话
+                await crawler.set_db(db)
                 logger.debug("开始爬虫任务")
                 await crawler.start()
                 logger.debug("爬虫任务完成")
                 
                 # 更新任务状态为 SUCCESS
-                await self._update_task_status(db, TaskStatus.SUCCESS, "任务执行成功", 
-                                            completed_at=datetime.now())
+                if not await task_status_manager.get_task_status(db, self.task_id) == TaskStatus.FAILED:
+                    await self._update_task_status(db, TaskStatus.SUCCESS, "任务执行成功", 
+                                                    completed_at=datetime.now())
                 
             except Exception as e:
                 error_msg = str(e)
@@ -112,7 +115,6 @@ class CrawlerProcess(Process):
                     "traceback": traceback.format_exc()
                 }
                 logger.error(f"任务执行失败: {error_msg}")
-                logger.debug("错误详情:", exc_info=True)
                 
                 if db:
                     # 更新任务状态为 FAILED

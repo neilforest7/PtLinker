@@ -20,7 +20,7 @@ class Settings(Base):
     
 
     # 爬虫基础配置
-    crawler_max_concurrency = Column(Integer, default=15, comment="爬虫最大并发数")
+    crawler_max_concurrency = Column(Integer, default=8, comment="爬虫最大并发数")
     fresh_login = Column(Boolean, default=False, nullable=False, comment="是否强制重新登录")
     login_max_retry_count = Column(Integer, default=3, nullable=False, comment="登录最大重试次数")
     

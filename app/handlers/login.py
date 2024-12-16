@@ -15,12 +15,13 @@ from utils.clouodflare_bypasser import CloudflareBypasser
 from utils.url import convert_url
 
 from schemas.sitesetup import SiteSetup
-
+from services.managers.setting_manager import settings
 
 class LoginHandler:
     def __init__(self, site_setup: SiteSetup):
         self.site_setup : SiteSetup = site_setup
         self.login_config : LoginConfig = self.site_setup.site_config.login_config
+        self.settings_manager = settings
         # setup_logger()
         self.logger = get_logger(name=__name__, site_id=site_setup.site_id)
         self.logger.debug(f"初始化LoginHandler - 站点ID: {site_setup.site_id}")
@@ -137,14 +138,19 @@ class LoginHandler:
             # 检查站点的验证码处理方式
             if self.site_setup.crawler_config.captcha_skip:
                 self.logger.info(f"站点 {self.site_setup.site_id} 配置为跳过验证码")
-            elif self.login_config.captcha:
-                try:
-                    self.logger.debug("开始验证码处理流程")
-                    await self._handle_captcha(tab, self.login_config)
-                except json.JSONDecodeError:
-                    self.logger.warning("解析站点验证码配置失败")
-                    raise Exception("解析站点验证码配置失败")
-                self.logger.info("验证码处理完成")
+            else:
+                # 从设置中获取跳过验证码的站点列表
+                captcha_skip_sites = await self.settings_manager.get_setting('captcha_skip_sites')
+                if captcha_skip_sites and self.site_setup.site_id in captcha_skip_sites:
+                    self.logger.info(f"站点 {self.site_setup.site_id} 配置为跳过验证码")
+                elif self.login_config.captcha:
+                    try:
+                        self.logger.debug("开始验证码处理流程")
+                        await self._handle_captcha(tab, self.login_config)
+                    except json.JSONDecodeError:
+                        self.logger.warning("解析站点验证码配置失败")
+                        raise Exception("解析站点验证码配置失败")
+                    self.logger.info("验证码处理完成")
 
             # 获取提交按钮
             submit_config = self.login_config.fields.get('submit')

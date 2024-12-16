@@ -16,7 +16,9 @@ from schemas.result import ResultCreate
 from schemas.sitesetup import SiteSetup
 from services.managers.browserstate_manager import BrowserStateManager
 from services.managers.result_manager import ResultManager
+from services.managers.task_status_manager import task_status_manager
 from sqlalchemy.ext.asyncio import AsyncSession
+from models.models import TaskStatus
 
 CheckInResult = Literal["not_set", "already", "success", "failed"]
 
@@ -26,6 +28,7 @@ class BaseCrawler(ABC):
         self.site_setup = site_setup
         self.site_id = site_setup.site_id
         self.task_id = task_id
+        self.db: Optional[AsyncSession] = None
         
         # 2. 设置日志
         # setup_logger()
@@ -51,6 +54,32 @@ class BaseCrawler(ABC):
         # 7. 浏览器初始化
         self.browser: Optional[Chromium] = None
             
+    async def set_db(self, db: AsyncSession):
+        """设置数据库会话"""
+        self.db = db
+
+    async def _update_task_status(
+        self,
+        status: TaskStatus,
+        msg: Optional[str] = None,
+        error_details: Optional[Dict] = None,
+        completed_at: Optional[datetime] = None
+    ) -> None:
+        """更新任务状态"""
+        if not self.db:
+            self.logger.error("数据库会话未初始化，无法更新任务状态")
+            return
+            
+        await task_status_manager.update_task_status(
+            db=self.db,
+            task_id=self.task_id,
+            status=status,
+            msg=msg,
+            completed_at=completed_at,
+            error_details=error_details,
+            site_id=self.site_id
+        )
+
     async def start(self):
         """启动爬虫"""
         try:
@@ -62,10 +91,12 @@ class BaseCrawler(ABC):
                 await self._crawl(self.browser)
                 await self._checkin(self.browser)
             else:
+                await self._update_task_status(TaskStatus.FAILED, "初始化浏览器失败，跳过爬取")
                 self.logger.warning(f"{self.site_id} 初始化浏览器失败，跳过爬取")
         except Exception as e:
             self.logger.error(f"爬虫运行失败: {str(e)}")
             self.logger.debug("错误详情:", exc_info=True)
+            await self._update_task_status(TaskStatus.FAILED, "爬虫运行失败", error_details=e)
             raise
         finally:
             # 清理资源

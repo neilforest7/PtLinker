@@ -10,6 +10,7 @@ from schemas.siteconfig import CheckInConfig
 from schemas.sitesetup import SiteSetup
 from utils.clouodflare_bypasser import CloudflareBypasser
 from utils.url import convert_url
+from services.managers.setting_manager import settings
 
 CheckInResult = Literal["not_set", "already", "success", "failed"]
 
@@ -17,6 +18,7 @@ CheckInResult = Literal["not_set", "already", "success", "failed"]
 class CheckInHandler:
     def __init__(self, site_setup: SiteSetup):
         self.site_setup = site_setup
+        self.settings_manager = settings
         # setup_logger()
         self.logger = get_logger(name=__name__, site_id=self.site_setup.site_id)
         self.logger.debug(f"初始化CheckInHandler - 站点ID: {self.site_setup.site_id}")
@@ -25,12 +27,16 @@ class CheckInHandler:
         """执行签到处理"""
         # 检查站点配置中的签到设置
         if not self.site_setup.site_config.checkin_config:
-            self.logger.info(f"{self.site_setup.site_id} 未配置签到功能")
+            self.logger.info(f"{self.site_setup.site_id} 未配置签到功能 (site_config未配置)")
             return "not_set"
             
         # 检查站点是否启用签到
         if not self.site_setup.site_config.checkin_config.enabled:
-            self.logger.info(f"{self.site_setup.site_id} 未启用签到功能")
+            self.logger.info(f"{self.site_setup.site_id} 未启用签到功能 (签到开关已禁用)")
+            return "not_set"
+        
+        if not self.settings_manager.get_setting('captcha_skip_sites') and self.site_setup.site_id not in self.settings_manager.get_setting('captcha_skip_sites'):
+            self.logger.info(f"{self.site_setup.site_id} 未启用签到功能 (全局站点列表跳过)")
             return "not_set"
         
         checkin_config = self.site_setup.site_config.checkin_config

@@ -11,7 +11,7 @@ class SettingsBase(BaseModel):
     crawler_storage_path: str = Field(default="storage", description="爬虫存储路径")
     
     # 爬虫基础配置
-    crawler_max_concurrency: int = Field(default=15, description="爬虫最大并发数")
+    crawler_max_concurrency: int = Field(default=8, description="爬虫最大并发数")
     fresh_login: bool = Field(default=False, description="是否强制重新登录")
     login_max_retry_count: int = Field(default=3, description="登录最大重试次数")
     
@@ -71,11 +71,14 @@ class SettingsBase(BaseModel):
 
 class SettingsCreate(SettingsBase):
     """创建配置模型"""
+    created_at: datetime
     pass
 
 
 class SettingsUpdate(BaseModel):
     """更新配置模型"""
+    updated_at: datetime
+    
     crawler_config_path: Optional[str] = None
     crawler_storage_path: Optional[str] = None
     crawler_max_concurrency: Optional[int] = None
