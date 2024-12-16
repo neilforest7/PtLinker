@@ -43,7 +43,7 @@ class ExtractRuleSet(BaseModel):
 
 class CheckInConfig(BaseModel):
     """签到配置"""
-    enabled: bool = False
+    enabled: bool = True
     checkin_url: Optional[str] = None  # 直接访问的签到URL
     checkin_button: Optional[WebElement] = None  # 签到按钮配置
     success_check: Optional[WebElement] = None  # 签到结果检查配置

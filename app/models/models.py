@@ -115,7 +115,7 @@ class Task(Base, TimestampMixin):
     created_at = Column(DateTime, nullable=True)
     updated_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
-    error = Column(String(500), nullable=True)
+    msg = Column(String(500), nullable=True)
     error_details = Column(JSON, nullable=True)
     task_metadata = Column(JSON, nullable=True)
     system_info = Column(JSON, nullable=True)

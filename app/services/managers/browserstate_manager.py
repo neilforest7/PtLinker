@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Dict, List, Optional
 
 from core.logger import get_logger
-from models.models import BrowserState as DBBrowserState
+from models.models import BrowserState as DBBrowserState, Crawler
 from schemas.browserstate import BrowserState
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -51,32 +51,60 @@ class BrowserStateManager:
                 self.logger.error(f"浏览器状态数据无效: {error_msg}")
                 return None
                 
-            # 检查是否存在现有记录
+            # 首先检查并确保 crawler 记录存在
+            stmt = select(Crawler).where(Crawler.site_id == site_id)
+            result = await self.session.execute(stmt)
+            crawler = result.scalar_one_or_none()
+            
+            if not crawler:
+                # 如果不存在，创建一个新的 crawler 记录
+                crawler = Crawler(
+                    site_id=site_id,
+                    is_logged_in=False,
+                    total_tasks=0
+                )
+                self.session.add(crawler)
+                self.logger.info(f"创建新的 crawler 记录: {site_id}")
+                try:
+                    await self.session.flush()  # 先尝试flush确保crawler创建成功
+                except Exception as e:
+                    self.logger.error(f"创建 crawler 记录失败: {str(e)}")
+                    await self.session.rollback()
+                    return None
+                
+            # 检查是否存在现有浏览器状态记录
             stmt = select(DBBrowserState).where(DBBrowserState.site_id == site_id)
             result = await self.session.execute(stmt)
             db_state = result.scalar_one_or_none()
             
-            if db_state:
-                # 更新现有记录
-                db_state.cookies = state.cookies
-                db_state.local_storage = state.local_storage
-                db_state.session_storage = state.session_storage
-                db_state.updated_at = datetime.now()
-            else:
-                # 创建新记录
-                db_state = DBBrowserState(
-                    site_id=site_id,
-                    cookies=state.cookies,
-                    local_storage=state.local_storage,
-                    session_storage=state.session_storage
-                )
-                self.session.add(db_state)
+            try:
+                if db_state:
+                    # 更新现有记录
+                    db_state.cookies = state.cookies
+                    db_state.local_storage = state.local_storage
+                    db_state.session_storage = state.session_storage
+                    db_state.updated_at = datetime.now()
+                else:
+                    # 创建新记录
+                    db_state = DBBrowserState(
+                        site_id=site_id,
+                        cookies=state.cookies,
+                        local_storage=state.local_storage,
+                        session_storage=state.session_storage
+                    )
+                    self.session.add(db_state)
+                    
+                # 提交所有更改
+                await self.session.commit()
+                await self.session.refresh(db_state)
                 
-            await self.session.commit()
-            await self.session.refresh(db_state)
-            
-            self.logger.info(f"浏览器状态已保存: {site_id}")
-            return db_state
+                self.logger.info(f"浏览器状态已保存: {site_id}")
+                return db_state
+                
+            except Exception as e:
+                self.logger.error(f"保存状态到数据库失败: {str(e)}")
+                await self.session.rollback()
+                return None
             
         except Exception as e:
             self.logger.error(f"保存浏览器状态失败: {str(e)}")

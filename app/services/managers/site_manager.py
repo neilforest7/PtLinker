@@ -87,6 +87,15 @@ class SiteManager:
                         
                         # 保存到数据库
                         try:
+                            # 首先创建 Crawler 记录
+                            crawler = Crawler(
+                                site_id=site_id,
+                                is_logged_in=False,
+                                total_tasks=0
+                            )
+                            db.add(crawler)
+                            await db.flush()  # 确保 crawler 记录被创建
+                            
                             if local_setup.site_config:
                                 # 转换配置数据，确保URL是字符串，字典转为JSON
                                 site_config_data = local_setup.site_config.model_dump()
@@ -128,28 +137,38 @@ class SiteManager:
                                 new_crawler_config: Optional[CrawlerConfig] = None,
                                 new_crawler_credential: Optional[CrawlerCredential] = None,
                                 new_browser_state: Optional[BrowserState] = None) -> bool:
-        """更新站点配置
-        
-        Args:
-            db: 数据库会话
-            site_id: 站点ID
-            new_site_config: 新的站点配置
-            new_crawler_config: 新的爬虫配置
-            new_crawler_credential: 新的爬虫凭证
-            new_browser_state: 新的浏览器状态
-            
-        Returns:
-            bool: 更新是否成功
-        """
+        """更新站点配置"""
         try:
-            if not self._sites.get(site_id):
-                self.logger.error(f"站点管理器中 {site_id} 未找到")
-                return False
-                
+            # 检查 crawler 记录是否存在
+            stmt = select(Crawler).where(Crawler.site_id == site_id)
+            result = await db.execute(stmt)
+            existing_crawler = result.scalar_one_or_none()
+            
+            if not existing_crawler and not new_crawler:
+                # 如果不存在 crawler 记录且没有提供新的记录，创建一个新的
+                new_crawler = Crawler(
+                    site_id=site_id,
+                    is_logged_in=False,
+                    total_tasks=0
+                )
+                self.logger.info(f"创建新的 crawler 记录: {site_id}")
+            
             # 更新指定部分的新配置
             if new_crawler:
+                if existing_crawler:
+                    # 更新现有记录
+                    for key, value in new_crawler.__dict__.items():
+                        if not key.startswith('_'):
+                            setattr(existing_crawler, key, value)
+                else:
+                    # 添加新记录
+                    db.add(new_crawler)
+                    existing_crawler = new_crawler
+                
                 self._sites[site_id].crawler = CrawlerBase.model_validate(new_crawler)
-                db.add(new_crawler)
+            
+            # 确保先提交 crawler 记录
+            await db.flush()
             
             if new_site_config:
                 self._sites[site_id].site_config = SiteConfigBase.model_validate(new_site_config)
@@ -167,13 +186,13 @@ class SiteManager:
                 self._sites[site_id].browser_state = BrowserStateBase.model_validate(new_browser_state)
                 db.add(new_browser_state)
                     
-            # 提交更改
+            # 提交所有更改
             await db.commit()
             self.logger.info(f"更新站点配置成功: {site_id}")
             return True
             
         except Exception as e:
-            self.logger.error(f"Failed to update site setup for {site_id}: {str(e)}")
+            self.logger.error(f"更新站点配置失败 {site_id}: {str(e)}")
             await db.rollback()
             return False
         
@@ -311,9 +330,32 @@ class SiteManager:
             bool: 是否成功
         """
         try:
-            # 更新或插入配置
-            if site_setup.crawler:
-                db.add(site_setup.crawler)
+            # 1. 首先检查并确保 crawler 记录存在
+            stmt = select(Crawler).where(Crawler.site_id == site_setup.site_id)
+            result = await db.execute(stmt)
+            existing_crawler = result.scalar_one_or_none()
+            
+            if not existing_crawler:
+                if site_setup.crawler:
+                    db.add(site_setup.crawler)
+                else:
+                    # 如果没有提供 crawler，创建一个新的
+                    crawler = Crawler(
+                        site_id=site_setup.site_id,
+                        is_logged_in=False,
+                        total_tasks=0
+                    )
+                    db.add(crawler)
+                # 确保 crawler 记录被创建
+                await db.flush()
+            elif site_setup.crawler:
+                # 更新现有记录
+                for key, value in site_setup.crawler.__dict__.items():
+                    if not key.startswith('_'):
+                        setattr(existing_crawler, key, value)
+                await db.flush()
+            
+            # 2. 更新或插入其他配置
             if site_setup.site_config:
                 db.add(site_setup.site_config)
             if site_setup.crawler_config:
@@ -323,12 +365,12 @@ class SiteManager:
             if site_setup.browser_state:
                 db.add(site_setup.browser_state)
                 
-            # 提交更改
+            # 3. 提交所有更改
             await db.commit()
             self.logger.info(f"保存站点配置到数据库成功: {site_setup.site_id}")
             return True
             
         except Exception as e:
-            self.logger.error(f"保存站点配置到数据库���败: {site_setup.site_id}: {str(e)}")
+            self.logger.error(f"保存站点配置到数据库失败: {site_setup.site_id}: {str(e)}")
             await db.rollback()
             return False

@@ -24,7 +24,7 @@ class TaskBase(BaseModel):
     created_at: Optional[datetime] = Field(None, description="任务开始时间")
     updated_at: Optional[datetime] = Field(None, description="任务更新时间")
     completed_at: Optional[datetime] = Field(None, description="任务完成时间")
-    error: Optional[str] = Field(None, description="错误信息")
+    msg: Optional[str] = Field(None, description="错误信息")
     error_details: Optional[Dict[str, Any]] = Field(None, description="详细错误信息")
     task_metadata: Optional[Dict[str, Any]] = Field(None, description="任务元数据")
     system_info: Optional[Dict[str, Any]] = Field(None, description="系统信息")
@@ -52,7 +52,7 @@ class TaskUpdate(BaseModel):
     status: Optional[TaskStatus] = None
     updated_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
-    error: Optional[str] = None
+    msg: Optional[str] = None
     error_details: Optional[Dict[str, Any]] = None
     task_metadata: Optional[Dict[str, Any]] = None
     system_info: Optional[Dict[str, Any]] = None

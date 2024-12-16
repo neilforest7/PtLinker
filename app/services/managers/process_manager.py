@@ -5,6 +5,7 @@ from datetime import datetime
 from multiprocessing import Process
 from pathlib import Path
 from typing import Dict, Optional
+import traceback
 
 from services.managers.result_manager import ResultManager
 from services.managers.setting_manager import SettingManager
@@ -17,6 +18,7 @@ from services.managers.site_manager import SiteManager
 from services.managers.setting_manager import settings
 from services.managers.browserstate_manager import BrowserStateManager
 from sqlalchemy import select
+from services.managers.task_status_manager import task_status_manager
 
 
 class CrawlerProcess(Process):
@@ -39,6 +41,7 @@ class CrawlerProcess(Process):
         })
         
         async def _run():
+            db = None
             try:
                 # 初始化日志
                 setup_logger(is_subprocess=True)
@@ -48,6 +51,9 @@ class CrawlerProcess(Process):
                 # 初始化数据库连接
                 from core import database
                 db = await anext(database.get_db())
+                
+                # 更新任务状态为 PENDING
+                await self._update_task_status(db, TaskStatus.PENDING, "任务初始化中")
                 
                 # 初始化所有管理器
                 logger.debug("开始初始化管理器")
@@ -79,6 +85,9 @@ class CrawlerProcess(Process):
                 
                 logger.debug("所有管理器初始化完成")
                 
+                # 更新任务状态为 RUNNING
+                await self._update_task_status(db, TaskStatus.RUNNING, "开始执行任务")
+                
                 # 获取站点配置
                 site_setup = await site_manager.get_site_setup(self.site_id)
                 if not site_setup:
@@ -91,24 +100,47 @@ class CrawlerProcess(Process):
                 await crawler.start()
                 logger.debug("爬虫任务完成")
                 
+                # 更新任务状态为 SUCCESS
+                await self._update_task_status(db, TaskStatus.SUCCESS, "任务执行成功", 
+                                            completed_at=datetime.now())
+                
             except Exception as e:
-                logger.error(f"任务执行失败: {str(e)}")
+                error_msg = str(e)
+                error_details = {
+                    "error_type": type(e).__name__,
+                    "error_message": str(e),
+                    "traceback": traceback.format_exc()
+                }
+                logger.error(f"任务执行失败: {error_msg}")
                 logger.debug("错误详情:", exc_info=True)
-                if 'db' in locals():
-                    stmt = select(Task).where(Task.task_id == self.task_id)
-                    result = await db.execute(stmt)
-                    task = result.scalar_one_or_none()
-                    if task:
-                        task.status = TaskStatus.FAILED
-                        task.error = str(e)
-                        await db.commit()
+                
+                if db:
+                    # 更新任务状态为 FAILED
+                    await self._update_task_status(db, TaskStatus.FAILED, error_msg,
+                                                completed_at=datetime.now(),
+                                                error_details=error_details)
                 raise
             finally:
-                if 'db' in locals():
+                if db:
                     await db.close()
         
         # 运行异步任务
         asyncio.run(_run())
+        
+    async def _update_task_status(self, db: AsyncSession, status: TaskStatus, 
+                                msg: Optional[str] = None,
+                                completed_at: Optional[datetime] = None,
+                                error_details: Optional[Dict] = None) -> None:
+        """更新任务状态"""
+        await task_status_manager.update_task_status(
+            db=db,
+            task_id=self.task_id,
+            status=status,
+            msg=msg,
+            completed_at=completed_at,
+            error_details=error_details,
+            site_id=self.site_id
+        )
 
 
 class ProcessManager:
@@ -141,16 +173,8 @@ class ProcessManager:
                 db_task = result.scalar_one_or_none()
                 
                 if db_task:
-                    # 更新现有任务
-                    task_update = TaskUpdate(
-                        task_id=task.task_id,
-                        status=TaskStatus.READY,
-                        updated_at=datetime.now()
-                    )
-                    for key, value in task_update.model_dump(exclude_unset=True).items():
-                        if key == 'status':
-                            value = TaskStatus(value.value)
-                        setattr(db_task, key, value)
+                    # 更新任务状态为 READY
+                    await self._update_task_status(db, task.task_id, TaskStatus.READY, "任务准备中")
                 else:
                     # 创建新任务
                     db_task = Task(
@@ -160,9 +184,8 @@ class ProcessManager:
                         task_metadata=task.task_metadata
                     )
                     db.add(db_task)
-                
-                await db.commit()
-                await db.refresh(db_task)
+                    await db.commit()
+                    await db.refresh(db_task)
                 
                 # 构建日志路径
                 log_path = str(Path(__file__).parent.parent.parent / 'logs' / 'tasks')
@@ -183,30 +206,37 @@ class ProcessManager:
                     "site_id": task.site_id
                 }
                 
-                # 更新任务状态
-                task_update = TaskUpdate(
-                    task_id=task.task_id,
-                    status=TaskStatus.RUNNING,
-                    updated_at=datetime.now(),
+                # 更新任务状态为 RUNNING
+                await self._update_task_status(
+                    db, 
+                    task.task_id, 
+                    TaskStatus.RUNNING, 
+                    "任务已启动",
                     task_metadata={"pid": process.pid}
                 )
-                for key, value in task_update.model_dump(exclude_unset=True).items():
-                    if key == 'status':
-                        value = TaskStatus(value.value)
-                    setattr(db_task, key, value)
-                await db.commit()
-                await db.refresh(db_task)
                 
                 self.logger.info(f"任务 {task.task_id} 启动成功 (PID: {process.pid})")
                 return TaskResponse.model_validate(db_task)
                 
             except Exception as e:
-                self.logger.error(f"启动任务 {task.task_id} 失败: {str(e)}")
+                error_msg = str(e)
+                error_details = {
+                    "error_type": type(e).__name__,
+                    "error_message": str(e),
+                    "traceback": traceback.format_exc()
+                }
+                self.logger.error(f"启动任务 {task.task_id} 失败: {error_msg}")
                 self.logger.debug("错误详情:", exc_info=True)
-                if 'db_task' in locals():
-                    db_task.status = TaskStatus.FAILED
-                    db_task.error = str(e)
-                    await db.commit()
+                
+                # 更新任务状态为 FAILED
+                await self._update_task_status(
+                    db,
+                    task.task_id,
+                    TaskStatus.FAILED,
+                    error_msg,
+                    datetime.now(),
+                    error_details
+                )
                 return None
     
     async def stop_task(self, task_id: str) -> bool:
@@ -225,6 +255,16 @@ class ProcessManager:
                         process.kill()
                         process.join()
                 
+                # 更新任务状态为 CANCELLED
+                if self._db:
+                    await self._update_task_status(
+                        self._db,
+                        task_id,
+                        TaskStatus.CANCELLED,
+                        "任务已手动停止",
+                        datetime.now()
+                    )
+                
                 del self._processes[task_id]
                 del self._status[task_id]
                 
@@ -236,7 +276,7 @@ class ProcessManager:
                 return False
     
     async def check_task_status(self, task_id: str) -> Optional[Dict]:
-        """��查任务状态"""
+        """检查任务状态"""
         if task_id not in self._processes:
             return None
             
@@ -247,7 +287,24 @@ class ProcessManager:
             "exit_code": process.exitcode if not process.is_alive() else None
         })
         return status
-    
+
+    async def _update_task_status(self, db: AsyncSession, task_id: str, status: TaskStatus, 
+                                msg: Optional[str] = None,
+                                completed_at: Optional[datetime] = None,
+                                error_details: Optional[Dict] = None,
+                                task_metadata: Optional[Dict] = None) -> None:
+        """更新任务状态"""
+        await task_status_manager.update_task_status(
+            db=db,
+            task_id=task_id,
+            status=status,
+            msg=msg,
+            completed_at=completed_at,
+            error_details=error_details,
+            task_metadata=task_metadata,
+            site_id=self._status.get(task_id, {}).get("site_id")
+        )
+        
     async def cleanup(self):
         """清理所有进程"""
         async with self._lock:

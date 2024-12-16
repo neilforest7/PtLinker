@@ -79,16 +79,16 @@ class SettingManager:
                     if env_value is not None:
                         setattr(settings, field, env_value)
                         added_fields += 1
-                        self.logger.info(f"Setting {field} loaded from .env: {env_value}")
+                        self.logger.debug(f"Setting {field} loaded from .env: {env_value}")
             
             # if not settings.id:
             # 如果是新创建的配置，保存到数据库
             db.add(settings)
             await db.commit()
             if added_fields > 0:
-                self.logger.info(f"Created new settings with {added_fields} values from .env")
+                self.logger.debug(f"Created new settings with {added_fields} values from .env")
             else:
-                self.logger.info("No new settings created from .env")
+                self.logger.debug("No new settings created from .env")
             
             self._settings = settings
             # 清空缓存
@@ -131,7 +131,7 @@ class SettingManager:
             
             # 更新缓存
             self._cache[key] = value
-            self.logger.info(f"Setting updated: {key} = {value}")
+            self.logger.debug(f"Setting updated: {key} = {value}")
             
         except Exception as e:
             await db.rollback()

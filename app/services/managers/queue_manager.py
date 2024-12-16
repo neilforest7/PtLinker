@@ -2,12 +2,14 @@ import asyncio
 from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
+import traceback
 
 from core.logger import get_logger, setup_logger
 from models.models import Task, TaskStatus
 from schemas.task import TaskCreate, TaskResponse, TaskUpdate
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from services.managers.task_status_manager import task_status_manager
 
 
 class QueueManager:
@@ -17,7 +19,6 @@ class QueueManager:
         self._task_info: Dict[str, Dict] = {}  # task_id -> task_info
         self._lock = asyncio.Lock()
         self._max_concurrency = 1
-        # setup_logger()
         self.logger = get_logger(name=__name__, site_id="queue_manager")
 
     async def initialize(self, max_concurrency: int = 1) -> None:
@@ -28,6 +29,28 @@ class QueueManager:
         """
         self._max_concurrency = max_concurrency
         self.logger.info(f"Queue manager initialized with max concurrency: {max_concurrency}")
+
+    async def _update_task_status(self, db: AsyncSession, task_id: str, status: TaskStatus, 
+                                msg: Optional[str] = None,
+                                completed_at: Optional[datetime] = None,
+                                error_details: Optional[Dict] = None,
+                                task_metadata: Optional[Dict] = None) -> None:
+        """更新任务状态"""
+        site_id = None
+        task_info = self._task_info.get(task_id)
+        if task_info:
+            site_id = task_info.get("site_id")
+            
+        await task_status_manager.update_task_status(
+            db=db,
+            task_id=task_id,
+            status=status,
+            msg=msg,
+            completed_at=completed_at,
+            error_details=error_details,
+            task_metadata=task_metadata,
+            site_id=site_id
+        )
         
     async def get_pending_tasks(self, site_id: Optional[str] = None, db: AsyncSession = None) -> List[TaskCreate]:
         """获取待处理的任务列表，包括数据库中的READY状态任务
@@ -43,35 +66,7 @@ class QueueManager:
             try:
                 pending_tasks = []
                 
-                # 1. 从内存队列中获取任务
-                if site_id:
-                    task_ids = self._queues[site_id]
-                    for task_id in task_ids:
-                        task_info = self._task_info.get(task_id)
-                        if task_info:
-                            pending_tasks.append(TaskCreate(
-                                task_id=task_id,
-                                site_id=site_id,
-                                status=TaskStatus.READY,
-                                created_at=task_info.get("queued_at"),
-                                updated_at=datetime.now(timezone.utc)
-                            ))
-                else:
-                    # 获取所有站点的任务
-                    for site_id, task_ids in self._queues.items():
-                        self.logger.debug(f"get_pending_tasks获取站点 {site_id} 的任务: {task_ids}")
-                        for task_id in task_ids:
-                            task_info = self._task_info.get(task_id)
-                            if task_info:
-                                pending_tasks.append(TaskCreate(
-                                    task_id=task_id,
-                                    site_id=site_id,
-                                    status=TaskStatus.READY,
-                                    created_at=task_info.get("queued_at"),
-                                    updated_at=datetime.now(timezone.utc)
-                                ))
-                
-                # 2. 从数据库中获取READY状态的任务
+                # 1. 从数据库中获取READY状态的任务（优先从数据库获取，确保状态一致性）
                 if db:
                     query = select(Task).where(Task.status == TaskStatus.READY)
                     if site_id:
@@ -82,28 +77,64 @@ class QueueManager:
                     
                     # 将数据库任务转换为TaskCreate对象
                     for task in db_tasks:
-                        # 检查任务是否已经在内存队列中
-                        if task.task_id not in [t.task_id for t in pending_tasks]:
+                        pending_tasks.append(TaskCreate(
+                            task_id=task.task_id,
+                            site_id=task.site_id,
+                            status=TaskStatus.READY,
+                            created_at=task.created_at,
+                            updated_at=task.updated_at,
+                            task_metadata=task.task_metadata
+                        ))
+                        # 同步到内存队列（如果不存在）
+                        if task.task_id not in self._queues[task.site_id]:
+                            self._queues[task.site_id].append(task.task_id)
+                            self._task_info[task.task_id] = {
+                                "queued_at": task.created_at,
+                                "site_id": task.site_id,
+                            }
+                
+                # 2. 从内存队列中获取任务（确保包含最新添加但还未持久化到数据库的任务）
+                if site_id:
+                    # 处理指定站点的任务
+                    task_ids = self._queues[site_id]
+                    for task_id in task_ids:
+                        task_info = self._task_info.get(task_id)
+                        if task_info and task_id not in [t.task_id for t in pending_tasks]:
                             pending_tasks.append(TaskCreate(
-                                task_id=task.task_id,
-                                site_id=task.site_id,
+                                task_id=task_id,
+                                site_id=site_id,
                                 status=TaskStatus.READY,
-                                created_at=task.created_at,
-                                updated_at=task.updated_at
+                                created_at=task_info.get("queued_at"),
+                                updated_at=datetime.now(timezone.utc),
+                                task_metadata=task_info.get("task_metadata")
                             ))
-                            # 同步到内存队列
-                            if task.task_id not in self._queues[task.site_id]:
-                                self._queues[task.site_id].append(task.task_id)
-                                self._task_info[task.task_id] = {
-                                    "queued_at": task.created_at,
-                                    "site_id": task.site_id,
-                                }
+                else:
+                    # 处理所有站点的任务
+                    for site_id, task_ids in self._queues.items():
+                        for task_id in task_ids:
+                            task_info = self._task_info.get(task_id)
+                            if task_info and task_id not in [t.task_id for t in pending_tasks]:
+                                pending_tasks.append(TaskCreate(
+                                    task_id=task_id,
+                                    site_id=site_id,
+                                    status=TaskStatus.READY,
+                                    created_at=task_info.get("queued_at"),
+                                    updated_at=datetime.now(timezone.utc),
+                                    task_metadata=task_info.get("task_metadata")
+                                ))
                 
                 self.logger.debug(f"获取到 {len(pending_tasks)} 个待处理任务")
+                if site_id:
+                    self.logger.debug(f"站点 {site_id} 的待处理任务: {[t.task_id for t in pending_tasks]}")
+                else:
+                    self.logger.debug(f"所有站点的待处理任务: {[(t.site_id, t.task_id) for t in pending_tasks]}")
+                    
                 return pending_tasks
                 
             except Exception as e:
-                self.logger.error(f"获取待处理任务失败: {str(e)}")
+                error_msg = str(e)
+                self.logger.error(f"获取待处理任务失败: {error_msg}")
+                self.logger.debug("错误详情:", exc_info=True)
                 return []
 
     async def add_task(self, task: TaskCreate, db: AsyncSession) -> Optional[TaskResponse]:
@@ -119,9 +150,9 @@ class QueueManager:
                 db_task = Task(
                     task_id=task.task_id,
                     site_id=task.site_id,
-                    status=TaskStatus(task.status.value),  # 转换枚举值
-                    created_at=task.created_at,
-                    updated_at=task.updated_at,
+                    status=TaskStatus.READY,
+                    created_at=datetime.now(timezone.utc),
+                    updated_at=datetime.now(timezone.utc),
                 )
                 db.add(db_task)
                 await db.commit()
@@ -135,16 +166,12 @@ class QueueManager:
                 }
                 
                 self.logger.info(f"任务 {task.task_id} 已添加到队列")
-                return TaskResponse(
-                    task_id=db_task.task_id,
-                    site_id=db_task.site_id,
-                    status=db_task.status,
-                    created_at=db_task.created_at,
-                    updated_at=db_task.updated_at
-                )
+                return TaskResponse.model_validate(db_task)
                 
             except Exception as e:
-                self.logger.error(f"添加任务失败: {str(e)}")
+                error_msg = str(e)
+                self.logger.error(f"添加任务失败: {error_msg}")
+                self.logger.debug("错误详情:", exc_info=True)
                 await db.rollback()
                 return None
     
@@ -163,59 +190,58 @@ class QueueManager:
                 # 获取下一个任务
                 task_id = self._queues[site_id].pop(0)
                 
-                # 更新任务状态
+                # 更新任务状态为 PENDING
+                await self._update_task_status(
+                    db,
+                    task_id,
+                    TaskStatus.PENDING,
+                    "任务准备执行",
+                )
+                
+                # 记录运行中的任务
+                self._running_tasks[site_id] = task_id
+                
+                # 获取更新后的任务
                 stmt = select(Task).where(Task.task_id == task_id)
                 result = await db.execute(stmt)
                 task = result.scalar_one_or_none()
                 
                 if task:
-                    task_update = TaskUpdate(
-                        status=TaskStatus.PENDING,
-                        created_at=datetime.now()
-                    )
-                    for key, value in task_update.model_dump(exclude_unset=True).items():
-                        setattr(task, key, value)
-                    await db.commit()
-                    await db.refresh(task)
-                    
-                    # 记录运行中的任务
-                    self._running_tasks[site_id] = task_id
-                    task_response = TaskResponse(
-                        task_id=task.task_id,
-                        site_id=task.site_id,
-                        status=task.status,
-                        created_at=task.created_at,
-                        updated_at=task.updated_at
-                    )
-                    return task_response
-                    
+                    return TaskResponse.model_validate(task)
                 return None
                 
             except Exception as e:
-                self.logger.error(f"获取任务失败: {str(e)}")
+                error_msg = str(e)
+                error_details = {
+                    "error_type": type(e).__name__,
+                    "error_message": str(e),
+                    "traceback": traceback.format_exc()
+                }
+                self.logger.error(f"获取任务失败: {error_msg}")
+                self.logger.debug("错误详情:", exc_info=True)
                 return None
     
     async def complete_task(self, task_id: str, db: AsyncSession, 
                             status: TaskStatus = TaskStatus.SUCCESS, 
-                            error: str = None) -> bool:
+                            msg: str = None) -> bool:
         """完成任务"""
         async with self._lock:
             try:
                 # 更新任务状态
+                await self._update_task_status(
+                    db,
+                    task_id,
+                    status,
+                    msg=msg,
+                    completed_at=datetime.now(timezone.utc)
+                )
+                
+                # 获取任务信息
                 stmt = select(Task).where(Task.task_id == task_id)
                 result = await db.execute(stmt)
                 task = result.scalar_one_or_none()
                 
                 if task:
-                    task_update = TaskUpdate(
-                        status=status,
-                        completed_at=datetime.now(),
-                        error=error
-                    )
-                    for key, value in task_update.model_dump(exclude_unset=True).items():
-                        setattr(task, key, value)
-                    await db.commit()
-                    
                     # 清理运行状态
                     site_id = task.site_id
                     if site_id in self._running_tasks and self._running_tasks[site_id] == task_id:
@@ -230,14 +256,21 @@ class QueueManager:
                 return False
                 
             except Exception as e:
-                self.logger.error(f"完成任务失败: {str(e)}")
+                error_msg = str(e)
+                error_details = {
+                    "error_type": type(e).__name__,
+                    "error_message": str(e),
+                    "traceback": traceback.format_exc()
+                }
+                self.logger.error(f"完成任务失败: {error_msg}")
+                self.logger.debug("错误详情:", exc_info=True)
                 return False
     
     async def cancel_task(self, task_id: str, db: AsyncSession) -> bool:
         """取消任务"""
         async with self._lock:
             try:
-                # 更新任务状态
+                # 获取任务信息
                 stmt = select(Task).where(Task.task_id == task_id)
                 result = await db.execute(stmt)
                 task = result.scalar_one_or_none()
@@ -253,14 +286,13 @@ class QueueManager:
                         del self._running_tasks[site_id]
                     
                     # 更新任务状态
-                    task_update = TaskUpdate(
-                        status=TaskStatus.CANCELLED,
-                        completed_at=datetime.now(),
-                        error="Task cancelled by user"
+                    await self._update_task_status(
+                        db,
+                        task_id,
+                        TaskStatus.CANCELLED,
+                        msg="任务已取消",
+                        completed_at=datetime.now(timezone.utc)
                     )
-                    for key, value in task_update.model_dump(exclude_unset=True).items():
-                        setattr(task, key, value)
-                    await db.commit()
                     
                     if task_id in self._task_info:
                         del self._task_info[task_id]
@@ -271,7 +303,14 @@ class QueueManager:
                 return False
                 
             except Exception as e:
-                self.logger.error(f"取消任务失败: {str(e)}")
+                error_msg = str(e)
+                error_details = {
+                    "error_type": type(e).__name__,
+                    "error_message": str(e),
+                    "traceback": traceback.format_exc()
+                }
+                self.logger.error(f"取消任务失败: {error_msg}")
+                self.logger.debug("错误详情:", exc_info=True)
                 return False
     
     def get_queue_status(self, site_id: str) -> Dict:
@@ -285,19 +324,31 @@ class QueueManager:
     async def cleanup(self, db: AsyncSession):
         """清理所有队列"""
         async with self._lock:
-            # 取消所有排队的任务
-            for site_id, task_ids in self._queues.items():
-                for task_id in task_ids:
+            try:
+                # 取消所有排队的任务
+                for site_id, task_ids in self._queues.items():
+                    for task_id in task_ids:
+                        await self.cancel_task(task_id, db)
+                
+                # 取消所有运行中的任务
+                for site_id, task_id in list(self._running_tasks.items()):
                     await self.cancel_task(task_id, db)
-            
-            # 取消所有运行中的任务
-            for site_id, task_id in self._running_tasks.items():
-                await self.cancel_task(task_id, db)
-            
-            # 清理状态
-            self._queues.clear()
-            self._running_tasks.clear()
-            self._task_info.clear()
+                
+                # 清理状态
+                self._queues.clear()
+                self._running_tasks.clear()
+                self._task_info.clear()
+                
+            except Exception as e:
+                error_msg = str(e)
+                error_details = {
+                    "error_type": type(e).__name__,
+                    "error_message": str(e),
+                    "traceback": traceback.format_exc()
+                }
+                self.logger.error(f"清理队列失败: {error_msg}")
+                self.logger.debug("错误详情:", exc_info=True)
+
 
 # 全局队列管理器实例
 queue_manager = QueueManager()

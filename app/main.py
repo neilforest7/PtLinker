@@ -128,7 +128,7 @@ async def lifespan(app: FastAPI):
         if queue_manager:
             try:
                 _logger.debug("Cleaning up queue manager")
-                await queue_manager.cleanup()
+                await queue_manager.cleanup(db)
             except Exception as e:
                 error_msg = f"Queue manager cleanup failed: {e.__class__.__name__}"
                 cleanup_errors.append(error_msg)
