@@ -29,6 +29,13 @@ class SettingManager:
             SettingManager._initialized = True
             # setup_logger()
             self.logger = get_logger(name=__name__, site_id="settingmanager")
+    
+    @classmethod
+    def get_instance(cls) -> 'SettingManager':
+        """获取单例实例"""
+        if cls._instance is None:
+            cls._instance = cls()
+        return cls._instance
             
     def _get_env_value(self, key: str) -> Any:
         """从环境变量获取配置值"""
@@ -288,7 +295,3 @@ class SettingManager:
             await db.rollback()
             self.logger.error(f"Failed to reset settings: {str(e)}", exc_info=True)
             raise
-
-
-# 全局设置管理器实例
-settings = SettingManager()

@@ -13,7 +13,7 @@ class SettingsBase(BaseModel):
     # 爬虫基础配置
     crawler_max_concurrency: int = Field(default=8, description="爬虫最大并发数")
     fresh_login: bool = Field(default=False, description="是否强制重新登录")
-    login_max_retry_count: int = Field(default=3, description="登录最大重试次数")
+    login_max_retry: int = Field(default=3, description="登录最大重试次数")
     
     # 验证码配置
     captcha_default_method: str = Field(default="api", description="验证码处理方法")

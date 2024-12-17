@@ -37,7 +37,6 @@ class SiteSetup(BaseModel):
                         crawler_credential: Optional[CrawlerCredential] = None,
                         browser_state: Optional[BrowserState] = None) -> "SiteSetup":
         """从 SQLAlchemy 模型创建实例"""
-        # 转换SQLAlchemy模型到字典
         def model_to_dict(model):
             if not model:
                 return None
@@ -73,7 +72,7 @@ class SiteSetup(BaseModel):
             site_config=SiteConfigBase.model_validate(site_config_dict) if site_config_dict else None,
             crawler_config=CrawlerConfigBase.model_validate(model_to_dict(crawler_config)) if crawler_config else None,
             crawler_credential=CrawlerCredentialBase.model_validate(model_to_dict(crawler_credential)) if crawler_credential else None,
-            browser_state=BrowserStateBase.model_validate(browser_state_dict) if browser_state_dict else None
+            browser_state=BrowserStateBase.model_validate(model_to_dict(browser_state)) if browser_state_dict else None
         )
     
     def to_serializable_dict(self) -> Dict[str, Any]:

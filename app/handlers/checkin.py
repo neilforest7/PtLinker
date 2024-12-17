@@ -10,7 +10,7 @@ from schemas.siteconfig import CheckInConfig
 from schemas.sitesetup import SiteSetup
 from utils.clouodflare_bypasser import CloudflareBypasser
 from utils.url import convert_url
-from services.managers.setting_manager import settings
+from services.managers.setting_manager import SettingManager
 
 CheckInResult = Literal["not_set", "already", "success", "failed"]
 
@@ -18,7 +18,7 @@ CheckInResult = Literal["not_set", "already", "success", "failed"]
 class CheckInHandler:
     def __init__(self, site_setup: SiteSetup):
         self.site_setup = site_setup
-        self.settings_manager = settings
+        self.settings_manager = SettingManager.get_instance()
         # setup_logger()
         self.logger = get_logger(name=__name__, site_id=self.site_setup.site_id)
         self.logger.debug(f"初始化CheckInHandler - 站点ID: {self.site_setup.site_id}")

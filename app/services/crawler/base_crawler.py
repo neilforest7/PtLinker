@@ -16,6 +16,7 @@ from schemas.result import ResultCreate
 from schemas.sitesetup import SiteSetup
 from services.managers.browserstate_manager import BrowserStateManager
 from services.managers.result_manager import ResultManager
+from services.managers.setting_manager import SettingManager
 from services.managers.task_status_manager import task_status_manager
 from sqlalchemy.ext.asyncio import AsyncSession
 from models.models import TaskStatus
@@ -107,10 +108,12 @@ class BaseCrawler(ABC):
         try:
             # 创建浏览器实例
             browser = await self._create_browser()
-            self.logger.debug("浏览器实例创建成功")
-            
+            tab = browser.latest_tab
             # 获取登录重试配置
-            MAX_RETRY = self.site_setup.get_crawler_config('login_max_retry', 3)
+            _MAX_RETRY = await SettingManager.get_instance().get_setting('login_max_retry')
+            self.logger.info(f"全局登录最大重试次数: {_MAX_RETRY}")
+            MAX_RETRY = self.site_setup.get_crawler_config('login_max_retry', _MAX_RETRY)
+            self.logger.info(f"站点登录最大重试次数: {MAX_RETRY}")
             RETRY_COUNT = 0
             
             while RETRY_COUNT < MAX_RETRY:
@@ -123,6 +126,7 @@ class BaseCrawler(ABC):
                         if self.site_setup.browser_state.cookies:
                             self.logger.info("找到站点cookies")
                             if await self._restore_browser_state(browser):
+                                tab.get(self.site_setup.site_config.site_url)
                                 if await self.login_handler.check_login(browser):
                                     self.logger.info("恢复登录状态成功")
                                     await self._save_browser_state(browser)
@@ -135,6 +139,8 @@ class BaseCrawler(ABC):
                                     # )
                                     self.browser = browser
                                     return True
+                    else:
+                        self.logger.info("未找到站点浏览器状态，将使用新会话")
                 
                 # 执行登录
                 self.logger.info("开始执行登录")

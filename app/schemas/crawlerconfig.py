@@ -20,6 +20,7 @@ class CrawlerConfigBase(BaseModel):
     captcha_skip: bool = False
     timeout: Optional[int] = Field(None, gt=0, le=3600)
     headless: bool = True
+    login_max_retry: Optional[int] = Field(None, gt=0, le=10)
 
 class CrawlerConfigCreate(CrawlerConfigBase):
     site_id: str = Field(..., min_length=1, max_length=500)
@@ -34,6 +35,7 @@ class CrawlerConfigUpdate(BaseModel):
     captcha_skip: Optional[bool] = None
     timeout: Optional[int] = Field(None, gt=0, le=3600)
     headless: Optional[bool] = None
+    login_max_retry: Optional[int] = Field(None, gt=0, le=10)
 
     @validator('use_proxy', 'enabled', 'fresh_login', 'captcha_skip', 'headless', pre=True)
     def validate_boolean(cls, v):

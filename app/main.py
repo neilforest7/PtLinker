@@ -11,7 +11,7 @@ from services.crawler.task_config import BaseTaskConfig
 from services.managers.process_manager import ProcessManager
 from services.managers.queue_manager import QueueManager
 from services.managers.result_manager import ResultManager
-from services.managers.setting_manager import settings
+from services.managers.setting_manager import SettingManager
 from services.managers.site_manager import SiteManager
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,6 +22,7 @@ _logger = get_logger(name=__name__, site_id="main")
 process_manager = ProcessManager()
 queue_manager = QueueManager()
 site_manager = SiteManager()
+setting_manager = SettingManager()
 result_manager = ResultManager()
 
 @asynccontextmanager
@@ -59,14 +60,14 @@ async def lifespan(app: FastAPI):
         try:
             # 按依赖顺序初始化
             _logger.debug("Initializing settings manager")
-            await settings.initialize(db)
+            await setting_manager.initialize(db)
             
             _logger.debug("Initializing site manager")
             site_manager = SiteManager.get_instance()
             await site_manager.initialize(db)
             
             _logger.debug("Initializing queue manager")
-            await queue_manager.initialize(max_concurrency=settings.crawler_max_concurrency)
+            await queue_manager.initialize(max_concurrency=await setting_manager.get_setting("crawler_max_concurrency"))
             
             _logger.debug("Initializing process manager")
             await process_manager.initialize(queue_manager=queue_manager, db=db)

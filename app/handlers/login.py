@@ -15,13 +15,13 @@ from utils.clouodflare_bypasser import CloudflareBypasser
 from utils.url import convert_url
 
 from schemas.sitesetup import SiteSetup
-from services.managers.setting_manager import settings
+from services.managers.setting_manager import SettingManager
 
 class LoginHandler:
     def __init__(self, site_setup: SiteSetup):
         self.site_setup : SiteSetup = site_setup
         self.login_config : LoginConfig = self.site_setup.site_config.login_config
-        self.settings_manager = settings
+        self.settings_manager = SettingManager.get_instance()
         # setup_logger()
         self.logger = get_logger(name=__name__, site_id=site_setup.site_id)
         self.logger.debug(f"初始化LoginHandler - 站点ID: {site_setup.site_id}")

@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import get_db
 from core.logger import get_logger
 from schemas.settings import SettingsCreate, SettingsResponse, SettingsUpdate
-from services.managers.setting_manager import settings
+from services.managers.setting_manager import SettingManager
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 logger = get_logger(name=__name__, site_id="settings_api")
@@ -16,12 +16,12 @@ async def get_settings(db: AsyncSession = Depends(get_db)) -> SettingsResponse:
     """获取当前系统设置"""
     try:
         # 确保设置已初始化
-        if not settings._settings:
+        if not SettingManager.get_instance()._settings:
             logger.debug("设置未初始化，正在初始化...")
-            await settings.initialize(db)
+            await SettingManager.get_instance().initialize(db)
             
         # 获取所有设置
-        settings_dict = await settings.get_all_settings()
+        settings_dict = await SettingManager.get_instance().get_all_settings()
         logger.debug("成功获取所有设置")
         return SettingsResponse(**settings_dict)
         
@@ -71,20 +71,20 @@ async def update_settings(
     # TODO: 422 Unprocessable 
     try:
         # 确保设置已初始化
-        if not settings._settings:
+        if not SettingManager.get_instance()._settings:
             logger.debug("设置未初始化，正在初始化...")
-            await settings.initialize(db)
+            await SettingManager.get_instance().initialize(db)
             
         # 只更新非空值
         update_data = {k: v for k, v in settings_data.model_dump().items() if v is not None}
         if update_data:
             logger.debug(f"正在更新设置: {update_data}")
-            await settings.update_settings(db, update_data)
+            await SettingManager.get_instance().update_settings(db, update_data)
         else:
             logger.debug("没有需要更新的有效设置")
         
         # 获取更新后的设置
-        settings_dict = await settings.get_all_settings()
+        settings_dict = await SettingManager.get_instance().get_all_settings()
         logger.debug("设置更新成功")
         return SettingsResponse(**settings_dict)
         
@@ -102,10 +102,10 @@ async def reset_settings(db: AsyncSession = Depends(get_db)) -> SettingsResponse
     try:
         logger.info("开始重置设置")
         # 重置设置
-        await settings.reset_settings(db)
+        await SettingManager.get_instance().reset_settings(db)
         
         # 获取重置后的设置
-        settings_dict = await settings.get_all_settings()
+        settings_dict = await SettingManager.get_instance().get_all_settings()
         logger.info("设置重置完成")
         return SettingsResponse(**settings_dict)
         
@@ -125,19 +125,19 @@ async def get_setting_value(
     """获取指定设置项的值"""
     try:
         # 确保设置已初始化
-        if not settings._settings:
+        if not SettingManager.get_instance()._settings:
             logger.debug("设置未初始化，正在初始化...")
-            await settings.initialize(db)
+            await SettingManager.get_instance().initialize(db)
             
         # 检查设置项是否存在
-        if not hasattr(settings._settings, key):
+        if not hasattr(SettingManager.get_instance()._settings, key):
             logger.warning(f"尝试访问不存在的设置项: {key}")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"设置项 {key} 不存在"
             )
             
-        value = await settings.get_setting(key)
+        value = await SettingManager.get_instance().get_setting(key)
         logger.debug(f"获取设置项 {key} 的值: {value}")
         return {"key": key, "value": value}
         
@@ -160,12 +160,12 @@ async def set_setting_value(
     """设置指定配置项的值"""
     try:
         # 确保设置已初始化
-        if not settings._settings:
+        if not SettingManager.get_instance()._settings:
             logger.debug("设置未初始化，正在初始化...")
-            await settings.initialize(db)
+            await SettingManager.get_instance().initialize(db)
             
         # 检查设置项是否存在
-        if not hasattr(settings._settings, key):
+        if not hasattr(SettingManager.get_instance()._settings, key):
             logger.warning(f"尝试设置不存在的设置项: {key}")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -174,10 +174,10 @@ async def set_setting_value(
             
         # 更新设置值
         logger.debug(f"正在设置 {key} 的值: {value.get('value')}")
-        await settings.set_setting(db, key, value.get("value"))
+        await SettingManager.get_instance().set_setting(db, key, value.get("value"))
         
         # 获取更新后的值
-        updated_value = await settings.get_setting(key)
+        updated_value = await SettingManager.get_instance().get_setting(key)
         logger.debug(f"成功更新设置项 {key} 的值为: {updated_value}")
         return {"key": key, "value": updated_value}
         

@@ -12,7 +12,7 @@ from schemas.crawlercredential import CrawlerCredentialBase
 from schemas.crawlerschemas import CrawlerBase, CrawlerCreate
 from schemas.siteconfig import SiteConfigBase
 from schemas.sitesetup import SiteSetup
-from services.managers.setting_manager import settings
+from services.managers.setting_manager import SettingManager
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -70,7 +70,7 @@ class SiteManager:
             )
             
         # 检查是否有本地配置文件但数据库中没有的站点
-        config_dir = await settings.get_setting("crawler_config_path")
+        config_dir = await SettingManager.get_instance().get_setting("crawler_config_path")
         if config_dir and Path(config_dir).exists():
             for site_dir in Path(config_dir).iterdir():
                 if site_dir.is_dir() or site_dir.name.startswith('_'):
@@ -363,7 +363,7 @@ class SiteManager:
             Optional[SiteSetup]: 站点配置集合，如果未找到则返回None
         """
         try:
-            config_dir = await settings.get_setting("crawler_config_path")
+            config_dir = await SettingManager.get_instance().get_setting("crawler_config_path")
             self.logger.info(f"获取到crawler_config_path: {config_dir}")
             if not config_dir:
                 self.logger.error("crawler_config_path 未找到")
@@ -389,7 +389,7 @@ class SiteManager:
                 self.logger.info(f"成功加载站点配置文件: {site_config_path}")
                 
             # 读取crawler_credential.json
-            credential_dir = await settings.get_setting("crawler_credential_path")
+            credential_dir = await SettingManager.get_instance().get_setting("crawler_credential_path")
             credential_path = os.path.join(credential_dir, "credentials.json")
             credential_data = {}
             if os.path.exists(credential_path):

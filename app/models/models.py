@@ -57,6 +57,7 @@ class CrawlerConfig(Base):
     captcha_skip = Column(Boolean, nullable=True, default=False)
     timeout = Column(Integer, nullable=True)
     headless = Column(Boolean, nullable=True, default=True)
+    login_max_retry = Column(Integer, nullable=True, default=3)
     
     crawler = relationship("Crawler", back_populates="config")
 
