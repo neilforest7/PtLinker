@@ -9,7 +9,7 @@ from models.models import (BrowserState, Crawler, CrawlerConfig,
 from schemas.browserstate import BrowserState as BrowserStateBase
 from schemas.crawlerconfig import CrawlerConfigBase
 from schemas.crawlercredential import CrawlerCredentialBase
-from schemas.crawlerschemas import CrawlerBase
+from schemas.crawlerschemas import CrawlerBase, CrawlerCreate
 from schemas.siteconfig import SiteConfigBase
 from schemas.sitesetup import SiteSetup
 from services.managers.setting_manager import settings
@@ -132,67 +132,199 @@ class SiteManager:
         return self._sites.get(site_id)
         
     async def update_site_setup(self, db: AsyncSession, site_id: str, 
-                                new_crawler: Optional[Crawler] = None,
-                                new_site_config: Optional[SiteConfig] = None,
-                                new_crawler_config: Optional[CrawlerConfig] = None,
-                                new_crawler_credential: Optional[CrawlerCredential] = None,
-                                new_browser_state: Optional[BrowserState] = None) -> bool:
+                                new_crawler: Optional[CrawlerBase] = None,
+                                new_site_config: Optional[SiteConfigBase] = None,
+                                new_crawler_config: Optional[CrawlerConfigBase] = None,
+                                new_crawler_credential: Optional[CrawlerCredentialBase] = None,
+                                new_browser_state: Optional[BrowserStateBase] = None) -> bool:
         """更新站点配置"""
         try:
+            self.logger.debug(f"开始更新站点配置: {site_id}")
+            self.logger.debug(f"传入参数: new_crawler={new_crawler is not None}, "
+                            f"new_site_config={new_site_config is not None}, "
+                            f"new_crawler_config={new_crawler_config is not None}, "
+                            f"new_crawler_credential={new_crawler_credential is not None}, "
+                            f"new_browser_state={new_browser_state is not None}")
+            
             # 检查 crawler 记录是否存在
             stmt = select(Crawler).where(Crawler.site_id == site_id)
             result = await db.execute(stmt)
             existing_crawler = result.scalar_one_or_none()
+            self.logger.debug(f"现有crawler记录: {existing_crawler is not None}")
             
             if not existing_crawler and not new_crawler:
                 # 如果不存在 crawler 记录且没有提供新的记录，创建一个新的
-                new_crawler = Crawler(
+                new_crawler = CrawlerCreate(
                     site_id=site_id,
                     is_logged_in=False,
                     total_tasks=0
                 )
-                self.logger.info(f"创建新的 crawler 记录: {site_id}")
+                self.logger.debug(f"创建新的默认crawler记录: {new_crawler.model_dump()}")
             
             # 更新指定部分的新配置
             if new_crawler:
                 if existing_crawler:
                     # 更新现有记录
-                    for key, value in new_crawler.__dict__.items():
+                    crawler_data = new_crawler.model_dump()
+                    self.logger.debug(f"更新现有crawler记录: {crawler_data}")
+                    for key, value in crawler_data.items():
                         if not key.startswith('_'):
+                            self.logger.debug(f"  设置crawler属性: {key} = {value}")
                             setattr(existing_crawler, key, value)
                 else:
                     # 添加新记录
-                    db.add(new_crawler)
-                    existing_crawler = new_crawler
+                    db_crawler = Crawler(**new_crawler.model_dump())
+                    self.logger.debug(f"添加新crawler记录: {new_crawler.model_dump()}")
+                    db.add(db_crawler)
+                    existing_crawler = db_crawler
                 
-                self._sites[site_id].crawler = CrawlerBase.model_validate(new_crawler)
+                # 确保站点在_sites字典中存在
+                if site_id not in self._sites:
+                    self.logger.debug(f"在_sites字典中创建新站点记录: {site_id}")
+                    self._sites[site_id] = SiteSetup(site_id=site_id)
+                
+                self._sites[site_id].crawler = new_crawler
+                self.logger.debug("更新内存中的crawler记录完成")
             
             # 确保先提交 crawler 记录
             await db.flush()
+            self.logger.debug("提交crawler记录完成")
             
             if new_site_config:
-                self._sites[site_id].site_config = SiteConfigBase.model_validate(new_site_config)
-                db.add(new_site_config)
+                self.logger.debug("开始处理site_config")
+                # 转换配置数据为字典
+                site_config_data = new_site_config.model_dump()
+                # 将需要JSON序列化的字段转换为字符串
+                site_config_data['login_config'] = json.dumps(site_config_data.get('login_config'))
+                site_config_data['extract_rules'] = json.dumps(site_config_data.get('extract_rules'))
+                site_config_data['checkin_config'] = json.dumps(site_config_data.get('checkin_config'))
+                self.logger.debug("JSON序列化完成")
+                
+                # 检查是否存在现有配置
+                stmt = select(SiteConfig).where(SiteConfig.site_id == site_id)
+                result = await db.execute(stmt)
+                existing_site_config = result.scalar_one_or_none()
+                self.logger.debug(f"现有site_config记录: {existing_site_config is not None}")
+                
+                if existing_site_config:
+                    # 更新现有记录
+                    for key, value in site_config_data.items():
+                        if not key.startswith('_'):
+                            self.logger.debug(f"- 设置site_config属性: {key} = {value[:100] if isinstance(value, str) else value}...")
+                            setattr(existing_site_config, key, value)
+                else:
+                    # 添加新记录
+                    self.logger.debug("添加新site_config记录")
+                    db_site_config = SiteConfig(**site_config_data)
+                    db.add(db_site_config)
+                
+                # 确保站点在_sites字典中存在
+                if site_id not in self._sites:
+                    self.logger.debug(f"在_sites字典中创建新站点记录: {site_id}")
+                    self._sites[site_id] = SiteSetup(site_id=site_id)
+                
+                self._sites[site_id].site_config = new_site_config
+                self.logger.debug("更新内存中的site_config记录完成")
                     
             if new_crawler_config:
-                self._sites[site_id].crawler_config = CrawlerConfigBase.model_validate(new_crawler_config)
-                db.add(new_crawler_config)
+                self.logger.debug("开始处理crawler_config")
+                # 检查是否存在现有配置
+                stmt = select(CrawlerConfig).where(CrawlerConfig.site_id == site_id)
+                result = await db.execute(stmt)
+                existing_crawler_config = result.scalar_one_or_none()
+                self.logger.debug(f"现有crawler_config记录: {existing_crawler_config is not None}")
+                
+                if existing_crawler_config:
+                    # 更新现有记录
+                    crawler_config_data = new_crawler_config.model_dump()
+                    self.logger.debug(f"更新现有crawler_config记录: {crawler_config_data}")
+                    for key, value in crawler_config_data.items():
+                        if not key.startswith('_'):
+                            self.logger.debug(f"- 设置crawler_config属性: {key} = {value}")
+                            setattr(existing_crawler_config, key, value)
+                else:
+                    # 添加新记录
+                    self.logger.debug("添加新crawler_config记录")
+                    db_crawler_config = CrawlerConfig(**new_crawler_config.model_dump())
+                    db.add(db_crawler_config)
+                
+                # 确保站点在_sites字典中存在
+                if site_id not in self._sites:
+                    self.logger.debug(f"在_sites字典中创建新站点记录: {site_id}")
+                    self._sites[site_id] = SiteSetup(site_id=site_id)
+                
+                self._sites[site_id].crawler_config = new_crawler_config
+                self.logger.debug("更新内存中的crawler_config记录完成")
 
             if new_crawler_credential:
-                self._sites[site_id].crawler_credential = CrawlerCredentialBase.model_validate(new_crawler_credential)
-                db.add(new_crawler_credential)
+                self.logger.debug("开始处理crawler_credential")
+                # 检查是否存在现有配置
+                stmt = select(CrawlerCredential).where(CrawlerCredential.site_id == site_id)
+                result = await db.execute(stmt)
+                existing_crawler_credential = result.scalar_one_or_none()
+                self.logger.debug(f"现有crawler_credential记录: {existing_crawler_credential is not None}")
+                
+                if existing_crawler_credential:
+                    # 更新现有记录
+                    crawler_credential_data = new_crawler_credential.model_dump()
+                    self.logger.debug("更新现有crawler_credential记录")
+                    for key, value in crawler_credential_data.items():
+                        if not key.startswith('_'):
+                            self.logger.debug(f"- 设置crawler_credential属性: {key} = {'***' if key in ['password', 'apikey'] else value}")
+                            setattr(existing_crawler_credential, key, value)
+                else:
+                    # 添加新记录
+                    self.logger.debug("添加新crawler_credential记录")
+                    db_crawler_credential = CrawlerCredential(**new_crawler_credential.model_dump())
+                    db.add(db_crawler_credential)
+                
+                # 确保站点在_sites字典中存在
+                if site_id not in self._sites:
+                    self.logger.debug(f"在_sites字典中创建新站点记录: {site_id}")
+                    self._sites[site_id] = SiteSetup(site_id=site_id)
+                
+                self._sites[site_id].crawler_credential = new_crawler_credential
+                self.logger.debug("更新内存中的crawler_credential记录完成")
 
             if new_browser_state:
-                self._sites[site_id].browser_state = BrowserStateBase.model_validate(new_browser_state)
-                db.add(new_browser_state)
+                self.logger.debug("开始处理browser_state")
+                # 检查是否存在现有配置
+                stmt = select(BrowserState).where(BrowserState.site_id == site_id)
+                result = await db.execute(stmt)
+                existing_browser_state = result.scalar_one_or_none()
+                self.logger.debug(f"现有browser_state记录: {existing_browser_state is not None}")
+                
+                if existing_browser_state:
+                    # 更新现有记录
+                    browser_state_data = new_browser_state.model_dump()
+                    self.logger.debug("更新现有browser_state记录")
+                    for key, value in browser_state_data.items():
+                        if not key.startswith('_'):
+                            self.logger.debug(f"- 设置browser_state属性: {key} = {value}")
+                            setattr(existing_browser_state, key, value)
+                else:
+                    # 添加新记录
+                    self.logger.debug("添加新browser_state记录")
+                    db_browser_state = BrowserState(**new_browser_state.model_dump())
+                    db.add(db_browser_state)
+                
+                # 确保站点在_sites字典中存在
+                if site_id not in self._sites:
+                    self.logger.debug(f"���_sites字典中创建新站点记录: {site_id}")
+                    self._sites[site_id] = SiteSetup(site_id=site_id)
+                
+                self._sites[site_id].browser_state = new_browser_state
+                self.logger.debug("更新内存中的browser_state记录完成")
                     
             # 提交所有更改
+            self.logger.debug("开始提交所有更改")
             await db.commit()
             self.logger.info(f"更新站点配置成功: {site_id}")
             return True
             
         except Exception as e:
             self.logger.error(f"更新站点配置失败 {site_id}: {str(e)}")
+            self.logger.debug(f"错误详情: ", exc_info=True)
             await db.rollback()
             return False
         
@@ -372,5 +504,48 @@ class SiteManager:
             
         except Exception as e:
             self.logger.error(f"保存站点配置到数据库失败: {site_setup.site_id}: {str(e)}")
+            await db.rollback()
+            return False
+            
+    async def delete_site_setup(self, db: AsyncSession, site_id: str) -> bool:
+        """删除站点配置
+        
+        Args:
+            db: 数据库会话
+            site_id: 站点ID
+            
+        Returns:
+            bool: 是否成功
+        """
+        try:
+            self.logger.debug(f"开始删除站点配置: {site_id}")
+            
+            # 1. 检查站点是否存在
+            stmt = select(Crawler).where(Crawler.site_id == site_id)
+            result = await db.execute(stmt)
+            existing_crawler = result.scalar_one_or_none()
+            
+            if not existing_crawler:
+                self.logger.warning(f"站点不存在: {site_id}")
+                return False
+                
+            # 2. 删除相关配置记录
+            # 注意：由于外键约束，删除 crawler 记录会自动删除相关的配置记录
+            self.logger.debug(f"删除站点 {site_id} 的 crawler 记录")
+            await db.delete(existing_crawler)
+            
+            # 3. 从内存中移除
+            if site_id in self._sites:
+                self.logger.debug(f"从内存中移除站点配置: {site_id}")
+                del self._sites[site_id]
+            
+            # 4. 提交更改
+            await db.commit()
+            self.logger.info(f"成功删除站点配置: {site_id}")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"删除站点配置失败 {site_id}: {str(e)}")
+            self.logger.debug(f"错误详情: ", exc_info=True)
             await db.rollback()
             return False

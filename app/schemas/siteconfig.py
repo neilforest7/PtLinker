@@ -57,7 +57,7 @@ class SiteConfigBase(BaseModel):
     checkin_config: Optional[CheckInConfig] = None
 
 class SiteConfigCreate(SiteConfigBase):
-    site_id: str = Field(..., min_length=1, max_length=500)
+    pass
 
 class SiteConfigUpdate(SiteConfigBase):
     pass
