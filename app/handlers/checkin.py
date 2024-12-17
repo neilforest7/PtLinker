@@ -25,21 +25,21 @@ class CheckInHandler:
 
     async def perform_checkin(self, tab: Chromium) -> CheckInResult:
         """执行签到处理"""
+        checkin_config = self.site_setup.site_config.checkin_config
+
         # 检查站点配置中的签到设置
-        if not self.site_setup.site_config.checkin_config:
-            self.logger.info(f"{self.site_setup.site_id} 未配置签到功能 (site_config未配置)")
+        if not checkin_config.checkin_url and not checkin_config.checkin_button:
+            self.logger.info(f"{self.site_setup.site_id} 未配置签到功能 (checkin_config未配置)")
             return "not_set"
             
         # 检查站点是否启用签到
-        if not self.site_setup.site_config.checkin_config.enabled:
+        if not checkin_config.enabled:
             self.logger.info(f"{self.site_setup.site_id} 未启用签到功能 (签到开关已禁用)")
             return "not_set"
         
         if not self.settings_manager.get_setting('captcha_skip_sites') and self.site_setup.site_id not in self.settings_manager.get_setting('captcha_skip_sites'):
             self.logger.info(f"{self.site_setup.site_id} 未启用签到功能 (全局站点列表跳过)")
             return "not_set"
-        
-        checkin_config = self.site_setup.site_config.checkin_config
         
         try:
             self.logger.debug(f"开始签到流程 - checkin_config: {checkin_config}")

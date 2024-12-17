@@ -14,7 +14,7 @@ class TaskStatusManager:
     _instance = None
     
     def __init__(self):
-        self.logger = get_logger(name=__name__, site_id="task_status_manager")
+        self.logger = get_logger(name=__name__, site_id="TaskStatMgr")
     
     @classmethod
     def get_instance(cls) -> 'TaskStatusManager':

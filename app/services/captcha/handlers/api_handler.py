@@ -15,7 +15,7 @@ class APIHandler(BaseCaptchaHandler):
     def __init__(self, storage_dir: str):
         super().__init__(storage_dir)
         # setup_logger()
-        self.logger = get_logger(name=__name__, site_id="api")
+        self.logger = get_logger(name=__name__, site_id="api_captcha")
         
         # 初始化2captcha客户端
         api_key = os.getenv('CAPTCHA_API_KEY')

@@ -8,7 +8,7 @@ from services.managers.site_manager import SiteManager
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/crawler-configs", tags=["crawler_configs"])
-logger = get_logger(name=__name__, site_id="crawler_configs_api")
+logger = get_logger(name=__name__, site_id="cr_conf_api")
 
 
 @router.put("/{site_id}", response_model=CrawlerConfigResponse)

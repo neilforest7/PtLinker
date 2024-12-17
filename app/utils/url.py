@@ -25,15 +25,17 @@ def convert_url(site_url: str, short_url: str, uid: Optional[str] = None) -> str
         return short_url
         
     # 如果short_url是完整的URL，直接返回
-    if short_url.startswith(('http://', 'https://')):
-        return short_url
+    if short_url:
+        if short_url.startswith(('http://', 'https://')):
+            return short_url
         
     # 移除site_url末尾的斜杠（如果有）
     base_url = site_url.rstrip('/')
     
     # 如果short_url以斜杠开头，确保它不会有双斜杠
-    if short_url.startswith('/'):
-        short_url = short_url.lstrip('/')
+    if short_url:
+        if short_url.startswith('/'):
+            short_url = short_url.lstrip('/')
         
     # 拼接URL
     return f"{base_url}/{short_url}"

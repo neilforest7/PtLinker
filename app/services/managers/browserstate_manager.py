@@ -21,7 +21,7 @@ class BrowserStateManager:
     
     def __init__(self):
         if not self._initialized:
-            self.logger = get_logger(name=__name__, site_id="BrowserStateMgr")
+            self.logger = get_logger(name=__name__, site_id="BrowserState")
             self._session = None
             BrowserStateManager._initialized = True
             

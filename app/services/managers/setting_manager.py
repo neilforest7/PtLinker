@@ -28,7 +28,7 @@ class SettingManager:
             self._cache: Dict[str, Any] = {}
             SettingManager._initialized = True
             # setup_logger()
-            self.logger = get_logger(name=__name__, site_id="settingmanager")
+            self.logger = get_logger(name=__name__, site_id="SettingMgr")
     
     @classmethod
     def get_instance(cls) -> 'SettingManager':

@@ -19,7 +19,7 @@ class BaseTaskConfig:
         self.crawler_config: Optional[CrawlerConfig] = None
         self.crawler_credential: Optional[CrawlerCredential] = None
         self.browser_state: Optional[BrowserState] = None
-        self.logger = get_logger(name=__name__, site_id="taskconf")
+        self.logger = get_logger(name=__name__, site_id="Taskconfig")
         self.load_config()
         
     @classmethod

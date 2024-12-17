@@ -4,15 +4,6 @@
     "login_config": {
         "login_url": "/login.php",
         "form_selector": "@action=takelogin.php",
-        "pre_login": {
-            "actions": [
-                {
-                    "type": "bypass-ddg",
-                    "selector": "@id=not-robot",
-                    "wait_time": 10
-                }
-            ]
-        },
         "fields": {
             "username": {
                 "name": "username",

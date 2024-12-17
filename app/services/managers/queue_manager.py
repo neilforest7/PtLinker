@@ -19,7 +19,7 @@ class QueueManager:
         self._task_info: Dict[str, Dict] = {}  # task_id -> task_info
         self._lock = asyncio.Lock()
         self._max_concurrency = 1
-        self.logger = get_logger(name=__name__, site_id="queue_manager")
+        self.logger = get_logger(name=__name__, site_id="QueueMgr")
 
     async def initialize(self, max_concurrency: int = 1) -> None:
         """初始化队列管理器
@@ -348,6 +348,76 @@ class QueueManager:
                 }
                 self.logger.error(f"清理队列失败: {error_msg}")
                 self.logger.debug("错误详情:", exc_info=True)
+                
+    async def clear_pending_tasks(self, db: AsyncSession, site_id: str = None) -> dict:
+        """清除待运行的任务队列
+        
+        Args:
+            db: 数据库会话
+            site_id: 可选的站点ID，如果不提供则清除所有站点的待运行任务
+            
+        Returns:
+            dict: 包含清除的任务数量信息
+        """
+        async with self._lock:
+            try:
+                cleared_count = 0
+                total_count = 0
+                
+                # 从数据库中获取READY状态的任务
+                query = select(Task).where(Task.status == TaskStatus.READY)
+                if site_id:
+                    query = query.where(Task.site_id == site_id)
+                
+                result = await db.execute(query)
+                ready_tasks = result.scalars().all()
+                
+                # 记录总任务数
+                total_count = len(ready_tasks)
+                
+                # 清除每个READY状态的任务
+                for task in ready_tasks:
+                    try:
+                        # 从内存队列中移除任务
+                        if task.task_id in self._queues[task.site_id]:
+                            self._queues[task.site_id].remove(task.task_id)
+                        
+                        # 清理任务信息
+                        if task.task_id in self._task_info:
+                            del self._task_info[task.task_id]
+                        
+                        # 更新任务状态
+                        await self._update_task_status(
+                            db,
+                            task.task_id,
+                            TaskStatus.CANCELLED,
+                            msg="任务已取消",
+                            completed_at=datetime.now(timezone.utc)
+                        )
+                        
+                        cleared_count += 1
+                        self.logger.debug(f"已清除任务: {task.task_id}")
+                        
+                    except Exception as e:
+                        self.logger.error(f"清除任务 {task.task_id} 失败: {str(e)}")
+                        continue
+                
+                # 提交所有更改
+                await db.commit()
+                
+                self.logger.info(f"成功清除 {cleared_count}/{total_count} 个待运行任务")
+                return {
+                    "cleared_count": cleared_count,
+                    "total_ready_count": total_count,
+                    "site_id": site_id if site_id else "all"
+                }
+                
+            except Exception as e:
+                error_msg = str(e)
+                self.logger.error(f"清除待运行任务失败: {error_msg}")
+                self.logger.debug("错误详情:", exc_info=True)
+                await db.rollback()
+                raise
 
 
 # 全局队列管理器实例

@@ -153,7 +153,7 @@ class ProcessManager:
         self._lock = asyncio.Lock()
         self._queue_manager = None
         self._db = None
-        self.logger = get_logger(name=__name__, site_id="process_manager")
+        self.logger = get_logger(name=__name__, site_id="ProcessMgr")
         
     async def initialize(self, queue_manager, db: AsyncSession) -> None:
         """初始化进程管理器"""

@@ -16,7 +16,7 @@ from services.managers.site_manager import SiteManager
 from sqlalchemy.ext.asyncio import AsyncSession
 
 setup_logger()
-_logger = get_logger(name=__name__, site_id="main")
+_logger = get_logger(name=__name__, site_id="Main")
 
 # 全局管理器实例
 process_manager = ProcessManager()
@@ -192,7 +192,7 @@ app.include_router(crawler_configs.router, prefix="/api/v1", tags=["crawler_conf
 @app.get("/health")
 async def health_check():
     """健康检查端点"""
-    logger_ctx = get_logger(name=__name__, site_id="health_check")
+    logger_ctx = get_logger(name=__name__, site_id="HealthCheck")
     logger_ctx.debug("Health check requested")
     return {"status": "ok"}
 

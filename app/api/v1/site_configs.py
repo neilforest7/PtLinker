@@ -1,8 +1,8 @@
-from typing import List
+from typing import List, Optional
 
 from core.database import get_db
 from core.logger import get_logger
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from schemas.siteconfig import (SiteConfigCreate, SiteConfigResponse,
                                 SiteConfigUpdate)
 from schemas.sitesetup import SiteSetup
@@ -10,7 +10,7 @@ from services.managers.site_manager import SiteManager
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/site-configs", tags=["site_configs"])
-logger = get_logger(name=__name__, site_id="site_configs_api")
+logger = get_logger(name=__name__, site_id="siteconf_api")
 
 
 @router.get("", response_model=List[SiteConfigResponse])
@@ -57,7 +57,7 @@ async def get_site_config(
             logger.warning(f"站点配置不存在: {site_id}")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"站点配置 {site_id} 不存在"
+                detail=f"��点配置 {site_id} 不存在"
             )
             
         logger.debug(f"成功获取站点 {site_id} 的配置")
@@ -162,7 +162,7 @@ async def update_site_config(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"更新站点配置失败: {str(e)}", exc_info=True)
+        logger.error(f"更新站���配置失败: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"更新站点配置失败: {str(e)}"
@@ -195,7 +195,7 @@ async def delete_site_config(
         if not await site_manager.delete_site_setup(db, site_id):
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"删除站点配置失败"
+                detail=f"删除站点配置��败"
             )
             
         logger.info(f"成功删除站点配置: {site_id}")
@@ -211,23 +211,100 @@ async def delete_site_config(
 
 
 @router.post("/reload", status_code=status.HTTP_200_OK)
-async def reload_site_configs(db: AsyncSession = Depends(get_db)):
-    """重新加载所有站点配置"""
+async def reload_site_configs(
+    site_id: Optional[str] = None,
+    all_sites: bool = Query(False, description="是否重载所有站点配置"),
+    from_local: bool = Query(False, description="是否从本地文件重新加载配置"),
+    db: AsyncSession = Depends(get_db)
+):
+    """重新加载站点配置
+    
+    Args:
+        site_id: 指定要重载的站点ID（可选）
+        all_sites: 是否重载所有站点配置
+        from_local: 是否从本地文件重新加载配置
+        db: 数据库会话
+        
+    Returns:
+        dict: 包含重载结果的信息
+    """
     try:
         logger.info("开始重新加载站点配置")
         site_manager = SiteManager.get_instance()
         
-        # 重新初始化站点管理器
-        await site_manager.initialize(db)
+        if not site_id and not all_sites:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="必须指定 site_id 或设置 all_sites=true"
+            )
+            
+        if site_id and all_sites:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="不能同时指定 site_id 和 all_sites=true"
+            )
+            
+        if site_id:
+            # 重载单个站点
+            logger.info(f"重新加载站点配置: {site_id}")
+            
+            if from_local:
+                # 从本地文件加载配置
+                local_setup = await site_manager._load_local_site_setup(site_id)
+                if not local_setup:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail=f"本地配置文件未找到: {site_id}"
+                    )
+                    
+                # 保存到数据库并更新内存中的配置
+                if not await site_manager._persist_site_setup(db, local_setup):
+                    raise HTTPException(
+                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        detail=f"保存配置到数据库失败: {site_id}"
+                    )
+                    
+                logger.info(f"从本地文件重新加载站点配置成功: {site_id}")
+                return {
+                    "message": f"成功从本地文件重新加载站点配置: {site_id}",
+                    "reload_type": "local"
+                }
+                
+            else:
+                # 从数据库重新加载配置
+                site_setups = await site_manager._load_site_setup(db)
+                if site_id not in site_setups:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail=f"站点配置不存在: {site_id}"
+                    )
+                    
+                # 更新内存中的配置
+                site_manager._sites[site_id] = site_setups[site_id]
+                logger.info(f"从数据库重新加载站点配置成功: {site_id}")
+                return {
+                    "message": f"成功从数据库重新加载站点配置: {site_id}",
+                    "reload_type": "database"
+                }
+            
+        else:  # all_sites = True
+            # 重新初始化站点管理器
+            # _load_site_setup 会自动处理本地文件加载
+            site_setups = await site_manager._load_site_setup(db)
+            site_manager._sites = site_setups
+            
+            logger.info(f"{'从本地文件' if from_local else '从数据库'}重新加载所有站点配置")
+            return {
+                "message": f"成功{'从本地文件' if from_local else '从数据库'}重新加载 {len(site_setups)} 个站点配置",
+                "reload_type": "local" if from_local else "database",
+                "site_count": len(site_setups)
+            }
         
-        # 获取重新加载后的站点数量
-        sites = await site_manager.get_available_sites()
-        logger.info(f"站点配置重新加载完成，共加载 {len(sites)} 个站点")
-        
-        return {"message": f"成功重新加载 {len(sites)} 个站点配置"}
-        
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"重新加载站点配置失败: {str(e)}", exc_info=True)
+        logger.error(f"重新加载站点配置失败: {str(e)}")
+        logger.debug("错误详情:", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"重新加载站点配置失败: {str(e)}"
