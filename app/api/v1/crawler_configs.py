@@ -152,7 +152,7 @@ async def reset_crawler_config(
             
         logger.info(f"成功重置爬虫配置: {site_id}")
         return CrawlerConfigResponse.model_validate(default_config)
-        
+
     except HTTPException:
         raise
     except Exception as e:

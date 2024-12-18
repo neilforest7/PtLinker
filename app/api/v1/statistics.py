@@ -1,7 +1,8 @@
 from datetime import date
+from http.client import HTTPException
 from typing import Optional, List
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
@@ -125,4 +126,8 @@ async def get_statistics(
     except Exception as e:
         error_msg = f"获取统计数据失败: {str(e)}"
         logger.error(error_msg, exc_info=True)
-        raise 
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=error_msg
+        )
+
