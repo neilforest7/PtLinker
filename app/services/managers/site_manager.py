@@ -602,7 +602,7 @@ class SiteManager:
                 return False
                 
             # 2. 删除相关配置记录
-            # 注意：由于外���约束，删除 crawler 记录会自动删除相关的配置记录
+            # 注意：由于外键约束，删除 crawler 记录会自动删除相关的配置记录
             self.logger.debug(f"删除站点 {site_id} 的 crawler 记录")
             await db.delete(existing_crawler)
             
