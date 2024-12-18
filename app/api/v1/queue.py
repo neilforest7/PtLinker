@@ -1,6 +1,7 @@
+from schemas.sitesetup import BaseResponse
 from core.database import get_db
 from core.logger import get_logger, setup_logger
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from models.models import Task
 from services.managers.process_manager import process_manager
 from services.managers.queue_manager import queue_manager
@@ -15,10 +16,10 @@ logger = get_logger(__name__, "queue_api")
 def get_site_manager():
     return SiteManager.get_instance()
 
-@router.post("/start", summary="启动队列中的所有待处理任务")
+@router.post("/start", summary="启动队列中的所有待处理任务", response_model=BaseResponse)
 async def start_queue_tasks(
     db: AsyncSession = Depends(get_db)
-) -> dict:
+) -> BaseResponse:
     """
     启动队列中所有待处理的任务
     
@@ -26,7 +27,7 @@ async def start_queue_tasks(
         db: 数据库会话
         
     Returns:
-        dict: 包含启动的任务数量
+        BaseResponse: 包含启动的任务数量
     """
     try:
         logger.info("开始处理队列中的任务")
@@ -48,22 +49,25 @@ async def start_queue_tasks(
                 continue
         
         logger.info(f"成功启动 {started_count}/{len(tasks)} 个任务")
-        return {
-            "message": f"成功启动 {started_count}/{len(tasks)} 个任务",
-            "started_count": started_count,
-            "total_count": len(tasks)
-        }
+        return BaseResponse(
+            code=status.HTTP_200_OK,
+            message=f"成功启动 {started_count}/{len(tasks)} 个任务",
+            data={
+                "started_count": started_count,
+                "total_count": len(tasks)
+            }
+        )
         
     except Exception as e:
         logger.error(f"启动队列任务失败: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"启动队列任务失败: {str(e)}")
 
-@router.post("/{site_id}/start", summary="启动指定站点的待处理任务")
+@router.post("/{site_id}/start", summary="启动指定站点的待处理任务", response_model=BaseResponse)
 async def start_site_queue_tasks(
     site_id: str,
     db: AsyncSession = Depends(get_db),
     site_manager: SiteManager = Depends(get_site_manager)
-) -> dict:
+) -> BaseResponse:
     """
     启动队列中指定站点的待处理任务
     
@@ -73,7 +77,7 @@ async def start_site_queue_tasks(
         site_manager: ��点管理器
         
     Returns:
-        dict: 包含启动的任务数量
+        BaseResponse: 包含启动的任务数量
     """
     try:
         logger.info(f"开始处理站点 {site_id} 的队列任务")
@@ -101,12 +105,15 @@ async def start_site_queue_tasks(
                 continue
         
         logger.info(f"成功启动站点 {site_id} 的 {started_count}/{len(tasks)} 个任务")
-        return {
-            "message": f"成功启动站点 {site_id} 的 {started_count}/{len(tasks)} 个任务",
-            "site_id": site_id,
-            "started_count": started_count,
-            "total_count": len(tasks)
-        }
+        return BaseResponse(
+            code=status.HTTP_200_OK,
+            message=f"成功启动站点 {site_id} 的 {started_count}/{len(tasks)} 个任务",
+            data={
+                "site_id": site_id,
+                "started_count": started_count,
+                "total_count": len(tasks)
+            }
+        )
         
     except Exception as e:
         logger.error(f"启动站点队列任务失败: {str(e)}", exc_info=True)
@@ -117,7 +124,7 @@ async def clear_pending_tasks(
     site_id: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
     site_manager: SiteManager = Depends(get_site_manager)
-) -> dict:
+) -> BaseResponse:
     """
     清除待运行的任务队列
     
@@ -127,7 +134,7 @@ async def clear_pending_tasks(
         site_manager: 站点管理器
         
     Returns:
-        dict: 包含清除的任务数量信息
+        BaseResponse: 包含清除的任务数量信息
     """
     try:
         logger.info(f"开始清除{'站点 ' + site_id if site_id else '所有站点'}的待运行任务")
@@ -147,12 +154,15 @@ async def clear_pending_tasks(
         message = f"成功清除{site_info}的待运行任务：已清除 {result['cleared_count']}/{result['total_ready_count']} 个任务"
         
         logger.info(message)
-        return {
-            "message": message,
-            "site_id": result["site_id"],
-            "cleared_count": result["cleared_count"],
-            "total_ready_count": result["total_ready_count"]
-        }
+        return BaseResponse(
+            code=status.HTTP_200_OK,
+            message=message,
+            data={
+                "site_id": result["site_id"],
+                "cleared_count": result["cleared_count"],
+                "total_ready_count": result["total_ready_count"]
+            }
+        )
         
     except HTTPException:
         raise

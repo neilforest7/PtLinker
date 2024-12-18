@@ -2,7 +2,8 @@ import traceback
 from contextlib import asynccontextmanager
 
 import uvicorn
-from api.v1 import tasks, queue, settings as settings_api, site_configs, crawler_configs
+from api.v1 import settings as settings_api
+from api.v1 import site_configs, tasks, statistics, queue, crawler_configs
 from core.database import cleanup_db, get_db, init_db
 from core.logger import get_logger, setup_logger
 from fastapi import FastAPI
@@ -187,6 +188,7 @@ app.include_router(queue.router, prefix="/api/v1/queue", tags=["queue"])
 app.include_router(settings_api.router, prefix="/api/v1", tags=["settings"])
 app.include_router(site_configs.router, prefix="/api/v1", tags=["site_configs"])
 app.include_router(crawler_configs.router, prefix="/api/v1", tags=["crawler_configs"])
+app.include_router(statistics.router, prefix="/api/v1/statistics", tags=["statistics"])
 
 # 健康检查
 @app.get("/health")

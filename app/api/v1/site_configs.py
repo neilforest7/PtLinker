@@ -2,10 +2,11 @@ from typing import List, Optional
 
 from core.database import get_db
 from core.logger import get_logger
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from schemas.siteconfig import (SiteConfigCreate, SiteConfigResponse,
                                 SiteConfigUpdate)
 from schemas.sitesetup import SiteSetup
+from schemas.sitesetup import BaseResponse
 from services.managers.site_manager import SiteManager
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,7 +14,7 @@ router = APIRouter(prefix="/site-configs", tags=["site_configs"])
 logger = get_logger(name=__name__, site_id="siteconf_api")
 
 
-@router.get("", response_model=List[SiteConfigResponse])
+@router.get("", response_model=List[SiteConfigResponse], summary="获取所有站点配置")
 async def get_site_configs(db: AsyncSession = Depends(get_db)) -> List[SiteConfigResponse]:
     """获取所有站点配置"""
     try:
@@ -37,7 +38,7 @@ async def get_site_configs(db: AsyncSession = Depends(get_db)) -> List[SiteConfi
         )
 
 
-@router.get("/{site_id}", response_model=SiteConfigResponse)
+@router.get("/{site_id}", response_model=SiteConfigResponse, summary="获取指定站点的配置")
 async def get_site_config(
     site_id: str,
     db: AsyncSession = Depends(get_db)
@@ -73,7 +74,7 @@ async def get_site_config(
         )
 
 
-@router.post("", response_model=SiteConfigResponse)
+@router.post("", response_model=SiteConfigResponse, summary="创建新的站点配置")
 async def create_site_config(
     new_site_config: SiteConfigCreate,
     db: AsyncSession = Depends(get_db)
@@ -119,7 +120,7 @@ async def create_site_config(
         )
 
 
-@router.put("/{site_id}", response_model=SiteConfigResponse)
+@router.put("/{site_id}", response_model=SiteConfigResponse, summary="更新站点配置")
 async def update_site_config(
     site_id: str,
     site_config: SiteConfigUpdate,
@@ -169,11 +170,11 @@ async def update_site_config(
         )
 
 
-@router.delete("/{site_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{site_id}", response_model=BaseResponse, summary="删除站点配置")
 async def delete_site_config(
     site_id: str,
     db: AsyncSession = Depends(get_db)
-):
+) -> BaseResponse:
     """删除站点配置"""
     try:
         site_manager = SiteManager.get_instance()
@@ -195,7 +196,7 @@ async def delete_site_config(
         if not await site_manager.delete_site_setup(db, site_id):
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"删除站点配置��败"
+                detail=f"删除站点配置失败"
             )
             
         logger.info(f"成功删除站点配置: {site_id}")
@@ -210,13 +211,13 @@ async def delete_site_config(
         )
 
 
-@router.post("/reload", status_code=status.HTTP_200_OK)
+@router.post("/reload", response_model=BaseResponse, summary="重新加载站点配置")
 async def reload_site_configs(
     site_id: Optional[str] = None,
     all_sites: bool = Query(False, description="是否重载所有站点配置"),
     from_local: bool = Query(False, description="是否从本地文件重新加载配置"),
     db: AsyncSession = Depends(get_db)
-):
+) -> BaseResponse:
     """重新加载站点配置
     
     Args:
@@ -226,7 +227,7 @@ async def reload_site_configs(
         db: 数据库会话
         
     Returns:
-        dict: 包含重载结果的信息
+        BaseResponse: 包含重载结果的信息
     """
     try:
         logger.info("开始重新加载站点配置")
@@ -265,10 +266,10 @@ async def reload_site_configs(
                     )
                     
                 logger.info(f"从本地文件重新加载站点配置成功: {site_id}")
-                return {
-                    "message": f"成功从本地文件重新加载站点配置: {site_id}",
-                    "reload_type": "local"
-                }
+                return BaseResponse(
+                    code=status.HTTP_200_OK,
+                    message=f"成功从本地文件重新加载站点配置: {site_id}",
+                )
                 
             else:
                 # 从数据库重新加载配置
@@ -282,23 +283,32 @@ async def reload_site_configs(
                 # 更新内存中的配置
                 site_manager._sites[site_id] = site_setups[site_id]
                 logger.info(f"从数据库重新加载站点配置成功: {site_id}")
-                return {
-                    "message": f"成功从数据库重新加载站点配置: {site_id}",
-                    "reload_type": "database"
-                }
+                return BaseResponse(
+                    code=status.HTTP_200_OK,
+                    message=f"成功从数据库重新加载站点配置: {site_id}",
+                    data={
+                        "reloaded_site_id": site_id,
+                        "reload_type": "database"
+                    }
+                )
             
         else:  # all_sites = True
             # 重新初始化站点管理器
             # _load_site_setup 会自动处理本地文件加载
+            # TODO: from_local 参数无效
             site_setups = await site_manager._load_site_setup(db)
             site_manager._sites = site_setups
             
             logger.info(f"{'从本地文件' if from_local else '从数据库'}重新加载所有站点配置")
-            return {
-                "message": f"成功{'从本地文件' if from_local else '从数据库'}重新加载 {len(site_setups)} 个站点配置",
-                "reload_type": "local" if from_local else "database",
-                "site_count": len(site_setups)
-            }
+            return BaseResponse(
+                code=status.HTTP_200_OK,
+                message=f"成功{'从本地文件' if from_local else '从数据库'}重新加载 {len(site_setups)} 个站点配置",
+                data={
+                    "reloaded_site_ids": list(site_setups.keys()),
+                    "site_count": len(site_setups),
+                    "reload_type": "local" if from_local else "database",
+                }
+            )
         
     except HTTPException:
         raise

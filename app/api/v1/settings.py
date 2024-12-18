@@ -2,6 +2,7 @@ from typing import Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from schemas.sitesetup import BaseResponse
 from core.database import get_db
 from core.logger import get_logger
 from schemas.settings import SettingsCreate, SettingsResponse, SettingsUpdate
@@ -11,7 +12,7 @@ router = APIRouter(prefix="/settings", tags=["settings"])
 logger = get_logger(name=__name__, site_id="settings_api")
 
 
-@router.get("", response_model=SettingsResponse)
+@router.get("", response_model=SettingsResponse, summary="获取当前系统设置")
 async def get_settings(db: AsyncSession = Depends(get_db)) -> SettingsResponse:
     """获取当前系统设置"""
     try:
@@ -62,7 +63,7 @@ async def get_settings(db: AsyncSession = Depends(get_db)) -> SettingsResponse:
 #         )
 
 
-@router.patch("", response_model=SettingsResponse)
+@router.patch("", response_model=SettingsResponse, summary="更新系统设置（部分更新）")
 async def update_settings(
     settings_data: SettingsUpdate,
     db: AsyncSession = Depends(get_db)
@@ -96,7 +97,7 @@ async def update_settings(
         )
 
 
-@router.post("/reset", response_model=SettingsResponse)
+@router.post("/reset", response_model=SettingsResponse, summary="重置系统设置为环境变量和默认值")
 async def reset_settings(db: AsyncSession = Depends(get_db)) -> SettingsResponse:
     """重置系统设置为环境变量和默认值"""
     try:
@@ -117,7 +118,7 @@ async def reset_settings(db: AsyncSession = Depends(get_db)) -> SettingsResponse
         )
 
 
-@router.get("/value/{key}", response_model=Dict[str, Any])
+@router.get("/value/{key}", response_model=Dict[str, Any], summary="获取指定设置项的值")
 async def get_setting_value(
     key: str,
     db: AsyncSession = Depends(get_db)
@@ -151,12 +152,12 @@ async def get_setting_value(
         )
 
 
-@router.put("/value/{key}", response_model=Dict[str, Any])
+@router.put("/value/{key}", response_model=BaseResponse, summary="设置指定配置项的值")
 async def set_setting_value(
     key: str,
     value: Dict[str, Any],
     db: AsyncSession = Depends(get_db)
-) -> Dict[str, Any]:
+) -> BaseResponse:
     """设置指定配置项的值"""
     try:
         # 确保设置已初始化
@@ -179,7 +180,11 @@ async def set_setting_value(
         # 获取更新后的值
         updated_value = await SettingManager.get_instance().get_setting(key)
         logger.debug(f"成功更新设置项 {key} 的值为: {updated_value}")
-        return {"key": key, "value": updated_value}
+        return BaseResponse(
+            code=status.HTTP_200_OK,
+            message=f"成功更新设置项 {key} 的值为: {updated_value}",
+            data={"key": key, "value": updated_value}
+        )
         
     except HTTPException:
         raise

@@ -11,7 +11,7 @@ router = APIRouter(prefix="/crawler-configs", tags=["crawler_configs"])
 logger = get_logger(name=__name__, site_id="cr_conf_api")
 
 
-@router.put("/{site_id}", response_model=CrawlerConfigResponse)
+@router.put("/{site_id}", response_model=CrawlerConfigResponse, summary="更新站点的爬虫配置")
 async def update_crawler_config(
     site_id: str,
     crawler_config: CrawlerConfigUpdate,
@@ -107,7 +107,7 @@ async def update_crawler_config(
         )
 
 
-@router.post("/{site_id}/reset", response_model=CrawlerConfigResponse)
+@router.post("/{site_id}/reset", response_model=CrawlerConfigResponse, summary="重置站点的爬虫配置为默认值")
 async def reset_crawler_config(
     site_id: str,
     db: AsyncSession = Depends(get_db)

@@ -2,9 +2,6 @@ from logging import Logger
 from typing import Any, Dict, Optional
 from urllib.parse import urljoin, urlparse
 
-from schemas.siteconfig import SiteConfigBase
-
-
 def convert_url(site_url: str, short_url: str, uid: Optional[str] = None) -> str:
     """
     将相对URL转换为绝对URL

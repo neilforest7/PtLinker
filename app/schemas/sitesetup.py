@@ -180,3 +180,9 @@ class SiteSetup(BaseModel):
         if not self.browser_state:
             return default
         return getattr(self.browser_state, key, default)
+
+class BaseResponse(BaseModel):
+    code: int = 200
+    message: str = "success"
+    data: Optional[Any] = None
+    metadata: Optional[Dict] = None

@@ -111,8 +111,10 @@ class BaseCrawler(ABC):
             tab = browser.latest_tab
             # 获取登录重试配置
             _MAX_RETRY = await SettingManager.get_instance().get_setting('login_max_retry')
-            self.logger.info(f"全局登录最大重试次数: {_MAX_RETRY}")
+            self.logger.debug(f"全局登录最大重试次数: {_MAX_RETRY}")
             MAX_RETRY = self.site_setup.get_crawler_config('login_max_retry', _MAX_RETRY)
+            if MAX_RETRY is None:
+                MAX_RETRY = _MAX_RETRY
             self.logger.info(f"站点登录最大重试次数: {MAX_RETRY}")
             RETRY_COUNT = 0
             
