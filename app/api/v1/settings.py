@@ -1,12 +1,12 @@
-from typing import Dict, Any
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Any, Dict
 
-from schemas.sitesetup import BaseResponse
 from core.database import get_db
 from core.logger import get_logger
+from fastapi import APIRouter, Depends, HTTPException, status
 from schemas.settings import SettingsCreate, SettingsResponse, SettingsUpdate
+from schemas.sitesetup import BaseResponse
 from services.managers.setting_manager import SettingManager
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 logger = get_logger(name=__name__, site_id="settings_api")

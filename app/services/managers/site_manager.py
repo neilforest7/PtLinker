@@ -352,7 +352,21 @@ class SiteManager:
         """加载所有浏览器状态"""
         result = await db.execute(select(BrowserState))
         return {state.site_id: state for state in result.scalars().all()}
-            
+    
+    async def load_local_site_setups(self) -> Dict[str, SiteSetup]:
+        """从本地JSON文件加载所有站点配置"""
+        try:
+            site_ids = list(self._sites.keys())
+            site_setups = {}
+            for site_id in site_ids:
+                site_setup = await self._load_local_site_setup(site_id)
+                if site_setup:
+                    site_setups[site_id] = site_setup
+            return site_setups
+        except Exception as e:
+            self.logger.error(f"从本地加载站点配置失败: {str(e)}")
+            return {}
+        
     async def _load_local_site_setup(self, site_id: str) -> Optional[SiteSetup]:
         """从本地JSON文件加载站点配置
         

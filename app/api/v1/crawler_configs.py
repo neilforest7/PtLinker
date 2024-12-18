@@ -3,7 +3,7 @@ from typing import List
 from core.database import get_db
 from core.logger import get_logger
 from fastapi import APIRouter, Depends, HTTPException, status
-from schemas.crawlerconfig import CrawlerConfigUpdate, CrawlerConfigResponse
+from schemas.crawlerconfig import CrawlerConfigResponse, CrawlerConfigUpdate
 from services.managers.site_manager import SiteManager
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -152,7 +152,7 @@ async def reset_crawler_config(
             
         logger.info(f"成功重置爬虫配置: {site_id}")
         return CrawlerConfigResponse.model_validate(default_config)
-        
+
     except HTTPException:
         raise
     except Exception as e:

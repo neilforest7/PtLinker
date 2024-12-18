@@ -58,7 +58,7 @@ async def get_site_config(
             logger.warning(f"站点配置不存在: {site_id}")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"��点配置 {site_id} 不存在"
+                detail=f"站点配置 {site_id} 不存在"
             )
             
         logger.debug(f"成功获取站点 {site_id} 的配置")
@@ -163,7 +163,7 @@ async def update_site_config(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"更新站���配置失败: {str(e)}", exc_info=True)
+        logger.error(f"更新站点配置失败: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"更新站点配置失败: {str(e)}"
@@ -200,6 +200,10 @@ async def delete_site_config(
             )
             
         logger.info(f"成功删除站点配置: {site_id}")
+        return BaseResponse(
+            code=status.HTTP_200_OK,
+            message=f"成功删除站点配置: {site_id}"
+        )
         
     except HTTPException:
         raise
@@ -294,10 +298,21 @@ async def reload_site_configs(
             
         else:  # all_sites = True
             # 重新初始化站点管理器
-            # _load_site_setup 会自动处理本地文件加载
-            # TODO: from_local 参数无效
-            site_setups = await site_manager._load_site_setup(db)
-            site_manager._sites = site_setups
+            if from_local:
+                # 从本地文件加载所有站点配置
+                site_setups = {}
+                local_setups = await site_manager.load_local_site_setups()
+                for site_id, local_setup in local_setups.items():
+                    # 保存到数据库
+                    if await site_manager._persist_site_setup(db, local_setup):
+                        site_setups[site_id] = local_setup
+                
+                # 更新内存中的配置
+                site_manager._sites = site_setups
+            else:
+                # 从数据库重新加载所有配置
+                site_setups = await site_manager._load_site_setup(db)
+                site_manager._sites = site_setups
             
             logger.info(f"{'从本地文件' if from_local else '从数据库'}重新加载所有站点配置")
             return BaseResponse(
