@@ -9,7 +9,7 @@
 - **语言**: TypeScript
 - **框架**: React 18
 - **UI 组件库**: Ant Design 5.0
-- **状态管理**: Zustand
+- **状态管理**: Redux
 - **HTTP 请求**: Axios
 - **构建工具**: Vite
 - **代码规范**: ESLint + Prettier

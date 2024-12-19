@@ -1,0 +1,83 @@
+.settingsForm {
+    max-height: 70vh;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.basicSettings {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    margin-bottom: 8px;
+}
+
+.switchGroup {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px 32px;
+    align-items: center;
+}
+
+.switchGroup > :global(.ant-form-item) {
+    margin-bottom: 0;
+    min-width: 200px;
+    flex: 1;
+}
+
+.tabContent {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 16px 8px;
+}
+
+.captchaGroup {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px 32px;
+    align-items: flex-start;
+}
+
+.captchaGroup > :global(.ant-form-item) {
+    margin-bottom: 0;
+    min-width: 200px;
+    flex: 1;
+}
+
+/* 自定义滚动条样式 */
+.settingsForm::-webkit-scrollbar {
+    width: 6px;
+}
+
+.settingsForm::-webkit-scrollbar-track {
+    background: #f1f1f1;
+}
+
+.settingsForm::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 3px;
+}
+
+.settingsForm::-webkit-scrollbar-thumb:hover {
+    background: #555;
+}
+
+/* 优化表单项样式 */
+:global(.ant-form-item) {
+    margin-bottom: 16px;
+    flex-wrap: nowrap;
+}
+
+:global(.ant-form-item-label) {
+    padding-bottom: 0;
+}
+
+:global(.ant-form-item-control) {
+    flex: 1;
+}
+
+:global(.ant-tabs-content) {
+    min-height: 300px;
+} 
