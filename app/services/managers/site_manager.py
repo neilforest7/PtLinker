@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional
 
 from core.logger import get_logger, setup_logger
 from models.models import (BrowserState, Crawler, CrawlerConfig,
-                            CrawlerCredential, SiteConfig)
+                           CrawlerCredential, SiteConfig)
 from schemas.browserstate import BrowserState as BrowserStateBase
 from schemas.crawlerconfig import CrawlerConfigBase
 from schemas.crawlercredential import CrawlerCredentialBase
@@ -441,7 +441,7 @@ class SiteManager:
                     "password": credential_data.get("password", ""),
                     "authorization": credential_data.get("authorization", ""),
                     "apikey": credential_data.get("apikey", ""),
-                    "enabled": True,
+                    "enable_manual_cookies": True if credential_data.get("manual_cookies", "") else False,
                     "manual_cookies": credential_data.get("manual_cookies", "")
                 }
             }

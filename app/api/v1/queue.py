@@ -9,7 +9,7 @@ from services.managers.site_manager import SiteManager
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
 
-router = APIRouter()
+router = APIRouter(prefix="/queue", tags=["queue"])
 setup_logger()
 logger = get_logger(__name__, "queue_api")
 

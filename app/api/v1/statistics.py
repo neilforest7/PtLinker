@@ -10,7 +10,7 @@ from schemas.statistics import (CalculationType, MetricType, StatisticsRequest,
 from services.statistics_service import statistics_service
 from sqlalchemy.ext.asyncio import AsyncSession
 
-router = APIRouter()
+router = APIRouter(prefix="/statistics", tags=["statistics"])
 setup_logger()
 logger = get_logger(__name__, "stats_api")
 

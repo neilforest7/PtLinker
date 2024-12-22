@@ -70,12 +70,12 @@ class CrawlerCredential(Base):
     __tablename__ = "crawler_credential"
     
     site_id = Column(String(500), ForeignKey("crawlers.site_id", ondelete="CASCADE"), primary_key=True)
+    enable_manual_cookies = Column(Boolean, nullable=True, default=False)
     manual_cookies = Column(Text, nullable=True)
     username = Column(String(500), nullable=True)
     password = Column(String(500), nullable=True)
     authorization = Column(String(500), nullable=True)
     apikey = Column(String(500), nullable=True)
-    enabled = Column(Boolean, nullable=False, default=True)
     description = Column(String(500), nullable=True)
     
     crawler = relationship("Crawler", back_populates="credential")

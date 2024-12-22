@@ -5,7 +5,7 @@ from typing import List, Optional
 from core.database import get_db
 from core.logger import get_logger, setup_logger
 from fastapi import (APIRouter, BackgroundTasks, Depends, HTTPException, Query,
-                     status)
+                        status)
 from models.models import Task, TaskStatus
 from schemas.task import TaskCreate, TaskResponse, TaskUpdate
 from services.managers.process_manager import ProcessManager
@@ -14,7 +14,7 @@ from services.managers.site_manager import SiteManager
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-router = APIRouter()
+router = APIRouter(prefix="/tasks", tags=["tasks"])
 logger = get_logger(__name__, "task_api")
 
 def get_site_manager():
@@ -152,7 +152,7 @@ async def create_task(
                 # 1. 验证站点是否存在且已配置
                 site_setup = await site_manager.get_site_setup(current_site_id)
                 if not site_setup:
-                    logger.warning(f"站���不存在或未配置: {current_site_id}")
+                    logger.warning(f"站点不存在或未配置: {current_site_id}")
                     continue
                     
                 if not site_setup.crawler_config or not site_setup.crawler_config.enabled:

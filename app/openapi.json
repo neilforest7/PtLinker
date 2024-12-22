@@ -1,1321 +1,27 @@
 {
     "openapi": "3.1.0",
-    "info":
-    {
+    "info": {
         "title": "PtLinker API",
         "description": "PT站点爬虫管理API",
         "version": "1.0.0"
     },
-    "paths":
-    {
-        "/api/v1/tasks/retry-failed":
-        {
-            "post":
-            {
-                "tags":
-                [
-                    "tasks"
-                ],
-                "summary": "重试所有站点的最近失败任务",
-                "description": "获取每个站点最近的失败/取消任务并重新添加到队列中\n\nReturns:\n    List[TaskResponse]: 重新添加到队列的任务列表",
-                "operationId": "retry_failed_tasks_api_v1_tasks_retry_failed_post",
-                "responses":
-                {
-                    "200":
-                    {
-                        "description": "Successful Response",
-                        "content":
-                        {
-                            "application/json":
-                            {
-                                "schema":
-                                {
-                                    "items":
-                                    {
-                                        "$ref": "#/components/schemas/TaskResponse"
-                                    },
-                                    "type": "array",
-                                    "title": "Response Retry Failed Tasks Api V1 Tasks Retry Failed Post"
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/tasks":
-        {
-            "post":
-            {
-                "tags":
-                [
-                    "tasks"
-                ],
-                "summary": "创建任务",
-                "description": "创建任务\n\nArgs:\n    site_id: 指定站点ID（可选）\n    create_for_all_sites: 是否为所有站点创建任务\n    db: 数据库会话\n    site_manager: 站点管理器\n    queue_manager: 队列管理器\n    \nReturns:\n    List[TaskResponse]: 创建的任务列表\n    \nNote:\n    - 如果指定了 site_id，则只为该站点创建任务\n    - 如果设置了 create_for_all_sites=True，则为所有启用的站点创建任务\n    - 如果两者都未指定，则返回错误\n    - 单个站点创建失败不会影响其他站点的任务创建",
-                "operationId": "create_task_api_v1_tasks_post",
-                "parameters":
-                [
-                    {
-                        "name": "site_id",
-                        "in": "query",
-                        "required": false,
-                        "schema":
-                        {
-                            "anyOf":
-                            [
-                                {
-                                    "type": "string"
-                                },
-                                {
-                                    "type": "null"
-                                }
-                            ],
-                            "title": "Site Id"
-                        }
-                    },
-                    {
-                        "name": "create_for_all_sites",
-                        "in": "query",
-                        "required": false,
-                        "schema":
-                        {
-                            "type": "boolean",
-                            "description": "是否为所有站点创建任务",
-                            "default": false,
-                            "title": "Create For All Sites"
-                        },
-                        "description": "是否为所有站点创建任务"
-                    }
-                ],
-                "responses":
-                {
-                    "200":
-                    {
-                        "description": "Successful Response",
-                        "content":
-                        {
-                            "application/json":
-                            {
-                                "schema":
-                                {
-                                    "type": "array",
-                                    "items":
-                                    {
-                                        "$ref": "#/components/schemas/TaskResponse"
-                                    },
-                                    "title": "Response Create Task Api V1 Tasks Post"
-                                }
-                            }
-                        }
-                    },
-                    "422":
-                    {
-                        "description": "Validation Error",
-                        "content":
-                        {
-                            "application/json":
-                            {
-                                "schema":
-                                {
-                                    "$ref": "#/components/schemas/HTTPValidationError"
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/tasks/{task_id}":
-        {
-            "get":
-            {
-                "tags":
-                [
-                    "tasks"
-                ],
-                "summary": "获取任务信息",
-                "description": "获取指定任务的信息\n\nArgs:\n    task_id: 任务ID\n    db: 数据库会话\n    \nReturns:\n    TaskResponse: 任务信息\n    \nRaises:\n    HTTPException: 当任务不存在时",
-                "operationId": "get_task_api_v1_tasks__task_id__get",
-                "parameters":
-                [
-                    {
-                        "name": "task_id",
-                        "in": "path",
-                        "required": true,
-                        "schema":
-                        {
-                            "type": "string",
-                            "title": "Task Id"
-                        }
-                    }
-                ],
-                "responses":
-                {
-                    "200":
-                    {
-                        "description": "Successful Response",
-                        "content":
-                        {
-                            "application/json":
-                            {
-                                "schema":
-                                {
-                                    "$ref": "#/components/schemas/TaskResponse"
-                                }
-                            }
-                        }
-                    },
-                    "422":
-                    {
-                        "description": "Validation Error",
-                        "content":
-                        {
-                            "application/json":
-                            {
-                                "schema":
-                                {
-                                    "$ref": "#/components/schemas/HTTPValidationError"
-                                }
-                            }
-                        }
-                    }
-                }
-            },
-            "delete":
-            {
-                "tags":
-                [
-                    "tasks"
-                ],
-                "summary": "取消任务",
-                "description": "取消指定的任务\n\nArgs:\n    task_id: 任务ID\n    db: 数据库会话\n    queue_manager: 队列管理器\n    \nReturns:\n    dict: 操作结果\n    \nRaises:\n    HTTPException: 当任务不存在或无法取消时",
-                "operationId": "cancel_task_api_v1_tasks__task_id__delete",
-                "parameters":
-                [
-                    {
-                        "name": "task_id",
-                        "in": "path",
-                        "required": true,
-                        "schema":
-                        {
-                            "type": "string",
-                            "title": "Task Id"
-                        }
-                    }
-                ],
-                "responses":
-                {
-                    "200":
-                    {
-                        "description": "Successful Response",
-                        "content":
-                        {
-                            "application/json":
-                            {
-                                "schema":
-                                {
-                                    "type": "object",
-                                    "title": "Response Cancel Task Api V1 Tasks  Task Id  Delete"
-                                }
-                            }
-                        }
-                    },
-                    "422":
-                    {
-                        "description": "Validation Error",
-                        "content":
-                        {
-                            "application/json":
-                            {
-                                "schema":
-                                {
-                                    "$ref": "#/components/schemas/HTTPValidationError"
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/tasks/":
-        {
-            "get":
-            {
-                "tags":
-                [
-                    "tasks"
-                ],
-                "summary": "获取任务列表",
-                "description": "获取任务列表，支持按站点和状态筛选\n\nArgs:\n    site_id: 站点ID（可选）\n    status: 任务状态（可选）\n    limit: 返回数量限制\n    db: 数据库会话\n    \nReturns:\n    List[TaskResponse]: 任务列表",
-                "operationId": "list_tasks_api_v1_tasks__get",
-                "parameters":
-                [
-                    {
-                        "name": "site_id",
-                        "in": "query",
-                        "required": false,
-                        "schema":
-                        {
-                            "anyOf":
-                            [
-                                {
-                                    "type": "string"
-                                },
-                                {
-                                    "type": "null"
-                                }
-                            ],
-                            "title": "Site Id"
-                        }
-                    },
-                    {
-                        "name": "status",
-                        "in": "query",
-                        "required": false,
-                        "schema":
-                        {
-                            "anyOf":
-                            [
-                                {
-                                    "type": "string"
-                                },
-                                {
-                                    "type": "null"
-                                }
-                            ],
-                            "title": "Status"
-                        }
-                    },
-                    {
-                        "name": "limit",
-                        "in": "query",
-                        "required": false,
-                        "schema":
-                        {
-                            "type": "integer",
-                            "default": 10,
-                            "title": "Limit"
-                        }
-                    }
-                ],
-                "responses":
-                {
-                    "200":
-                    {
-                        "description": "Successful Response",
-                        "content":
-                        {
-                            "application/json":
-                            {
-                                "schema":
-                                {
-                                    "type": "array",
-                                    "items":
-                                    {
-                                        "$ref": "#/components/schemas/TaskResponse"
-                                    },
-                                    "title": "Response List Tasks Api V1 Tasks  Get"
-                                }
-                            }
-                        }
-                    },
-                    "422":
-                    {
-                        "description": "Validation Error",
-                        "content":
-                        {
-                            "application/json":
-                            {
-                                "schema":
-                                {
-                                    "$ref": "#/components/schemas/HTTPValidationError"
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/queue/start":
-        {
-            "post":
-            {
-                "tags":
-                [
-                    "queue"
-                ],
-                "summary": "启动队列中的所有待处理任务",
-                "description": "启动队列中所有待处理的任务\n\nArgs:\n    db: 数据库会话\n    \nReturns:\n    BaseResponse: 包含启动的任务数量",
-                "operationId": "start_queue_tasks_api_v1_queue_start_post",
-                "responses":
-                {
-                    "200":
-                    {
-                        "description": "Successful Response",
-                        "content":
-                        {
-                            "application/json":
-                            {
-                                "schema":
-                                {
-                                    "$ref": "#/components/schemas/BaseResponse"
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/queue/{site_id}/start":
-        {
-            "post":
-            {
-                "tags":
-                [
-                    "queue"
-                ],
-                "summary": "启动指定站点的待处理任务",
-                "description": "启动队列中指定站点的待处理任务\n\nArgs:\n    site_id: 站点ID\n    db: 数据库会话\n    site_manager: 站点管理器\n    \nReturns:\n    BaseResponse: 包含启动的任务数量",
-                "operationId": "start_site_queue_tasks_api_v1_queue__site_id__start_post",
-                "parameters":
-                [
-                    {
-                        "name": "site_id",
-                        "in": "path",
-                        "required": true,
-                        "schema":
-                        {
-                            "type": "string",
-                            "title": "Site Id"
-                        }
-                    }
-                ],
-                "responses":
-                {
-                    "200":
-                    {
-                        "description": "Successful Response",
-                        "content":
-                        {
-                            "application/json":
-                            {
-                                "schema":
-                                {
-                                    "$ref": "#/components/schemas/BaseResponse"
-                                }
-                            }
-                        }
-                    },
-                    "422":
-                    {
-                        "description": "Validation Error",
-                        "content":
-                        {
-                            "application/json":
-                            {
-                                "schema":
-                                {
-                                    "$ref": "#/components/schemas/HTTPValidationError"
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/queue/clear":
-        {
-            "delete":
-            {
-                "tags":
-                [
-                    "queue"
-                ],
-                "summary": "清除待运行的任务队列",
-                "description": "清除待运行的任务队列\n\nArgs:\n    site_id: 可选的站点ID，如果不提供则清除所有站点的待运行任务\n    db: 数据库会话\n    site_manager: 站点管理器\n    \nReturns:\n    BaseResponse: 包含清除的任务数量信息",
-                "operationId": "clear_pending_tasks_api_v1_queue_clear_delete",
-                "parameters":
-                [
-                    {
-                        "name": "site_id",
-                        "in": "query",
-                        "required": false,
-                        "schema":
-                        {
-                            "anyOf":
-                            [
-                                {
-                                    "type": "string"
-                                },
-                                {
-                                    "type": "null"
-                                }
-                            ],
-                            "title": "Site Id"
-                        }
-                    }
-                ],
-                "responses":
-                {
-                    "200":
-                    {
-                        "description": "Successful Response",
-                        "content":
-                        {
-                            "application/json":
-                            {
-                                "schema":
-                                {
-                                    "$ref": "#/components/schemas/BaseResponse"
-                                }
-                            }
-                        }
-                    },
-                    "422":
-                    {
-                        "description": "Validation Error",
-                        "content":
-                        {
-                            "application/json":
-                            {
-                                "schema":
-                                {
-                                    "$ref": "#/components/schemas/HTTPValidationError"
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/settings":
-        {
-            "get":
-            {
-                "tags":
-                [
-                    "settings",
-                    "settings"
-                ],
-                "summary": "获取当前系统设置",
-                "description": "获取当前系统设置",
-                "operationId": "get_settings_api_v1_settings_get",
-                "responses":
-                {
-                    "200":
-                    {
-                        "description": "Successful Response",
-                        "content":
-                        {
-                            "application/json":
-                            {
-                                "schema":
-                                {
-                                    "$ref": "#/components/schemas/SettingsResponse"
-                                }
-                            }
-                        }
-                    }
-                }
-            },
-            "patch":
-            {
-                "tags":
-                [
-                    "settings",
-                    "settings"
-                ],
-                "summary": "更新系统设置（部分更新）",
-                "description": "更新系统设置（部分更新）",
-                "operationId": "update_settings_api_v1_settings_patch",
-                "requestBody":
-                {
-                    "content":
-                    {
-                        "application/json":
-                        {
-                            "schema":
-                            {
-                                "$ref": "#/components/schemas/SettingsUpdate"
-                            }
-                        }
-                    },
-                    "required": true
-                },
-                "responses":
-                {
-                    "200":
-                    {
-                        "description": "Successful Response",
-                        "content":
-                        {
-                            "application/json":
-                            {
-                                "schema":
-                                {
-                                    "$ref": "#/components/schemas/SettingsResponse"
-                                }
-                            }
-                        }
-                    },
-                    "422":
-                    {
-                        "description": "Validation Error",
-                        "content":
-                        {
-                            "application/json":
-                            {
-                                "schema":
-                                {
-                                    "$ref": "#/components/schemas/HTTPValidationError"
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/settings/reset":
-        {
-            "post":
-            {
-                "tags":
-                [
-                    "settings",
-                    "settings"
-                ],
-                "summary": "重置系统设置为环境变量和默认值",
-                "description": "重置系统设置为环境变量和默认值",
-                "operationId": "reset_settings_api_v1_settings_reset_post",
-                "responses":
-                {
-                    "200":
-                    {
-                        "description": "Successful Response",
-                        "content":
-                        {
-                            "application/json":
-                            {
-                                "schema":
-                                {
-                                    "$ref": "#/components/schemas/SettingsResponse"
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/settings/value/{key}":
-        {
-            "get":
-            {
-                "tags":
-                [
-                    "settings",
-                    "settings"
-                ],
-                "summary": "获取指定设置项的值",
-                "description": "获取指定设置项的值",
-                "operationId": "get_setting_value_api_v1_settings_value__key__get",
-                "parameters":
-                [
-                    {
-                        "name": "key",
-                        "in": "path",
-                        "required": true,
-                        "schema":
-                        {
-                            "type": "string",
-                            "title": "Key"
-                        }
-                    }
-                ],
-                "responses":
-                {
-                    "200":
-                    {
-                        "description": "Successful Response",
-                        "content":
-                        {
-                            "application/json":
-                            {
-                                "schema":
-                                {
-                                    "type": "object",
-                                    "title": "Response Get Setting Value Api V1 Settings Value  Key  Get"
-                                }
-                            }
-                        }
-                    },
-                    "422":
-                    {
-                        "description": "Validation Error",
-                        "content":
-                        {
-                            "application/json":
-                            {
-                                "schema":
-                                {
-                                    "$ref": "#/components/schemas/HTTPValidationError"
-                                }
-                            }
-                        }
-                    }
-                }
-            },
-            "put":
-            {
-                "tags":
-                [
-                    "settings",
-                    "settings"
-                ],
-                "summary": "设置指定配置项的值",
-                "description": "设置指定配置项的值",
-                "operationId": "set_setting_value_api_v1_settings_value__key__put",
-                "parameters":
-                [
-                    {
-                        "name": "key",
-                        "in": "path",
-                        "required": true,
-                        "schema":
-                        {
-                            "type": "string",
-                            "title": "Key"
-                        }
-                    }
-                ],
-                "requestBody":
-                {
-                    "required": true,
-                    "content":
-                    {
-                        "application/json":
-                        {
-                            "schema":
-                            {
-                                "type": "object",
-                                "title": "Value"
-                            }
-                        }
-                    }
-                },
-                "responses":
-                {
-                    "200":
-                    {
-                        "description": "Successful Response",
-                        "content":
-                        {
-                            "application/json":
-                            {
-                                "schema":
-                                {
-                                    "$ref": "#/components/schemas/BaseResponse"
-                                }
-                            }
-                        }
-                    },
-                    "422":
-                    {
-                        "description": "Validation Error",
-                        "content":
-                        {
-                            "application/json":
-                            {
-                                "schema":
-                                {
-                                    "$ref": "#/components/schemas/HTTPValidationError"
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/site-configs":
-        {
-            "get":
-            {
-                "tags":
-                [
-                    "site_configs",
-                    "site_configs"
-                ],
-                "summary": "获取所有站点配置",
-                "description": "获取所有站点配置",
-                "operationId": "get_site_configs_api_v1_site_configs_get",
-                "responses":
-                {
-                    "200":
-                    {
-                        "description": "Successful Response",
-                        "content":
-                        {
-                            "application/json":
-                            {
-                                "schema":
-                                {
-                                    "items":
-                                    {
-                                        "$ref": "#/components/schemas/SiteConfigResponse"
-                                    },
-                                    "type": "array",
-                                    "title": "Response Get Site Configs Api V1 Site Configs Get"
-                                }
-                            }
-                        }
-                    }
-                }
-            },
-            "post":
-            {
-                "tags":
-                [
-                    "site_configs",
-                    "site_configs"
-                ],
-                "summary": "创建新的站点配置",
-                "description": "创建新的站点配置",
-                "operationId": "create_site_config_api_v1_site_configs_post",
-                "requestBody":
-                {
-                    "content":
-                    {
-                        "application/json":
-                        {
-                            "schema":
-                            {
-                                "$ref": "#/components/schemas/SiteConfigCreate"
-                            }
-                        }
-                    },
-                    "required": true
-                },
-                "responses":
-                {
-                    "200":
-                    {
-                        "description": "Successful Response",
-                        "content":
-                        {
-                            "application/json":
-                            {
-                                "schema":
-                                {
-                                    "$ref": "#/components/schemas/SiteConfigResponse"
-                                }
-                            }
-                        }
-                    },
-                    "422":
-                    {
-                        "description": "Validation Error",
-                        "content":
-                        {
-                            "application/json":
-                            {
-                                "schema":
-                                {
-                                    "$ref": "#/components/schemas/HTTPValidationError"
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/site-configs/{site_id}":
-        {
-            "get":
-            {
-                "tags":
-                [
-                    "site_configs",
-                    "site_configs"
-                ],
-                "summary": "获取指定站点的配置",
-                "description": "获取指定站点的配置",
-                "operationId": "get_site_config_api_v1_site_configs__site_id__get",
-                "parameters":
-                [
-                    {
-                        "name": "site_id",
-                        "in": "path",
-                        "required": true,
-                        "schema":
-                        {
-                            "type": "string",
-                            "title": "Site Id"
-                        }
-                    }
-                ],
-                "responses":
-                {
-                    "200":
-                    {
-                        "description": "Successful Response",
-                        "content":
-                        {
-                            "application/json":
-                            {
-                                "schema":
-                                {
-                                    "$ref": "#/components/schemas/SiteConfigResponse"
-                                }
-                            }
-                        }
-                    },
-                    "422":
-                    {
-                        "description": "Validation Error",
-                        "content":
-                        {
-                            "application/json":
-                            {
-                                "schema":
-                                {
-                                    "$ref": "#/components/schemas/HTTPValidationError"
-                                }
-                            }
-                        }
-                    }
-                }
-            },
-            "put":
-            {
-                "tags":
-                [
-                    "site_configs",
-                    "site_configs"
-                ],
-                "summary": "更新站点配置",
-                "description": "更新站点配置",
-                "operationId": "update_site_config_api_v1_site_configs__site_id__put",
-                "parameters":
-                [
-                    {
-                        "name": "site_id",
-                        "in": "path",
-                        "required": true,
-                        "schema":
-                        {
-                            "type": "string",
-                            "title": "Site Id"
-                        }
-                    }
-                ],
-                "requestBody":
-                {
-                    "required": true,
-                    "content":
-                    {
-                        "application/json":
-                        {
-                            "schema":
-                            {
-                                "$ref": "#/components/schemas/SiteConfigUpdate"
-                            }
-                        }
-                    }
-                },
-                "responses":
-                {
-                    "200":
-                    {
-                        "description": "Successful Response",
-                        "content":
-                        {
-                            "application/json":
-                            {
-                                "schema":
-                                {
-                                    "$ref": "#/components/schemas/SiteConfigResponse"
-                                }
-                            }
-                        }
-                    },
-                    "422":
-                    {
-                        "description": "Validation Error",
-                        "content":
-                        {
-                            "application/json":
-                            {
-                                "schema":
-                                {
-                                    "$ref": "#/components/schemas/HTTPValidationError"
-                                }
-                            }
-                        }
-                    }
-                }
-            },
-            "delete":
-            {
-                "tags":
-                [
-                    "site_configs",
-                    "site_configs"
-                ],
-                "summary": "删除站点配置",
-                "description": "删除站点配置",
-                "operationId": "delete_site_config_api_v1_site_configs__site_id__delete",
-                "parameters":
-                [
-                    {
-                        "name": "site_id",
-                        "in": "path",
-                        "required": true,
-                        "schema":
-                        {
-                            "type": "string",
-                            "title": "Site Id"
-                        }
-                    }
-                ],
-                "responses":
-                {
-                    "200":
-                    {
-                        "description": "Successful Response",
-                        "content":
-                        {
-                            "application/json":
-                            {
-                                "schema":
-                                {
-                                    "$ref": "#/components/schemas/BaseResponse"
-                                }
-                            }
-                        }
-                    },
-                    "422":
-                    {
-                        "description": "Validation Error",
-                        "content":
-                        {
-                            "application/json":
-                            {
-                                "schema":
-                                {
-                                    "$ref": "#/components/schemas/HTTPValidationError"
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/site-configs/reload":
-        {
-            "post":
-            {
-                "tags":
-                [
-                    "site_configs",
-                    "site_configs"
-                ],
-                "summary": "重新加载站点配置",
-                "description": "重新加载站点配置\n\nArgs:\n    site_id: 指定要重载的站点ID（可选）\n    all_sites: 是否重载所有站点配置\n    from_local: 是否从本地文件重新加载配置\n    db: 数据库会话\n    \nReturns:\n    BaseResponse: 包含重载结果的信息",
-                "operationId": "reload_site_configs_api_v1_site_configs_reload_post",
-                "parameters":
-                [
-                    {
-                        "name": "site_id",
-                        "in": "query",
-                        "required": false,
-                        "schema":
-                        {
-                            "anyOf":
-                            [
-                                {
-                                    "type": "string"
-                                },
-                                {
-                                    "type": "null"
-                                }
-                            ],
-                            "title": "Site Id"
-                        }
-                    },
-                    {
-                        "name": "all_sites",
-                        "in": "query",
-                        "required": false,
-                        "schema":
-                        {
-                            "type": "boolean",
-                            "description": "是否重载所有站点配置",
-                            "default": false,
-                            "title": "All Sites"
-                        },
-                        "description": "是否重载所有站点配置"
-                    },
-                    {
-                        "name": "from_local",
-                        "in": "query",
-                        "required": false,
-                        "schema":
-                        {
-                            "type": "boolean",
-                            "description": "是否从本地文件重新加载配置",
-                            "default": false,
-                            "title": "From Local"
-                        },
-                        "description": "是否从本地文件重新加载配置"
-                    }
-                ],
-                "responses":
-                {
-                    "200":
-                    {
-                        "description": "Successful Response",
-                        "content":
-                        {
-                            "application/json":
-                            {
-                                "schema":
-                                {
-                                    "$ref": "#/components/schemas/BaseResponse"
-                                }
-                            }
-                        }
-                    },
-                    "422":
-                    {
-                        "description": "Validation Error",
-                        "content":
-                        {
-                            "application/json":
-                            {
-                                "schema":
-                                {
-                                    "$ref": "#/components/schemas/HTTPValidationError"
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/crawler-configs":
-        {
-            "get":
-            {
-                "tags":
-                [
-                    "crawler_configs",
-                    "crawler_configs"
-                ],
-                "summary": "获取爬虫配置列表",
-                "description": "获取爬虫配置列表，如果指定site_id则只返回该站点的配置",
-                "operationId": "get_crawler_configs_api_v1_crawler_configs_get",
-                "parameters":
-                [
-                    {
-                        "name": "site_id",
-                        "in": "query",
-                        "required": false,
-                        "schema":
-                        {
-                            "type": "string",
-                            "title": "Site Id"
-                        }
-                    }
-                ],
-                "responses":
-                {
-                    "200":
-                    {
-                        "description": "Successful Response",
-                        "content":
-                        {
-                            "application/json":
-                            {
-                                "schema":
-                                {
-                                    "type": "array",
-                                    "items":
-                                    {
-                                        "$ref": "#/components/schemas/CrawlerConfigResponse"
-                                    },
-                                    "title": "Response Get Crawler Configs Api V1 Crawler Configs Get"
-                                }
-                            }
-                        }
-                    },
-                    "422":
-                    {
-                        "description": "Validation Error",
-                        "content":
-                        {
-                            "application/json":
-                            {
-                                "schema":
-                                {
-                                    "$ref": "#/components/schemas/HTTPValidationError"
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/crawler-configs/{site_id}":
-        {
-            "put":
-            {
-                "tags":
-                [
-                    "crawler_configs",
-                    "crawler_configs"
-                ],
-                "summary": "更新站点的爬虫配置",
-                "description": "更新站点的爬虫配置",
-                "operationId": "update_crawler_config_api_v1_crawler_configs__site_id__put",
-                "parameters":
-                [
-                    {
-                        "name": "site_id",
-                        "in": "path",
-                        "required": true,
-                        "schema":
-                        {
-                            "type": "string",
-                            "title": "Site Id"
-                        }
-                    }
-                ],
-                "requestBody":
-                {
-                    "required": true,
-                    "content":
-                    {
-                        "application/json":
-                        {
-                            "schema":
-                            {
-                                "$ref": "#/components/schemas/CrawlerConfigUpdate"
-                            }
-                        }
-                    }
-                },
-                "responses":
-                {
-                    "200":
-                    {
-                        "description": "Successful Response",
-                        "content":
-                        {
-                            "application/json":
-                            {
-                                "schema":
-                                {
-                                    "$ref": "#/components/schemas/CrawlerConfigResponse"
-                                }
-                            }
-                        }
-                    },
-                    "422":
-                    {
-                        "description": "Validation Error",
-                        "content":
-                        {
-                            "application/json":
-                            {
-                                "schema":
-                                {
-                                    "$ref": "#/components/schemas/HTTPValidationError"
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/crawler-configs/{site_id}/reset":
-        {
-            "post":
-            {
-                "tags":
-                [
-                    "crawler_configs",
-                    "crawler_configs"
-                ],
-                "summary": "重置站点的爬虫配置为默认值",
-                "description": "重置站点的爬虫配置为默认值",
-                "operationId": "reset_crawler_config_api_v1_crawler_configs__site_id__reset_post",
-                "parameters":
-                [
-                    {
-                        "name": "site_id",
-                        "in": "path",
-                        "required": true,
-                        "schema":
-                        {
-                            "type": "string",
-                            "title": "Site Id"
-                        }
-                    }
-                ],
-                "responses":
-                {
-                    "200":
-                    {
-                        "description": "Successful Response",
-                        "content":
-                        {
-                            "application/json":
-                            {
-                                "schema":
-                                {
-                                    "$ref": "#/components/schemas/CrawlerConfigResponse"
-                                }
-                            }
-                        }
-                    },
-                    "422":
-                    {
-                        "description": "Validation Error",
-                        "content":
-                        {
-                            "application/json":
-                            {
-                                "schema":
-                                {
-                                    "$ref": "#/components/schemas/HTTPValidationError"
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/statistics":
-        {
-            "get":
-            {
-                "tags":
-                [
+    "paths": {
+        "/api/v1/statistics": {
+            "get": {
+                "tags": [
+                    "statistics",
                     "statistics"
                 ],
                 "summary": "获取统计数据",
                 "description": "获取站点数据统计信息，支持多种统计指标和聚合方式。\n\n### 参数说明\n- **site_id**: 站点ID，可选。如果不指定，则统计所有站点数据\n- **start_date**: 统计开始日期，格式：YYYY-MM-DD。如果不指定，默认为7天前\n- **end_date**: 统计结束日期，格式：YYYY-MM-DD。如果不指定，默认为今天\n- **metrics**: 要统计的指标列表，可选值：\n    - `daily_results`: 每日最新数据（上传量、下载量、魔力值等）\n    - `daily_increments`: 每日增量数据（上传增量、魔力值增量等）\n    - `checkins`: 签到数据（签到状态、时间等）\n- **include_fields**: 要包含的字段列表，可选。例如：[\"upload\", \"download\", \"bonus\"]\n- **exclude_fields**: 要排除的字段列表，可选。例如：[\"seeding_size\", \"seeding_count\"]\n- **group_by**: 分组维度列表，可选。例如：[\"site_id\", \"date\"]\n- **time_unit**: 时间聚合单位，可选值：\n    - `day`: 按天聚合（默认）\n    - `week`: 按周聚合\n    - `month`: 按月聚合\n- **calculation**: 聚合计算方式，可选值：\n    - `last`: 取最后一条记录（默认）\n    - `max`: 取最大值\n    - `min`: 取最小值\n    - `avg`: 取平均值\n    - `sum`: 取总和\n\n### 返回数据说明\n返回一个 StatisticsResponse 对象，包含：\n- **time_range**: 实际统计的时间范围\n    - start: 开始日期\n    - end: 结束日期\n- **metrics**: 各项统计指标的数据\n    - daily_results: 每日最新数据列表\n    - daily_increments: 每日增量数据列表\n    - checkins: 签到数据列表\n- **summary**: 汇总数据\n    - total_sites: 统计的站点总数\n    - total_upload_increment: 总上传量增量\n    - total_bonus_increment: 总魔力值增量\n    - successful_checkins: 成功签到次数\n- **metadata**: 统计元数据\n    - generated_at: 统计生成时间\n    - applied_filters: 应用的过滤条件\n\n### 使用示例\n1. 获取指定站点最近7天的所有统计数据：\n```\nGET /api/v1/statistics?site_id=example_site\n```\n\n2. 获取所有站点指定日期范围的签到统计：\n```\nGET /api/v1/statistics?start_date=2024-01-01&end_date=2024-01-31&metrics=checkins\n```\n\n3. 获取指定站点的每日上传和魔力值增量：\n```\nGET /api/v1/statistics?site_id=example_site&metrics=daily_increments&include_fields=upload_increment,bonus_increment\n```\n\n4. 按月统计所有站点的数据，并计算平均值：\n```\nGET /api/v1/statistics?time_unit=month&calculation=avg\n```\n\n### 错误处理\n- 如果提供的日期格式不正确，将返回 400 错误\n- 如果请求的站点不存在，将返回相应的错误信息\n- 如果查询过程中发生错误，将返回 500 错误",
                 "operationId": "get_statistics_api_v1_statistics_get",
-                "parameters":
-                [
+                "parameters": [
                     {
                         "name": "site_id",
                         "in": "query",
                         "required": false,
-                        "schema":
-                        {
-                            "anyOf":
-                            [
+                        "schema": {
+                            "anyOf": [
                                 {
                                     "type": "string"
                                 },
@@ -1330,10 +36,8 @@
                         "name": "start_date",
                         "in": "query",
                         "required": false,
-                        "schema":
-                        {
-                            "anyOf":
-                            [
+                        "schema": {
+                            "anyOf": [
                                 {
                                     "type": "string",
                                     "format": "date"
@@ -1349,10 +53,8 @@
                         "name": "end_date",
                         "in": "query",
                         "required": false,
-                        "schema":
-                        {
-                            "anyOf":
-                            [
+                        "schema": {
+                            "anyOf": [
                                 {
                                     "type": "string",
                                     "format": "date"
@@ -1368,15 +70,12 @@
                         "name": "metrics",
                         "in": "query",
                         "required": false,
-                        "schema":
-                        {
+                        "schema": {
                             "type": "array",
-                            "items":
-                            {
+                            "items": {
                                 "$ref": "#/components/schemas/MetricType"
                             },
-                            "default":
-                            [
+                            "default": [
                                 "daily_results",
                                 "daily_increments",
                                 "checkins"
@@ -1388,14 +87,11 @@
                         "name": "include_fields",
                         "in": "query",
                         "required": false,
-                        "schema":
-                        {
-                            "anyOf":
-                            [
+                        "schema": {
+                            "anyOf": [
                                 {
                                     "type": "array",
-                                    "items":
-                                    {
+                                    "items": {
                                         "type": "string"
                                     }
                                 },
@@ -1410,14 +106,11 @@
                         "name": "exclude_fields",
                         "in": "query",
                         "required": false,
-                        "schema":
-                        {
-                            "anyOf":
-                            [
+                        "schema": {
+                            "anyOf": [
                                 {
                                     "type": "array",
-                                    "items":
-                                    {
+                                    "items": {
                                         "type": "string"
                                     }
                                 },
@@ -1432,14 +125,11 @@
                         "name": "group_by",
                         "in": "query",
                         "required": false,
-                        "schema":
-                        {
-                            "anyOf":
-                            [
+                        "schema": {
+                            "anyOf": [
                                 {
                                     "type": "array",
-                                    "items":
-                                    {
+                                    "items": {
                                         "type": "string"
                                     }
                                 },
@@ -1454,8 +144,7 @@
                         "name": "time_unit",
                         "in": "query",
                         "required": false,
-                        "schema":
-                        {
+                        "schema": {
                             "$ref": "#/components/schemas/TimeUnit",
                             "default": "day"
                         }
@@ -1464,38 +153,28 @@
                         "name": "calculation",
                         "in": "query",
                         "required": false,
-                        "schema":
-                        {
+                        "schema": {
                             "$ref": "#/components/schemas/CalculationType",
                             "default": "last"
                         }
                     }
                 ],
-                "responses":
-                {
-                    "200":
-                    {
+                "responses": {
+                    "200": {
                         "description": "Successful Response",
-                        "content":
-                        {
-                            "application/json":
-                            {
-                                "schema":
-                                {
+                        "content": {
+                            "application/json": {
+                                "schema": {
                                     "$ref": "#/components/schemas/StatisticsResponse"
                                 }
                             }
                         }
                     },
-                    "422":
-                    {
+                    "422": {
                         "description": "Validation Error",
-                        "content":
-                        {
-                            "application/json":
-                            {
-                                "schema":
-                                {
+                        "content": {
+                            "application/json": {
+                                "schema": {
                                     "$ref": "#/components/schemas/HTTPValidationError"
                                 }
                             }
@@ -1504,24 +183,1160 @@
                 }
             }
         },
-        "/health":
-        {
-            "get":
-            {
+        "/api/v1/statistics/last-success": {
+            "get": {
+                "tags": [
+                    "statistics",
+                    "statistics"
+                ],
+                "summary": "获取每个站点最后一次成功任务的数据",
+                "description": "获取每个站点最后一次成功任务的数据\n\nArgs:\n    site_id: 可选的站点ID，如果提供则只返回该站点的数据\n    db: 数据库会话\n    \nReturns:\n    Dict[str, Dict]: 包含每个站点最后一次成功任务的数据",
+                "operationId": "get_last_success_tasks_api_v1_statistics_last_success_get",
+                "parameters": [
+                    {
+                        "name": "site_id",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "Site Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {
+                                        "type": "object"
+                                    },
+                                    "title": "Response Get Last Success Tasks Api V1 Statistics Last Success Get"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/tasks/retry-failed": {
+            "post": {
+                "tags": [
+                    "tasks",
+                    "tasks"
+                ],
+                "summary": "重试所有站点的最近失败任务",
+                "description": "获取每个站点最近的失败/取消任务并重新添加到队列中\n\nReturns:\n    List[TaskResponse]: 重新添加到队列的任务列表",
+                "operationId": "retry_failed_tasks_api_v1_tasks_retry_failed_post",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "items": {
+                                        "$ref": "#/components/schemas/TaskResponse"
+                                    },
+                                    "type": "array",
+                                    "title": "Response Retry Failed Tasks Api V1 Tasks Retry Failed Post"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/tasks": {
+            "post": {
+                "tags": [
+                    "tasks",
+                    "tasks"
+                ],
+                "summary": "创建任务",
+                "description": "创建任务\n\nArgs:\n    site_id: 指定站点ID（可选）\n    create_for_all_sites: 是否为所有站点创建任务\n    db: 数据库会话\n    site_manager: 站点管理器\n    queue_manager: 队列管理器\n    \nReturns:\n    List[TaskResponse]: 创建的任务列表\n    \nNote:\n    - 如果指定了 site_id，则只为该站点创建任务\n    - 如果设置了 create_for_all_sites=True，则为所有启用的站点创建任务\n    - 如果两者都未指定，则返回错误\n    - 单个站点创建失败不会影响其他站点的任务创建",
+                "operationId": "create_task_api_v1_tasks_post",
+                "parameters": [
+                    {
+                        "name": "site_id",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "Site Id"
+                        }
+                    },
+                    {
+                        "name": "create_for_all_sites",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "boolean",
+                            "description": "是否为所有站点创建任务",
+                            "default": false,
+                            "title": "Create For All Sites"
+                        },
+                        "description": "是否为所有站点创建任务"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/TaskResponse"
+                                    },
+                                    "title": "Response Create Task Api V1 Tasks Post"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/tasks/{task_id}": {
+            "get": {
+                "tags": [
+                    "tasks",
+                    "tasks"
+                ],
+                "summary": "获取任务信息",
+                "description": "获取指定任务的信息\n\nArgs:\n    task_id: 任务ID\n    db: 数据库会话\n    \nReturns:\n    TaskResponse: 任务信息\n    \nRaises:\n    HTTPException: 当任务不存在时",
+                "operationId": "get_task_api_v1_tasks__task_id__get",
+                "parameters": [
+                    {
+                        "name": "task_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Task Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/TaskResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "tags": [
+                    "tasks",
+                    "tasks"
+                ],
+                "summary": "取消任务",
+                "description": "取消指定的任务\n\nArgs:\n    task_id: 任务ID\n    db: 数据库会话\n    queue_manager: 队列管理器\n    \nReturns:\n    dict: 操作结果\n    \nRaises:\n    HTTPException: 当任务不存在或无法取消时",
+                "operationId": "cancel_task_api_v1_tasks__task_id__delete",
+                "parameters": [
+                    {
+                        "name": "task_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Task Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "Response Cancel Task Api V1 Tasks  Task Id  Delete"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/tasks/": {
+            "get": {
+                "tags": [
+                    "tasks",
+                    "tasks"
+                ],
+                "summary": "获取任务列表",
+                "description": "获取任务列表，支持按站点和状态筛选\n\nArgs:\n    site_id: 站点ID（可选）\n    status: 任务状态（可选）\n    limit: 返回数量限制\n    db: 数据库会话\n    \nReturns:\n    List[TaskResponse]: 任务列表",
+                "operationId": "list_tasks_api_v1_tasks__get",
+                "parameters": [
+                    {
+                        "name": "site_id",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "Site Id"
+                        }
+                    },
+                    {
+                        "name": "status",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "Status"
+                        }
+                    },
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "default": 10,
+                            "title": "Limit"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/TaskResponse"
+                                    },
+                                    "title": "Response List Tasks Api V1 Tasks  Get"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/queue/start": {
+            "post": {
+                "tags": [
+                    "queue",
+                    "queue"
+                ],
+                "summary": "启动队列中的所有待处理任务",
+                "description": "启动队列中所有待处理的任务\n\nArgs:\n    db: 数据库会话\n    \nReturns:\n    BaseResponse: 包含启动的任务数量",
+                "operationId": "start_queue_tasks_api_v1_queue_start_post",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/BaseResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/queue/{site_id}/start": {
+            "post": {
+                "tags": [
+                    "queue",
+                    "queue"
+                ],
+                "summary": "启动指定站点的待处理任务",
+                "description": "启动队列中指定站点的待处理任务\n\nArgs:\n    site_id: 站点ID\n    db: 数据库会话\n    site_manager: 站点管理器\n    \nReturns:\n    BaseResponse: 包含启动的任务数量",
+                "operationId": "start_site_queue_tasks_api_v1_queue__site_id__start_post",
+                "parameters": [
+                    {
+                        "name": "site_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Site Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/BaseResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/queue/clear": {
+            "delete": {
+                "tags": [
+                    "queue",
+                    "queue"
+                ],
+                "summary": "清除待运行的任务队列",
+                "description": "清除待运行的任务队列\n\nArgs:\n    site_id: 可选的站点ID，如果不提供则清除所有站点的待运行任务\n    db: 数据库会话\n    site_manager: 站点管理器\n    \nReturns:\n    BaseResponse: 包含清除的任务数量信息",
+                "operationId": "clear_pending_tasks_api_v1_queue_clear_delete",
+                "parameters": [
+                    {
+                        "name": "site_id",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "Site Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/BaseResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/site-configs": {
+            "get": {
+                "tags": [
+                    "site_configs",
+                    "site_configs"
+                ],
+                "summary": "获取所有站点配置",
+                "description": "获取所有站点配置",
+                "operationId": "get_site_configs_api_v1_site_configs_get",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "items": {
+                                        "$ref": "#/components/schemas/SiteConfigResponse"
+                                    },
+                                    "type": "array",
+                                    "title": "Response Get Site Configs Api V1 Site Configs Get"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "tags": [
+                    "site_configs",
+                    "site_configs"
+                ],
+                "summary": "创建新的站点配置",
+                "description": "创建新的站点配置",
+                "operationId": "create_site_config_api_v1_site_configs_post",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/SiteConfigCreate"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/SiteConfigResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/site-configs/{site_id}": {
+            "get": {
+                "tags": [
+                    "site_configs",
+                    "site_configs"
+                ],
+                "summary": "获取指定站点的配置",
+                "description": "获取指定站点的配置",
+                "operationId": "get_site_config_api_v1_site_configs__site_id__get",
+                "parameters": [
+                    {
+                        "name": "site_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Site Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/SiteConfigResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "put": {
+                "tags": [
+                    "site_configs",
+                    "site_configs"
+                ],
+                "summary": "更新站点配置",
+                "description": "更新站点配置",
+                "operationId": "update_site_config_api_v1_site_configs__site_id__put",
+                "parameters": [
+                    {
+                        "name": "site_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Site Id"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/SiteConfigUpdate"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/SiteConfigResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "tags": [
+                    "site_configs",
+                    "site_configs"
+                ],
+                "summary": "删除站点配置",
+                "description": "删除站点配置",
+                "operationId": "delete_site_config_api_v1_site_configs__site_id__delete",
+                "parameters": [
+                    {
+                        "name": "site_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Site Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/BaseResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/site-configs/reload": {
+            "post": {
+                "tags": [
+                    "site_configs",
+                    "site_configs"
+                ],
+                "summary": "重新加载站点配置",
+                "description": "重新加载站点配置\n\nArgs:\n    site_id: 指定要重载的站点ID（可选）\n    all_sites: 是否重载所有站点配置\n    from_local: 是否从本地文件重新加载配置\n    db: 数据库会话\n    \nReturns:\n    BaseResponse: 包含重载结果的信息",
+                "operationId": "reload_site_configs_api_v1_site_configs_reload_post",
+                "parameters": [
+                    {
+                        "name": "site_id",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "Site Id"
+                        }
+                    },
+                    {
+                        "name": "all_sites",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "boolean",
+                            "description": "是否重载所有站点配置",
+                            "default": false,
+                            "title": "All Sites"
+                        },
+                        "description": "是否重载所有站点配置"
+                    },
+                    {
+                        "name": "from_local",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "boolean",
+                            "description": "是否从本地文件重新加载配置",
+                            "default": false,
+                            "title": "From Local"
+                        },
+                        "description": "是否从本地文件重新加载配置"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/BaseResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/crawler-configs": {
+            "get": {
+                "tags": [
+                    "crawler_configs",
+                    "crawler_configs"
+                ],
+                "summary": "获取爬虫配置列表",
+                "description": "获取爬虫配置列表，如果指定site_id则只返回该站点的配置",
+                "operationId": "get_crawler_configs_api_v1_crawler_configs_get",
+                "parameters": [
+                    {
+                        "name": "site_id",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "title": "Site Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/CrawlerConfigResponse"
+                                    },
+                                    "title": "Response Get Crawler Configs Api V1 Crawler Configs Get"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/crawler-configs/{site_id}": {
+            "put": {
+                "tags": [
+                    "crawler_configs",
+                    "crawler_configs"
+                ],
+                "summary": "更新站点的爬虫配置",
+                "description": "更新站点的爬虫配置",
+                "operationId": "update_crawler_config_api_v1_crawler_configs__site_id__put",
+                "parameters": [
+                    {
+                        "name": "site_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Site Id"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CrawlerConfigUpdate"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CrawlerConfigResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/crawler-configs/{site_id}/reset": {
+            "post": {
+                "tags": [
+                    "crawler_configs",
+                    "crawler_configs"
+                ],
+                "summary": "重置站点的爬虫配置为默认值",
+                "description": "重置站点的爬虫配置为默认值",
+                "operationId": "reset_crawler_config_api_v1_crawler_configs__site_id__reset_post",
+                "parameters": [
+                    {
+                        "name": "site_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Site Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CrawlerConfigResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/credentials/{site_id}": {
+            "get": {
+                "tags": [
+                    "credentials",
+                    "credentials"
+                ],
+                "summary": "获取站点凭证",
+                "description": "获取指定站点的凭证信息\n\nArgs:\n    site_id: 站点ID\n    db: 数据库会话\n    \nReturns:\n    CrawlerCredentialResponse: 站点凭证信息",
+                "operationId": "get_site_credential_api_v1_credentials__site_id__get",
+                "parameters": [
+                    {
+                        "name": "site_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Site Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CrawlerCredentialResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "put": {
+                "tags": [
+                    "credentials",
+                    "credentials"
+                ],
+                "summary": "更新站点凭证",
+                "description": "更新指定站点的凭证信息\n\nArgs:\n    site_id: 站点ID\n    credential: 要更新的凭证信息，所有字段都是可选的\n    db: 数据库会话\n    \nReturns:\n    CrawlerCredentialResponse: 更新后的站点凭证信息",
+                "operationId": "update_site_credential_api_v1_credentials__site_id__put",
+                "parameters": [
+                    {
+                        "name": "site_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Site Id"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CrawlerCredentialUpdate"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CrawlerCredentialResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/settings": {
+            "get": {
+                "tags": [
+                    "settings",
+                    "settings"
+                ],
+                "summary": "获取当前系统设置",
+                "description": "获取当前系统设置",
+                "operationId": "get_settings_api_v1_settings_get",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/SettingsResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "tags": [
+                    "settings",
+                    "settings"
+                ],
+                "summary": "更新系统设置（部分更新）",
+                "description": "更新系统设置（部分更新）",
+                "operationId": "update_settings_api_v1_settings_patch",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/SettingsUpdate"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/SettingsResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/settings/reset": {
+            "post": {
+                "tags": [
+                    "settings",
+                    "settings"
+                ],
+                "summary": "重置系统设置为环境变量和默认值",
+                "description": "重置系统设置为环境变量和默认值",
+                "operationId": "reset_settings_api_v1_settings_reset_post",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/SettingsResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/settings/value/{key}": {
+            "get": {
+                "tags": [
+                    "settings",
+                    "settings"
+                ],
+                "summary": "获取指定设置项的值",
+                "description": "获取指定设置项的值",
+                "operationId": "get_setting_value_api_v1_settings_value__key__get",
+                "parameters": [
+                    {
+                        "name": "key",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Key"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "Response Get Setting Value Api V1 Settings Value  Key  Get"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "put": {
+                "tags": [
+                    "settings",
+                    "settings"
+                ],
+                "summary": "设置指定配置项的值",
+                "description": "设置指定配置项的值",
+                "operationId": "set_setting_value_api_v1_settings_value__key__put",
+                "parameters": [
+                    {
+                        "name": "key",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Key"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "title": "Value"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/BaseResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/health": {
+            "get": {
                 "summary": "Health Check",
                 "description": "健康检查端点",
                 "operationId": "health_check_health_get",
-                "responses":
-                {
-                    "200":
-                    {
+                "responses": {
+                    "200": {
                         "description": "Successful Response",
-                        "content":
-                        {
-                            "application/json":
-                            {
-                                "schema":
-                                {}
+                        "content": {
+                            "application/json": {
+                                "schema": {}
                             }
                         }
                     }
@@ -1529,30 +1344,22 @@
             }
         }
     },
-    "components":
-    {
-        "schemas":
-        {
-            "BaseResponse":
-            {
-                "properties":
-                {
-                    "code":
-                    {
+    "components": {
+        "schemas": {
+            "BaseResponse": {
+                "properties": {
+                    "code": {
                         "type": "integer",
                         "title": "Code",
                         "default": 200
                     },
-                    "message":
-                    {
+                    "message": {
                         "type": "string",
                         "title": "Message",
                         "default": "success"
                     },
-                    "data":
-                    {
-                        "anyOf":
-                        [
+                    "data": {
+                        "anyOf": [
                             {},
                             {
                                 "type": "null"
@@ -1560,10 +1367,8 @@
                         ],
                         "title": "Data"
                     },
-                    "metadata":
-                    {
-                        "anyOf":
-                        [
+                    "metadata": {
+                        "anyOf": [
                             {
                                 "type": "object"
                             },
@@ -1577,11 +1382,9 @@
                 "type": "object",
                 "title": "BaseResponse"
             },
-            "CalculationType":
-            {
+            "CalculationType": {
                 "type": "string",
-                "enum":
-                [
+                "enum": [
                     "last",
                     "max",
                     "min",
@@ -1591,14 +1394,10 @@
                 "title": "CalculationType",
                 "description": "计算方式"
             },
-            "CaptchaConfig":
-            {
-                "properties":
-                {
-                    "type":
-                    {
-                        "anyOf":
-                        [
+            "CaptchaConfig": {
+                "properties": {
+                    "type": {
+                        "anyOf": [
                             {
                                 "type": "string"
                             },
@@ -1609,18 +1408,14 @@
                         "title": "Type",
                         "default": "custom"
                     },
-                    "element":
-                    {
+                    "element": {
                         "$ref": "#/components/schemas/WebElement"
                     },
-                    "input":
-                    {
+                    "input": {
                         "$ref": "#/components/schemas/WebElement"
                     },
-                    "hash":
-                    {
-                        "anyOf":
-                        [
+                    "hash": {
+                        "anyOf": [
                             {
                                 "$ref": "#/components/schemas/WebElement"
                             },
@@ -1631,19 +1426,16 @@
                     }
                 },
                 "type": "object",
-                "required":
-                [
+                "required": [
                     "element",
                     "input"
                 ],
                 "title": "CaptchaConfig",
                 "description": "验证码配置"
             },
-            "CaptchaMethod":
-            {
+            "CaptchaMethod": {
                 "type": "string",
-                "enum":
-                [
+                "enum": [
                     "manual",
                     "api",
                     "ocr",
@@ -1651,20 +1443,15 @@
                 ],
                 "title": "CaptchaMethod"
             },
-            "CheckInConfig":
-            {
-                "properties":
-                {
-                    "enabled":
-                    {
+            "CheckInConfig": {
+                "properties": {
+                    "enabled": {
                         "type": "boolean",
                         "title": "Enabled",
                         "default": true
                     },
-                    "checkin_url":
-                    {
-                        "anyOf":
-                        [
+                    "checkin_url": {
+                        "anyOf": [
                             {
                                 "type": "string"
                             },
@@ -1674,10 +1461,8 @@
                         ],
                         "title": "Checkin Url"
                     },
-                    "checkin_button":
-                    {
-                        "anyOf":
-                        [
+                    "checkin_button": {
+                        "anyOf": [
                             {
                                 "$ref": "#/components/schemas/WebElement"
                             },
@@ -1686,10 +1471,8 @@
                             }
                         ]
                     },
-                    "success_check":
-                    {
-                        "anyOf":
-                        [
+                    "success_check": {
+                        "anyOf": [
                             {
                                 "$ref": "#/components/schemas/WebElement"
                             },
@@ -1703,41 +1486,33 @@
                 "title": "CheckInConfig",
                 "description": "签到配置"
             },
-            "CheckInResult":
-            {
-                "properties":
-                {
-                    "date":
-                    {
+            "CheckInResult": {
+                "properties": {
+                    "date": {
                         "type": "string",
                         "format": "date",
                         "title": "Date"
                     },
-                    "site_id":
-                    {
+                    "site_id": {
                         "type": "string",
                         "title": "Site Id"
                     },
-                    "checkin_status":
-                    {
+                    "checkin_status": {
                         "type": "string",
                         "title": "Checkin Status"
                     },
-                    "checkin_time":
-                    {
+                    "checkin_time": {
                         "type": "string",
                         "format": "date-time",
                         "title": "Checkin Time"
                     },
-                    "task_id":
-                    {
+                    "task_id": {
                         "type": "string",
                         "title": "Task Id"
                     }
                 },
                 "type": "object",
-                "required":
-                [
+                "required": [
                     "date",
                     "site_id",
                     "checkin_status",
@@ -1747,33 +1522,26 @@
                 "title": "CheckInResult",
                 "description": "签到统计"
             },
-            "CrawlerConfigResponse":
-            {
-                "properties":
-                {
-                    "site_id":
-                    {
+            "CrawlerConfigResponse": {
+                "properties": {
+                    "site_id": {
                         "type": "string",
                         "maxLength": 500,
                         "minLength": 1,
                         "title": "Site Id"
                     },
-                    "enabled":
-                    {
+                    "enabled": {
                         "type": "boolean",
                         "title": "Enabled",
                         "default": true
                     },
-                    "use_proxy":
-                    {
+                    "use_proxy": {
                         "type": "boolean",
                         "title": "Use Proxy",
                         "default": false
                     },
-                    "proxy_url":
-                    {
-                        "anyOf":
-                        [
+                    "proxy_url": {
+                        "anyOf": [
                             {
                                 "type": "string"
                             },
@@ -1783,16 +1551,13 @@
                         ],
                         "title": "Proxy Url"
                     },
-                    "fresh_login":
-                    {
+                    "fresh_login": {
                         "type": "boolean",
                         "title": "Fresh Login",
                         "default": false
                     },
-                    "captcha_method":
-                    {
-                        "anyOf":
-                        [
+                    "captcha_method": {
+                        "anyOf": [
                             {
                                 "$ref": "#/components/schemas/CaptchaMethod"
                             },
@@ -1801,16 +1566,13 @@
                             }
                         ]
                     },
-                    "captcha_skip":
-                    {
+                    "captcha_skip": {
                         "type": "boolean",
                         "title": "Captcha Skip",
                         "default": false
                     },
-                    "timeout":
-                    {
-                        "anyOf":
-                        [
+                    "timeout": {
+                        "anyOf": [
                             {
                                 "type": "integer",
                                 "maximum": 3600.0,
@@ -1822,16 +1584,13 @@
                         ],
                         "title": "Timeout"
                     },
-                    "headless":
-                    {
+                    "headless": {
                         "type": "boolean",
                         "title": "Headless",
                         "default": true
                     },
-                    "login_max_retry":
-                    {
-                        "anyOf":
-                        [
+                    "login_max_retry": {
+                        "anyOf": [
                             {
                                 "type": "integer",
                                 "maximum": 10.0,
@@ -1845,20 +1604,15 @@
                     }
                 },
                 "type": "object",
-                "required":
-                [
+                "required": [
                     "site_id"
                 ],
                 "title": "CrawlerConfigResponse"
             },
-            "CrawlerConfigUpdate":
-            {
-                "properties":
-                {
-                    "site_id":
-                    {
-                        "anyOf":
-                        [
+            "CrawlerConfigUpdate": {
+                "properties": {
+                    "site_id": {
+                        "anyOf": [
                             {
                                 "type": "string",
                                 "maxLength": 500,
@@ -1870,10 +1624,8 @@
                         ],
                         "title": "Site Id"
                     },
-                    "enabled":
-                    {
-                        "anyOf":
-                        [
+                    "enabled": {
+                        "anyOf": [
                             {
                                 "type": "boolean"
                             },
@@ -1883,10 +1635,8 @@
                         ],
                         "title": "Enabled"
                     },
-                    "use_proxy":
-                    {
-                        "anyOf":
-                        [
+                    "use_proxy": {
+                        "anyOf": [
                             {
                                 "type": "boolean"
                             },
@@ -1896,10 +1646,8 @@
                         ],
                         "title": "Use Proxy"
                     },
-                    "proxy_url":
-                    {
-                        "anyOf":
-                        [
+                    "proxy_url": {
+                        "anyOf": [
                             {
                                 "type": "string"
                             },
@@ -1909,10 +1657,8 @@
                         ],
                         "title": "Proxy Url"
                     },
-                    "fresh_login":
-                    {
-                        "anyOf":
-                        [
+                    "fresh_login": {
+                        "anyOf": [
                             {
                                 "type": "boolean"
                             },
@@ -1922,10 +1668,8 @@
                         ],
                         "title": "Fresh Login"
                     },
-                    "captcha_method":
-                    {
-                        "anyOf":
-                        [
+                    "captcha_method": {
+                        "anyOf": [
                             {
                                 "$ref": "#/components/schemas/CaptchaMethod"
                             },
@@ -1934,10 +1678,8 @@
                             }
                         ]
                     },
-                    "captcha_skip":
-                    {
-                        "anyOf":
-                        [
+                    "captcha_skip": {
+                        "anyOf": [
                             {
                                 "type": "boolean"
                             },
@@ -1947,10 +1689,8 @@
                         ],
                         "title": "Captcha Skip"
                     },
-                    "timeout":
-                    {
-                        "anyOf":
-                        [
+                    "timeout": {
+                        "anyOf": [
                             {
                                 "type": "integer",
                                 "maximum": 3600.0,
@@ -1962,10 +1702,8 @@
                         ],
                         "title": "Timeout"
                     },
-                    "headless":
-                    {
-                        "anyOf":
-                        [
+                    "headless": {
+                        "anyOf": [
                             {
                                 "type": "boolean"
                             },
@@ -1975,10 +1713,8 @@
                         ],
                         "title": "Headless"
                     },
-                    "login_max_retry":
-                    {
-                        "anyOf":
-                        [
+                    "login_max_retry": {
+                        "anyOf": [
                             {
                                 "type": "integer",
                                 "maximum": 10.0,
@@ -1994,25 +1730,186 @@
                 "type": "object",
                 "title": "CrawlerConfigUpdate"
             },
-            "DailyIncrement":
-            {
-                "properties":
-                {
-                    "date":
-                    {
+            "CrawlerCredentialResponse": {
+                "properties": {
+                    "site_id": {
+                        "type": "string",
+                        "title": "Site Id"
+                    },
+                    "manual_cookies": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Manual Cookies"
+                    },
+                    "username": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Username"
+                    },
+                    "password": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Password"
+                    },
+                    "authorization": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Authorization"
+                    },
+                    "apikey": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Apikey"
+                    },
+                    "enabled": {
+                        "type": "boolean",
+                        "title": "Enabled"
+                    },
+                    "description": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Description"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "site_id",
+                    "enabled"
+                ],
+                "title": "CrawlerCredentialResponse"
+            },
+            "CrawlerCredentialUpdate": {
+                "properties": {
+                    "manual_cookies": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Manual Cookies"
+                    },
+                    "username": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Username"
+                    },
+                    "password": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Password"
+                    },
+                    "authorization": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Authorization"
+                    },
+                    "apikey": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Apikey"
+                    },
+                    "enabled": {
+                        "anyOf": [
+                            {
+                                "type": "boolean"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Enabled"
+                    },
+                    "description": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Description"
+                    }
+                },
+                "type": "object",
+                "title": "CrawlerCredentialUpdate"
+            },
+            "DailyIncrement": {
+                "properties": {
+                    "date": {
                         "type": "string",
                         "format": "date",
                         "title": "Date"
                     },
-                    "site_id":
-                    {
+                    "site_id": {
                         "type": "string",
                         "title": "Site Id"
                     },
-                    "upload_increment":
-                    {
-                        "anyOf":
-                        [
+                    "upload_increment": {
+                        "anyOf": [
                             {
                                 "type": "number"
                             },
@@ -2023,10 +1920,8 @@
                         "title": "Upload Increment",
                         "default": 0
                     },
-                    "bonus_increment":
-                    {
-                        "anyOf":
-                        [
+                    "bonus_increment": {
+                        "anyOf": [
                             {
                                 "type": "number"
                             },
@@ -2037,10 +1932,20 @@
                         "title": "Bonus Increment",
                         "default": 0
                     },
-                    "seeding_size_increment":
-                    {
-                        "anyOf":
-                        [
+                    "seeding_score_increment": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Seeding Score Increment",
+                        "default": 0
+                    },
+                    "seeding_size_increment": {
+                        "anyOf": [
                             {
                                 "type": "number"
                             },
@@ -2051,10 +1956,8 @@
                         "title": "Seeding Size Increment",
                         "default": 0
                     },
-                    "seeding_count_increment":
-                    {
-                        "anyOf":
-                        [
+                    "seeding_count_increment": {
+                        "anyOf": [
                             {
                                 "type": "integer"
                             },
@@ -2065,41 +1968,38 @@
                         "title": "Seeding Count Increment",
                         "default": 0
                     },
-                    "reference_task_id":
-                    {
+                    "task_id": {
+                        "type": "string",
+                        "title": "Task Id"
+                    },
+                    "reference_task_id": {
                         "type": "string",
                         "title": "Reference Task Id"
                     }
                 },
                 "type": "object",
-                "required":
-                [
+                "required": [
                     "date",
                     "site_id",
+                    "task_id",
                     "reference_task_id"
                 ],
                 "title": "DailyIncrement",
                 "description": "每日数据增量统计"
             },
-            "DailyResult":
-            {
-                "properties":
-                {
-                    "date":
-                    {
+            "DailyResult": {
+                "properties": {
+                    "date": {
                         "type": "string",
                         "format": "date",
                         "title": "Date"
                     },
-                    "site_id":
-                    {
+                    "site_id": {
                         "type": "string",
                         "title": "Site Id"
                     },
-                    "username":
-                    {
-                        "anyOf":
-                        [
+                    "username": {
+                        "anyOf": [
                             {
                                 "type": "string"
                             },
@@ -2109,10 +2009,8 @@
                         ],
                         "title": "Username"
                     },
-                    "upload":
-                    {
-                        "anyOf":
-                        [
+                    "upload": {
+                        "anyOf": [
                             {
                                 "type": "number"
                             },
@@ -2122,10 +2020,8 @@
                         ],
                         "title": "Upload"
                     },
-                    "download":
-                    {
-                        "anyOf":
-                        [
+                    "download": {
+                        "anyOf": [
                             {
                                 "type": "number"
                             },
@@ -2135,10 +2031,8 @@
                         ],
                         "title": "Download"
                     },
-                    "ratio":
-                    {
-                        "anyOf":
-                        [
+                    "ratio": {
+                        "anyOf": [
                             {
                                 "type": "number"
                             },
@@ -2148,10 +2042,8 @@
                         ],
                         "title": "Ratio"
                     },
-                    "bonus":
-                    {
-                        "anyOf":
-                        [
+                    "bonus": {
+                        "anyOf": [
                             {
                                 "type": "number"
                             },
@@ -2161,10 +2053,19 @@
                         ],
                         "title": "Bonus"
                     },
-                    "seeding_size":
-                    {
-                        "anyOf":
-                        [
+                    "seeding_score": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Seeding Score"
+                    },
+                    "seeding_size": {
+                        "anyOf": [
                             {
                                 "type": "number"
                             },
@@ -2174,10 +2075,8 @@
                         ],
                         "title": "Seeding Size"
                     },
-                    "seeding_count":
-                    {
-                        "anyOf":
-                        [
+                    "seeding_count": {
+                        "anyOf": [
                             {
                                 "type": "integer"
                             },
@@ -2187,15 +2086,13 @@
                         ],
                         "title": "Seeding Count"
                     },
-                    "task_id":
-                    {
+                    "task_id": {
                         "type": "string",
                         "title": "Task Id"
                     }
                 },
                 "type": "object",
-                "required":
-                [
+                "required": [
                     "date",
                     "site_id",
                     "username",
@@ -2203,6 +2100,7 @@
                     "download",
                     "ratio",
                     "bonus",
+                    "seeding_score",
                     "seeding_size",
                     "seeding_count",
                     "task_id"
@@ -2210,14 +2108,10 @@
                 "title": "DailyResult",
                 "description": "每日最后结果统计"
             },
-            "ExtractRuleSet":
-            {
-                "properties":
-                {
-                    "rules":
-                    {
-                        "items":
-                        {
+            "ExtractRuleSet": {
+                "properties": {
+                    "rules": {
+                        "items": {
                             "$ref": "#/components/schemas/WebElement"
                         },
                         "type": "array",
@@ -2225,21 +2119,16 @@
                     }
                 },
                 "type": "object",
-                "required":
-                [
+                "required": [
                     "rules"
                 ],
                 "title": "ExtractRuleSet",
                 "description": "数据提取规则"
             },
-            "HTTPValidationError":
-            {
-                "properties":
-                {
-                    "detail":
-                    {
-                        "items":
-                        {
+            "HTTPValidationError": {
+                "properties": {
+                    "detail": {
+                        "items": {
                             "$ref": "#/components/schemas/ValidationError"
                         },
                         "type": "array",
@@ -2249,24 +2138,18 @@
                 "type": "object",
                 "title": "HTTPValidationError"
             },
-            "LoginConfig-Input":
-            {
-                "properties":
-                {
-                    "login_url":
-                    {
+            "LoginConfig-Input": {
+                "properties": {
+                    "login_url": {
                         "type": "string",
                         "title": "Login Url"
                     },
-                    "form_selector":
-                    {
+                    "form_selector": {
                         "type": "string",
                         "title": "Form Selector"
                     },
-                    "pre_login":
-                    {
-                        "anyOf":
-                        [
+                    "pre_login": {
+                        "anyOf": [
                             {
                                 "type": "object"
                             },
@@ -2276,19 +2159,15 @@
                         ],
                         "title": "Pre Login"
                     },
-                    "fields":
-                    {
-                        "additionalProperties":
-                        {
+                    "fields": {
+                        "additionalProperties": {
                             "$ref": "#/components/schemas/WebElement"
                         },
                         "type": "object",
                         "title": "Fields"
                     },
-                    "captcha":
-                    {
-                        "anyOf":
-                        [
+                    "captcha": {
+                        "anyOf": [
                             {
                                 "$ref": "#/components/schemas/CaptchaConfig"
                             },
@@ -2297,14 +2176,12 @@
                             }
                         ]
                     },
-                    "success_check":
-                    {
+                    "success_check": {
                         "$ref": "#/components/schemas/WebElement"
                     }
                 },
                 "type": "object",
-                "required":
-                [
+                "required": [
                     "login_url",
                     "form_selector",
                     "fields",
@@ -2313,24 +2190,18 @@
                 "title": "LoginConfig",
                 "description": "登录配置"
             },
-            "LoginConfig-Output":
-            {
-                "properties":
-                {
-                    "login_url":
-                    {
+            "LoginConfig-Output": {
+                "properties": {
+                    "login_url": {
                         "type": "string",
                         "title": "Login Url"
                     },
-                    "form_selector":
-                    {
+                    "form_selector": {
                         "type": "string",
                         "title": "Form Selector"
                     },
-                    "pre_login":
-                    {
-                        "anyOf":
-                        [
+                    "pre_login": {
+                        "anyOf": [
                             {
                                 "type": "object"
                             },
@@ -2340,19 +2211,15 @@
                         ],
                         "title": "Pre Login"
                     },
-                    "fields":
-                    {
-                        "additionalProperties":
-                        {
+                    "fields": {
+                        "additionalProperties": {
                             "$ref": "#/components/schemas/WebElement"
                         },
                         "type": "object",
                         "title": "Fields"
                     },
-                    "captcha":
-                    {
-                        "anyOf":
-                        [
+                    "captcha": {
+                        "anyOf": [
                             {
                                 "$ref": "#/components/schemas/CaptchaConfig"
                             },
@@ -2361,14 +2228,12 @@
                             }
                         ]
                     },
-                    "success_check":
-                    {
+                    "success_check": {
                         "$ref": "#/components/schemas/WebElement"
                     }
                 },
                 "type": "object",
-                "required":
-                [
+                "required": [
                     "login_url",
                     "form_selector",
                     "fields",
@@ -2377,11 +2242,9 @@
                 "title": "LoginConfig",
                 "description": "登录配置"
             },
-            "MetricType":
-            {
+            "MetricType": {
                 "type": "string",
-                "enum":
-                [
+                "enum": [
                     "daily_results",
                     "daily_increments",
                     "checkins"
@@ -2389,70 +2252,58 @@
                 "title": "MetricType",
                 "description": "统计指标类型"
             },
-            "SettingsResponse":
-            {
-                "properties":
-                {
-                    "crawler_config_path":
-                    {
+            "SettingsResponse": {
+                "properties": {
+                    "crawler_config_path": {
                         "type": "string",
                         "title": "Crawler Config Path",
                         "description": "爬虫配置路径",
                         "default": "services/sites/implementations"
                     },
-                    "crawler_credential_path":
-                    {
+                    "crawler_credential_path": {
                         "type": "string",
                         "title": "Crawler Credential Path",
                         "description": "爬虫凭证路径",
                         "default": "services/sites/credentials"
                     },
-                    "crawler_storage_path":
-                    {
+                    "crawler_storage_path": {
                         "type": "string",
                         "title": "Crawler Storage Path",
                         "description": "爬虫存储路径",
                         "default": "storage"
                     },
-                    "crawler_max_concurrency":
-                    {
+                    "crawler_max_concurrency": {
                         "type": "integer",
                         "title": "Crawler Max Concurrency",
                         "description": "爬虫最大并发数",
                         "default": 8
                     },
-                    "fresh_login":
-                    {
+                    "fresh_login": {
                         "type": "boolean",
                         "title": "Fresh Login",
                         "description": "是否强制重新登录",
                         "default": false
                     },
-                    "login_max_retry":
-                    {
+                    "login_max_retry": {
                         "type": "integer",
                         "title": "Login Max Retry",
                         "description": "登录最大重试次数",
                         "default": 3
                     },
-                    "captcha_default_method":
-                    {
+                    "captcha_default_method": {
                         "type": "string",
                         "title": "Captcha Default Method",
                         "description": "验证码处理方法",
                         "default": "api"
                     },
-                    "captcha_skip_sites":
-                    {
+                    "captcha_skip_sites": {
                         "type": "string",
                         "title": "Captcha Skip Sites",
                         "description": "跳过验证码的站点",
                         "default": ""
                     },
-                    "captcha_api_key":
-                    {
-                        "anyOf":
-                        [
+                    "captcha_api_key": {
+                        "anyOf": [
                             {
                                 "type": "string"
                             },
@@ -2463,10 +2314,8 @@
                         "title": "Captcha Api Key",
                         "description": "验证码API密钥"
                     },
-                    "captcha_api_url":
-                    {
-                        "anyOf":
-                        [
+                    "captcha_api_url": {
+                        "anyOf": [
                             {
                                 "type": "string"
                             },
@@ -2477,45 +2326,38 @@
                         "title": "Captcha Api Url",
                         "description": "验证码API地址"
                     },
-                    "captcha_max_retries":
-                    {
+                    "captcha_max_retries": {
                         "type": "integer",
                         "title": "Captcha Max Retries",
                         "description": "验证码最大重试次数",
                         "default": 10
                     },
-                    "captcha_poll_interval":
-                    {
+                    "captcha_poll_interval": {
                         "type": "number",
                         "title": "Captcha Poll Interval",
                         "description": "验证码轮询间隔",
                         "default": 3.0
                     },
-                    "captcha_timeout":
-                    {
+                    "captcha_timeout": {
                         "type": "integer",
                         "title": "Captcha Timeout",
                         "description": "验证码超时时间",
                         "default": 60
                     },
-                    "browser_viewport_width":
-                    {
+                    "browser_viewport_width": {
                         "type": "integer",
                         "title": "Browser Viewport Width",
                         "description": "浏览器视窗宽度",
                         "default": 1920
                     },
-                    "browser_viewport_height":
-                    {
+                    "browser_viewport_height": {
                         "type": "integer",
                         "title": "Browser Viewport Height",
                         "description": "浏览器视窗高度",
                         "default": 1080
                     },
-                    "chrome_path":
-                    {
-                        "anyOf":
-                        [
+                    "chrome_path": {
+                        "anyOf": [
                             {
                                 "type": "string"
                             },
@@ -2526,10 +2368,8 @@
                         "title": "Chrome Path",
                         "description": "Chrome浏览器路径"
                     },
-                    "driver_path":
-                    {
-                        "anyOf":
-                        [
+                    "driver_path": {
+                        "anyOf": [
                             {
                                 "type": "string"
                             },
@@ -2540,139 +2380,119 @@
                         "title": "Driver Path",
                         "description": "驱动路径"
                     },
-                    "headless":
-                    {
+                    "headless": {
                         "type": "boolean",
                         "title": "Headless",
                         "description": "是否使用无头模式",
                         "default": true
                     },
-                    "page_timeout":
-                    {
+                    "page_timeout": {
                         "type": "number",
                         "title": "Page Timeout",
                         "description": "页面超时时间",
                         "default": 20.0
                     },
-                    "navigation_timeout":
-                    {
+                    "navigation_timeout": {
                         "type": "integer",
                         "title": "Navigation Timeout",
                         "description": "导航超时时间",
                         "default": 60
                     },
-                    "request_timeout":
-                    {
+                    "request_timeout": {
                         "type": "number",
                         "title": "Request Timeout",
                         "description": "请求超时时间",
                         "default": 20.0
                     },
-                    "verify_ssl":
-                    {
+                    "verify_ssl": {
                         "type": "boolean",
                         "title": "Verify Ssl",
                         "description": "是否验证SSL证书",
                         "default": false
                     },
-                    "retry_times":
-                    {
+                    "retry_times": {
                         "type": "integer",
                         "title": "Retry Times",
                         "description": "请求重试次数",
                         "default": 3
                     },
-                    "log_level":
-                    {
+                    "log_level": {
                         "type": "string",
                         "title": "Log Level",
                         "description": "日志级别",
                         "default": "DEBUG"
                     },
-                    "console_log_level":
-                    {
+                    "console_log_level": {
                         "type": "string",
                         "title": "Console Log Level",
                         "description": "控制台日志级别",
                         "default": "INFO"
                     },
-                    "file_log_level":
-                    {
+                    "file_log_level": {
                         "type": "string",
                         "title": "File Log Level",
                         "description": "文件日志级别",
                         "default": "DEBUG"
                     },
-                    "error_log_level":
-                    {
+                    "error_log_level": {
                         "type": "string",
                         "title": "Error Log Level",
                         "description": "错误日志级别",
                         "default": "ERROR"
                     },
-                    "log_file":
-                    {
+                    "log_file": {
                         "type": "string",
                         "title": "Log File",
                         "description": "日志文件名",
                         "default": "task_{time:YYMMDD-HHMM}.log"
                     },
-                    "error_log_file":
-                    {
+                    "error_log_file": {
                         "type": "string",
                         "title": "Error Log File",
                         "description": "错误日志文件名",
                         "default": "task_error_{time:YYMMDD-HHMM}.log"
                     },
-                    "storage_path":
-                    {
+                    "storage_path": {
                         "type": "string",
                         "title": "Storage Path",
                         "description": "存储路径",
                         "default": "storage"
                     },
-                    "captcha_storage_path":
-                    {
+                    "captcha_storage_path": {
                         "type": "string",
                         "title": "Captcha Storage Path",
                         "description": "验证码存储路径",
                         "default": "storage/captcha"
                     },
-                    "enable_checkin":
-                    {
+                    "enable_checkin": {
                         "type": "boolean",
                         "title": "Enable Checkin",
                         "description": "是否启用签到",
                         "default": true
                     },
-                    "checkin_sites":
-                    {
+                    "checkin_sites": {
                         "type": "string",
                         "title": "Checkin Sites",
                         "description": "需要签到的站点列表",
                         "default": ""
                     },
-                    "id":
-                    {
+                    "id": {
                         "type": "integer",
                         "title": "Id"
                     },
-                    "created_at":
-                    {
+                    "created_at": {
                         "type": "string",
                         "format": "date-time",
                         "title": "Created At"
                     },
-                    "updated_at":
-                    {
+                    "updated_at": {
                         "type": "string",
                         "format": "date-time",
                         "title": "Updated At"
                     }
                 },
                 "type": "object",
-                "required":
-                [
+                "required": [
                     "id",
                     "created_at",
                     "updated_at"
@@ -2680,20 +2500,15 @@
                 "title": "SettingsResponse",
                 "description": "配置响应模型"
             },
-            "SettingsUpdate":
-            {
-                "properties":
-                {
-                    "updated_at":
-                    {
+            "SettingsUpdate": {
+                "properties": {
+                    "updated_at": {
                         "type": "string",
                         "format": "date-time",
                         "title": "Updated At"
                     },
-                    "crawler_config_path":
-                    {
-                        "anyOf":
-                        [
+                    "crawler_config_path": {
+                        "anyOf": [
                             {
                                 "type": "string"
                             },
@@ -2703,10 +2518,8 @@
                         ],
                         "title": "Crawler Config Path"
                     },
-                    "crawler_storage_path":
-                    {
-                        "anyOf":
-                        [
+                    "crawler_storage_path": {
+                        "anyOf": [
                             {
                                 "type": "string"
                             },
@@ -2716,10 +2529,8 @@
                         ],
                         "title": "Crawler Storage Path"
                     },
-                    "crawler_max_concurrency":
-                    {
-                        "anyOf":
-                        [
+                    "crawler_max_concurrency": {
+                        "anyOf": [
                             {
                                 "type": "integer"
                             },
@@ -2729,10 +2540,8 @@
                         ],
                         "title": "Crawler Max Concurrency"
                     },
-                    "fresh_login":
-                    {
-                        "anyOf":
-                        [
+                    "fresh_login": {
+                        "anyOf": [
                             {
                                 "type": "boolean"
                             },
@@ -2742,10 +2551,8 @@
                         ],
                         "title": "Fresh Login"
                     },
-                    "login_max_retry_count":
-                    {
-                        "anyOf":
-                        [
+                    "login_max_retry_count": {
+                        "anyOf": [
                             {
                                 "type": "integer"
                             },
@@ -2755,10 +2562,8 @@
                         ],
                         "title": "Login Max Retry Count"
                     },
-                    "captcha_default_method":
-                    {
-                        "anyOf":
-                        [
+                    "captcha_default_method": {
+                        "anyOf": [
                             {
                                 "type": "string"
                             },
@@ -2768,10 +2573,8 @@
                         ],
                         "title": "Captcha Default Method"
                     },
-                    "captcha_skip_sites":
-                    {
-                        "anyOf":
-                        [
+                    "captcha_skip_sites": {
+                        "anyOf": [
                             {
                                 "type": "string"
                             },
@@ -2781,10 +2584,8 @@
                         ],
                         "title": "Captcha Skip Sites"
                     },
-                    "captcha_api_key":
-                    {
-                        "anyOf":
-                        [
+                    "captcha_api_key": {
+                        "anyOf": [
                             {
                                 "type": "string"
                             },
@@ -2794,10 +2595,8 @@
                         ],
                         "title": "Captcha Api Key"
                     },
-                    "captcha_api_url":
-                    {
-                        "anyOf":
-                        [
+                    "captcha_api_url": {
+                        "anyOf": [
                             {
                                 "type": "string"
                             },
@@ -2807,10 +2606,8 @@
                         ],
                         "title": "Captcha Api Url"
                     },
-                    "captcha_max_retries":
-                    {
-                        "anyOf":
-                        [
+                    "captcha_max_retries": {
+                        "anyOf": [
                             {
                                 "type": "integer"
                             },
@@ -2820,10 +2617,8 @@
                         ],
                         "title": "Captcha Max Retries"
                     },
-                    "captcha_poll_interval":
-                    {
-                        "anyOf":
-                        [
+                    "captcha_poll_interval": {
+                        "anyOf": [
                             {
                                 "type": "number"
                             },
@@ -2833,10 +2628,8 @@
                         ],
                         "title": "Captcha Poll Interval"
                     },
-                    "captcha_timeout":
-                    {
-                        "anyOf":
-                        [
+                    "captcha_timeout": {
+                        "anyOf": [
                             {
                                 "type": "integer"
                             },
@@ -2846,10 +2639,8 @@
                         ],
                         "title": "Captcha Timeout"
                     },
-                    "browser_viewport_width":
-                    {
-                        "anyOf":
-                        [
+                    "browser_viewport_width": {
+                        "anyOf": [
                             {
                                 "type": "integer"
                             },
@@ -2859,10 +2650,8 @@
                         ],
                         "title": "Browser Viewport Width"
                     },
-                    "browser_viewport_height":
-                    {
-                        "anyOf":
-                        [
+                    "browser_viewport_height": {
+                        "anyOf": [
                             {
                                 "type": "integer"
                             },
@@ -2872,10 +2661,8 @@
                         ],
                         "title": "Browser Viewport Height"
                     },
-                    "chrome_path":
-                    {
-                        "anyOf":
-                        [
+                    "chrome_path": {
+                        "anyOf": [
                             {
                                 "type": "string"
                             },
@@ -2885,10 +2672,8 @@
                         ],
                         "title": "Chrome Path"
                     },
-                    "driver_path":
-                    {
-                        "anyOf":
-                        [
+                    "driver_path": {
+                        "anyOf": [
                             {
                                 "type": "string"
                             },
@@ -2898,10 +2683,8 @@
                         ],
                         "title": "Driver Path"
                     },
-                    "headless":
-                    {
-                        "anyOf":
-                        [
+                    "headless": {
+                        "anyOf": [
                             {
                                 "type": "boolean"
                             },
@@ -2911,10 +2694,8 @@
                         ],
                         "title": "Headless"
                     },
-                    "page_timeout":
-                    {
-                        "anyOf":
-                        [
+                    "page_timeout": {
+                        "anyOf": [
                             {
                                 "type": "number"
                             },
@@ -2924,10 +2705,8 @@
                         ],
                         "title": "Page Timeout"
                     },
-                    "navigation_timeout":
-                    {
-                        "anyOf":
-                        [
+                    "navigation_timeout": {
+                        "anyOf": [
                             {
                                 "type": "integer"
                             },
@@ -2937,10 +2716,8 @@
                         ],
                         "title": "Navigation Timeout"
                     },
-                    "request_timeout":
-                    {
-                        "anyOf":
-                        [
+                    "request_timeout": {
+                        "anyOf": [
                             {
                                 "type": "number"
                             },
@@ -2950,10 +2727,8 @@
                         ],
                         "title": "Request Timeout"
                     },
-                    "verify_ssl":
-                    {
-                        "anyOf":
-                        [
+                    "verify_ssl": {
+                        "anyOf": [
                             {
                                 "type": "boolean"
                             },
@@ -2963,10 +2738,8 @@
                         ],
                         "title": "Verify Ssl"
                     },
-                    "retry_times":
-                    {
-                        "anyOf":
-                        [
+                    "retry_times": {
+                        "anyOf": [
                             {
                                 "type": "integer"
                             },
@@ -2976,10 +2749,8 @@
                         ],
                         "title": "Retry Times"
                     },
-                    "log_level":
-                    {
-                        "anyOf":
-                        [
+                    "log_level": {
+                        "anyOf": [
                             {
                                 "type": "string"
                             },
@@ -2989,10 +2760,8 @@
                         ],
                         "title": "Log Level"
                     },
-                    "console_log_level":
-                    {
-                        "anyOf":
-                        [
+                    "console_log_level": {
+                        "anyOf": [
                             {
                                 "type": "string"
                             },
@@ -3002,10 +2771,8 @@
                         ],
                         "title": "Console Log Level"
                     },
-                    "file_log_level":
-                    {
-                        "anyOf":
-                        [
+                    "file_log_level": {
+                        "anyOf": [
                             {
                                 "type": "string"
                             },
@@ -3015,10 +2782,8 @@
                         ],
                         "title": "File Log Level"
                     },
-                    "error_log_level":
-                    {
-                        "anyOf":
-                        [
+                    "error_log_level": {
+                        "anyOf": [
                             {
                                 "type": "string"
                             },
@@ -3028,10 +2793,8 @@
                         ],
                         "title": "Error Log Level"
                     },
-                    "log_file":
-                    {
-                        "anyOf":
-                        [
+                    "log_file": {
+                        "anyOf": [
                             {
                                 "type": "string"
                             },
@@ -3041,10 +2804,8 @@
                         ],
                         "title": "Log File"
                     },
-                    "error_log_file":
-                    {
-                        "anyOf":
-                        [
+                    "error_log_file": {
+                        "anyOf": [
                             {
                                 "type": "string"
                             },
@@ -3054,10 +2815,8 @@
                         ],
                         "title": "Error Log File"
                     },
-                    "storage_path":
-                    {
-                        "anyOf":
-                        [
+                    "storage_path": {
+                        "anyOf": [
                             {
                                 "type": "string"
                             },
@@ -3067,10 +2826,8 @@
                         ],
                         "title": "Storage Path"
                     },
-                    "captcha_storage_path":
-                    {
-                        "anyOf":
-                        [
+                    "captcha_storage_path": {
+                        "anyOf": [
                             {
                                 "type": "string"
                             },
@@ -3080,10 +2837,8 @@
                         ],
                         "title": "Captcha Storage Path"
                     },
-                    "enable_checkin":
-                    {
-                        "anyOf":
-                        [
+                    "enable_checkin": {
+                        "anyOf": [
                             {
                                 "type": "boolean"
                             },
@@ -3093,10 +2848,8 @@
                         ],
                         "title": "Enable Checkin"
                     },
-                    "checkin_sites":
-                    {
-                        "anyOf":
-                        [
+                    "checkin_sites": {
+                        "anyOf": [
                             {
                                 "type": "string"
                             },
@@ -3108,35 +2861,28 @@
                     }
                 },
                 "type": "object",
-                "required":
-                [
+                "required": [
                     "updated_at"
                 ],
                 "title": "SettingsUpdate",
                 "description": "更新配置模型"
             },
-            "SiteConfigCreate":
-            {
-                "properties":
-                {
-                    "site_id":
-                    {
+            "SiteConfigCreate": {
+                "properties": {
+                    "site_id": {
                         "type": "string",
                         "maxLength": 500,
                         "minLength": 1,
                         "title": "Site Id"
                     },
-                    "site_url":
-                    {
+                    "site_url": {
                         "type": "string",
                         "maxLength": 500,
                         "minLength": 1,
                         "title": "Site Url"
                     },
-                    "login_config":
-                    {
-                        "anyOf":
-                        [
+                    "login_config": {
+                        "anyOf": [
                             {
                                 "$ref": "#/components/schemas/LoginConfig-Input"
                             },
@@ -3145,10 +2891,8 @@
                             }
                         ]
                     },
-                    "extract_rules":
-                    {
-                        "anyOf":
-                        [
+                    "extract_rules": {
+                        "anyOf": [
                             {
                                 "$ref": "#/components/schemas/ExtractRuleSet"
                             },
@@ -3157,10 +2901,8 @@
                             }
                         ]
                     },
-                    "checkin_config":
-                    {
-                        "anyOf":
-                        [
+                    "checkin_config": {
+                        "anyOf": [
                             {
                                 "$ref": "#/components/schemas/CheckInConfig"
                             },
@@ -3171,33 +2913,26 @@
                     }
                 },
                 "type": "object",
-                "required":
-                [
+                "required": [
                     "site_id",
                     "site_url"
                 ],
                 "title": "SiteConfigCreate"
             },
-            "SiteConfigResponse":
-            {
-                "properties":
-                {
-                    "site_id":
-                    {
+            "SiteConfigResponse": {
+                "properties": {
+                    "site_id": {
                         "type": "string",
                         "title": "Site Id"
                     },
-                    "site_url":
-                    {
+                    "site_url": {
                         "type": "string",
                         "maxLength": 500,
                         "minLength": 1,
                         "title": "Site Url"
                     },
-                    "login_config":
-                    {
-                        "anyOf":
-                        [
+                    "login_config": {
+                        "anyOf": [
                             {
                                 "$ref": "#/components/schemas/LoginConfig-Output"
                             },
@@ -3206,10 +2941,8 @@
                             }
                         ]
                     },
-                    "extract_rules":
-                    {
-                        "anyOf":
-                        [
+                    "extract_rules": {
+                        "anyOf": [
                             {
                                 "$ref": "#/components/schemas/ExtractRuleSet"
                             },
@@ -3218,10 +2951,8 @@
                             }
                         ]
                     },
-                    "checkin_config":
-                    {
-                        "anyOf":
-                        [
+                    "checkin_config": {
+                        "anyOf": [
                             {
                                 "$ref": "#/components/schemas/CheckInConfig"
                             },
@@ -3232,35 +2963,28 @@
                     }
                 },
                 "type": "object",
-                "required":
-                [
+                "required": [
                     "site_id",
                     "site_url"
                 ],
                 "title": "SiteConfigResponse"
             },
-            "SiteConfigUpdate":
-            {
-                "properties":
-                {
-                    "site_id":
-                    {
+            "SiteConfigUpdate": {
+                "properties": {
+                    "site_id": {
                         "type": "string",
                         "maxLength": 500,
                         "minLength": 1,
                         "title": "Site Id"
                     },
-                    "site_url":
-                    {
+                    "site_url": {
                         "type": "string",
                         "maxLength": 500,
                         "minLength": 1,
                         "title": "Site Url"
                     },
-                    "login_config":
-                    {
-                        "anyOf":
-                        [
+                    "login_config": {
+                        "anyOf": [
                             {
                                 "$ref": "#/components/schemas/LoginConfig-Input"
                             },
@@ -3269,10 +2993,8 @@
                             }
                         ]
                     },
-                    "extract_rules":
-                    {
-                        "anyOf":
-                        [
+                    "extract_rules": {
+                        "anyOf": [
                             {
                                 "$ref": "#/components/schemas/ExtractRuleSet"
                             },
@@ -3281,10 +3003,8 @@
                             }
                         ]
                     },
-                    "checkin_config":
-                    {
-                        "anyOf":
-                        [
+                    "checkin_config": {
+                        "anyOf": [
                             {
                                 "$ref": "#/components/schemas/CheckInConfig"
                             },
@@ -3295,35 +3015,27 @@
                     }
                 },
                 "type": "object",
-                "required":
-                [
+                "required": [
                     "site_id",
                     "site_url"
                 ],
                 "title": "SiteConfigUpdate"
             },
-            "StatisticsMetadata":
-            {
-                "properties":
-                {
-                    "generated_at":
-                    {
+            "StatisticsMetadata": {
+                "properties": {
+                    "generated_at": {
                         "type": "string",
                         "format": "date-time",
                         "title": "Generated At"
                     },
-                    "applied_filters":
-                    {
-                        "additionalProperties":
-                        {
-                            "anyOf":
-                            [
+                    "applied_filters": {
+                        "additionalProperties": {
+                            "anyOf": [
                                 {
                                     "type": "string"
                                 },
                                 {
-                                    "items":
-                                    {
+                                    "items": {
                                         "type": "string"
                                     },
                                     "type": "array"
@@ -3335,51 +3047,40 @@
                     }
                 },
                 "type": "object",
-                "required":
-                [
+                "required": [
                     "generated_at",
                     "applied_filters"
                 ],
                 "title": "StatisticsMetadata",
                 "description": "统计元数据"
             },
-            "StatisticsResponse":
-            {
-                "properties":
-                {
-                    "time_range":
-                    {
-                        "additionalProperties":
-                        {
+            "StatisticsResponse": {
+                "properties": {
+                    "time_range": {
+                        "additionalProperties": {
                             "type": "string",
                             "format": "date"
                         },
                         "type": "object",
                         "title": "Time Range"
                     },
-                    "metrics":
-                    {
-                        "additionalProperties":
-                        {
-                            "anyOf":
-                            [
+                    "metrics": {
+                        "additionalProperties": {
+                            "anyOf": [
                                 {
-                                    "items":
-                                    {
+                                    "items": {
                                         "$ref": "#/components/schemas/DailyResult"
                                     },
                                     "type": "array"
                                 },
                                 {
-                                    "items":
-                                    {
+                                    "items": {
                                         "$ref": "#/components/schemas/DailyIncrement"
                                     },
                                     "type": "array"
                                 },
                                 {
-                                    "items":
-                                    {
+                                    "items": {
                                         "$ref": "#/components/schemas/CheckInResult"
                                     },
                                     "type": "array"
@@ -3389,18 +3090,15 @@
                         "type": "object",
                         "title": "Metrics"
                     },
-                    "summary":
-                    {
+                    "summary": {
                         "$ref": "#/components/schemas/StatisticsSummary"
                     },
-                    "metadata":
-                    {
+                    "metadata": {
                         "$ref": "#/components/schemas/StatisticsMetadata"
                     }
                 },
                 "type": "object",
-                "required":
-                [
+                "required": [
                     "time_range",
                     "metrics",
                     "summary",
@@ -3409,34 +3107,27 @@
                 "title": "StatisticsResponse",
                 "description": "统计响应数据"
             },
-            "StatisticsSummary":
-            {
-                "properties":
-                {
-                    "total_sites":
-                    {
+            "StatisticsSummary": {
+                "properties": {
+                    "total_sites": {
                         "type": "integer",
                         "title": "Total Sites"
                     },
-                    "total_upload_increment":
-                    {
+                    "total_upload_increment": {
                         "type": "number",
                         "title": "Total Upload Increment"
                     },
-                    "total_bonus_increment":
-                    {
+                    "total_bonus_increment": {
                         "type": "number",
                         "title": "Total Bonus Increment"
                     },
-                    "successful_checkins":
-                    {
+                    "successful_checkins": {
                         "type": "integer",
                         "title": "Successful Checkins"
                     }
                 },
                 "type": "object",
-                "required":
-                [
+                "required": [
                     "total_sites",
                     "total_upload_increment",
                     "total_bonus_increment",
@@ -3445,45 +3136,36 @@
                 "title": "StatisticsSummary",
                 "description": "统计汇总数据"
             },
-            "TaskResponse":
-            {
-                "properties":
-                {
-                    "task_id":
-                    {
+            "TaskResponse": {
+                "properties": {
+                    "task_id": {
                         "type": "string",
                         "title": "Task Id",
                         "description": "任务ID"
                     },
-                    "site_id":
-                    {
+                    "site_id": {
                         "type": "string",
                         "title": "Site Id",
                         "description": "站点ID"
                     },
-                    "status":
-                    {
+                    "status": {
                         "$ref": "#/components/schemas/TaskStatus",
                         "description": "任务状态"
                     },
-                    "created_at":
-                    {
+                    "created_at": {
                         "type": "string",
                         "format": "date-time",
                         "title": "Created At",
                         "description": "创建时间"
                     },
-                    "updated_at":
-                    {
+                    "updated_at": {
                         "type": "string",
                         "format": "date-time",
                         "title": "Updated At",
                         "description": "更新时间"
                     },
-                    "completed_at":
-                    {
-                        "anyOf":
-                        [
+                    "completed_at": {
+                        "anyOf": [
                             {
                                 "type": "string",
                                 "format": "date-time"
@@ -3495,10 +3177,8 @@
                         "title": "Completed At",
                         "description": "任务完成时间"
                     },
-                    "msg":
-                    {
-                        "anyOf":
-                        [
+                    "msg": {
+                        "anyOf": [
                             {
                                 "type": "string"
                             },
@@ -3509,10 +3189,8 @@
                         "title": "Msg",
                         "description": "错误信息"
                     },
-                    "error_details":
-                    {
-                        "anyOf":
-                        [
+                    "error_details": {
+                        "anyOf": [
                             {
                                 "type": "object"
                             },
@@ -3523,10 +3201,8 @@
                         "title": "Error Details",
                         "description": "详细错误信息"
                     },
-                    "task_metadata":
-                    {
-                        "anyOf":
-                        [
+                    "task_metadata": {
+                        "anyOf": [
                             {
                                 "type": "object"
                             },
@@ -3537,10 +3213,8 @@
                         "title": "Task Metadata",
                         "description": "任务元数据"
                     },
-                    "system_info":
-                    {
-                        "anyOf":
-                        [
+                    "system_info": {
+                        "anyOf": [
                             {
                                 "type": "object"
                             },
@@ -3551,10 +3225,8 @@
                         "title": "System Info",
                         "description": "系统信息"
                     },
-                    "duration":
-                    {
-                        "anyOf":
-                        [
+                    "duration": {
+                        "anyOf": [
                             {
                                 "type": "number"
                             },
@@ -3567,8 +3239,7 @@
                     }
                 },
                 "type": "object",
-                "required":
-                [
+                "required": [
                     "task_id",
                     "site_id",
                     "status",
@@ -3578,11 +3249,9 @@
                 "title": "TaskResponse",
                 "description": "任务响应模型"
             },
-            "TaskStatus":
-            {
+            "TaskStatus": {
                 "type": "string",
-                "enum":
-                [
+                "enum": [
                     "ready",
                     "pending",
                     "running",
@@ -3593,11 +3262,9 @@
                 "title": "TaskStatus",
                 "description": "任务状态枚举"
             },
-            "TimeUnit":
-            {
+            "TimeUnit": {
                 "type": "string",
-                "enum":
-                [
+                "enum": [
                     "day",
                     "week",
                     "month"
@@ -3605,16 +3272,11 @@
                 "title": "TimeUnit",
                 "description": "时间聚合单位"
             },
-            "ValidationError":
-            {
-                "properties":
-                {
-                    "loc":
-                    {
-                        "items":
-                        {
-                            "anyOf":
-                            [
+            "ValidationError": {
+                "properties": {
+                    "loc": {
+                        "items": {
+                            "anyOf": [
                                 {
                                     "type": "string"
                                 },
@@ -3626,48 +3288,38 @@
                         "type": "array",
                         "title": "Location"
                     },
-                    "msg":
-                    {
+                    "msg": {
                         "type": "string",
                         "title": "Message"
                     },
-                    "type":
-                    {
+                    "type": {
                         "type": "string",
                         "title": "Error Type"
                     }
                 },
                 "type": "object",
-                "required":
-                [
+                "required": [
                     "loc",
                     "msg",
                     "type"
                 ],
                 "title": "ValidationError"
             },
-            "WebElement":
-            {
-                "properties":
-                {
-                    "name":
-                    {
+            "WebElement": {
+                "properties": {
+                    "name": {
                         "type": "string",
                         "title": "Name"
                     },
-                    "selector":
-                    {
+                    "selector": {
                         "type": "string",
                         "title": "Selector"
                     },
-                    "type":
-                    {
-                        "anyOf":
-                        [
+                    "type": {
+                        "anyOf": [
                             {
                                 "type": "string",
-                                "enum":
-                                [
+                                "enum": [
                                     "text",
                                     "attribute",
                                     "html",
@@ -3684,10 +3336,8 @@
                         "title": "Type",
                         "default": "text"
                     },
-                    "location":
-                    {
-                        "anyOf":
-                        [
+                    "location": {
+                        "anyOf": [
                             {
                                 "type": "string"
                             },
@@ -3697,10 +3347,8 @@
                         ],
                         "title": "Location"
                     },
-                    "second_selector":
-                    {
-                        "anyOf":
-                        [
+                    "second_selector": {
+                        "anyOf": [
                             {
                                 "type": "string"
                             },
@@ -3710,10 +3358,8 @@
                         ],
                         "title": "Second Selector"
                     },
-                    "required":
-                    {
-                        "anyOf":
-                        [
+                    "required": {
+                        "anyOf": [
                             {
                                 "type": "boolean"
                             },
@@ -3724,10 +3370,8 @@
                         "title": "Required",
                         "default": false
                     },
-                    "attribute":
-                    {
-                        "anyOf":
-                        [
+                    "attribute": {
+                        "anyOf": [
                             {
                                 "type": "string"
                             },
@@ -3737,10 +3381,8 @@
                         ],
                         "title": "Attribute"
                     },
-                    "ele_only":
-                    {
-                        "anyOf":
-                        [
+                    "ele_only": {
+                        "anyOf": [
                             {
                                 "type": "boolean"
                             },
@@ -3751,10 +3393,8 @@
                         "title": "Ele Only",
                         "default": true
                     },
-                    "need_pre_action":
-                    {
-                        "anyOf":
-                        [
+                    "need_pre_action": {
+                        "anyOf": [
                             {
                                 "type": "boolean"
                             },
@@ -3765,10 +3405,8 @@
                         "title": "Need Pre Action",
                         "default": false
                     },
-                    "index":
-                    {
-                        "anyOf":
-                        [
+                    "index": {
+                        "anyOf": [
                             {
                                 "type": "integer"
                             },
@@ -3778,10 +3416,8 @@
                         ],
                         "title": "Index"
                     },
-                    "url_pattern":
-                    {
-                        "anyOf":
-                        [
+                    "url_pattern": {
+                        "anyOf": [
                             {
                                 "type": "string"
                             },
@@ -3791,10 +3427,8 @@
                         ],
                         "title": "Url Pattern"
                     },
-                    "page_url":
-                    {
-                        "anyOf":
-                        [
+                    "page_url": {
+                        "anyOf": [
                             {
                                 "type": "string"
                             },
@@ -3804,10 +3438,8 @@
                         ],
                         "title": "Page Url"
                     },
-                    "pre_action_type":
-                    {
-                        "anyOf":
-                        [
+                    "pre_action_type": {
+                        "anyOf": [
                             {
                                 "type": "string"
                             },
@@ -3817,10 +3449,8 @@
                         ],
                         "title": "Pre Action Type"
                     },
-                    "expect_text":
-                    {
-                        "anyOf":
-                        [
+                    "expect_text": {
+                        "anyOf": [
                             {
                                 "type": "string"
                             },
@@ -3832,8 +3462,7 @@
                     }
                 },
                 "type": "object",
-                "required":
-                [
+                "required": [
                     "name",
                     "selector"
                 ],

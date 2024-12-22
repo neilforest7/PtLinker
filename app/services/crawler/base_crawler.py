@@ -11,6 +11,7 @@ from core.logger import get_logger, setup_logger
 from DrissionPage import Chromium, ChromiumOptions
 from handlers.checkin import CheckInHandler
 from handlers.login import LoginHandler
+from models.models import TaskStatus
 from schemas.browserstate import BrowserState
 from schemas.result import ResultCreate
 from schemas.sitesetup import SiteSetup
@@ -19,7 +20,6 @@ from services.managers.result_manager import ResultManager
 from services.managers.setting_manager import SettingManager
 from services.managers.task_status_manager import task_status_manager
 from sqlalchemy.ext.asyncio import AsyncSession
-from models.models import TaskStatus
 
 CheckInResult = Literal["not_set", "already", "success", "failed"]
 
@@ -320,7 +320,29 @@ class BaseCrawler(ABC):
     async def _restore_browser_state(self, browser: Chromium) -> bool:
         """恢复浏览器状态"""
         try:
-            # 使用 browserstate_manager 获取浏览器状态
+            # 检查是否使用手动配置的cookies
+            if (self.site_setup.crawler_credential and 
+                self.site_setup.crawler_credential.enable_manual_cookies and 
+                self.site_setup.crawler_credential.manual_cookies):
+                
+                self.logger.info("使用手动配置的cookies")
+                tab = browser.latest_tab
+                if not tab:
+                    self.logger.warning("未找到活动标签页")
+                    return False
+                    
+                # 设置手动配置的cookies
+                try:
+                    manual_cookies = self.site_setup.crawler_credential.manual_cookies.strip()
+                    # 直接设置cookie字符串
+                    browser.set.cookies(manual_cookies)
+                    self.logger.info("手动cookies设置完成")
+                    return True
+                except Exception as e:
+                    self.logger.error(f"设置手动cookie失败: {str(e)}")
+                    return False
+                    
+            # 如果不使用手动cookies，则使用保存的浏览器状态
             browserstate_manager = BrowserStateManager.get_instance()
             browser_state : BrowserState = await browserstate_manager.get_state(self.site_id)
             
