@@ -10,8 +10,8 @@ class Settings(Base):
     __tablename__ = "settings"
 
     id = Column(Integer, primary_key=True, index=True)
-    created_at = Column(DateTime, default=datetime.now(timezone.utc), nullable=False)
-    updated_at = Column(DateTime, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc), nullable=False)
+    created_at = Column(DateTime, default=datetime.now(), nullable=False)
+    updated_at = Column(DateTime, default=datetime.now(), onupdate=datetime.now(), nullable=False)
     
     # 核心配置
     crawler_config_path = Column(String(500), default="services/sites/implementations", nullable=False, comment="爬虫配置路径")

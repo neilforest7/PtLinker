@@ -127,6 +127,7 @@ class StatisticsService:
                     download=result.download,
                     ratio=result.ratio,
                     bonus=result.bonus,
+                    seeding_score=result.seeding_score,
                     seeding_size=result.seeding_size,
                     seeding_count=result.seeding_count,
                     task_id=task.task_id
@@ -167,16 +168,18 @@ class StatisticsService:
                 
                 # 计算每日增量
                 for i in range(1, len(results)):
-                    prev = results[i-1]
-                    curr = results[i]
+                    prev: DailyResult = results[i-1]
+                    curr: DailyResult = results[i]
                     
                     increments.append(DailyIncrement(
-                        date=curr.date,
+                        date=prev.date,
                         site_id=site_id,
                         upload_increment=curr.upload - prev.upload if curr.upload and prev.upload else None,
                         bonus_increment=curr.bonus - prev.bonus if curr.bonus and prev.bonus else None,
+                        seeding_score_increment=curr.seeding_score - prev.seeding_score if curr.seeding_score and prev.seeding_score else None,
                         seeding_size_increment=curr.seeding_size - prev.seeding_size if curr.seeding_size and prev.seeding_size else None,
                         seeding_count_increment=curr.seeding_count - prev.seeding_count if curr.seeding_count and prev.seeding_count else None,
+                        task_id=prev.task_id,
                         reference_task_id=curr.task_id
                     ))
             
@@ -287,6 +290,71 @@ class StatisticsService:
             
         except Exception as e:
             self.logger.error(f"计算汇总数据失败: {str(e)}")
+            raise
+
+    async def get_last_success_tasks(
+        self,
+        db: AsyncSession,
+        site_id: Optional[str] = None
+    ) -> Dict[str, Dict]:
+        """获取每个站点最后一次成功任务的数据"""
+        try:
+            # 获取最近一天的结果
+            today = date.today()
+            daily_results = await self._get_daily_results(
+                db,
+                start_date=today - timedelta(days=30),  # 获取最近30天的数据，确保能获取到最新结果
+                end_date=today,
+                site_id=site_id,
+                calculation=CalculationType.LAST
+            )
+            
+            # 按站点分组，只保留每个站点最新的结果
+            latest_results = {}
+            for result in daily_results:
+                if result.site_id not in latest_results or result.date > latest_results[result.site_id].date:
+                    latest_results[result.site_id] = result
+            
+            # 获取增量数据
+            result_data = {}
+            for site_id, latest_result in latest_results.items():
+                try:
+                    # 获取增量数据
+                    increments = await self._get_daily_increments(
+                        db,
+                        start_date=latest_result.date - timedelta(days=1),
+                        end_date=latest_result.date,
+                        site_id=site_id
+                    )
+                    
+                    # 获取最新的增量数据
+                    daily_increment = increments[-1].dict() if increments else {
+                        "date": latest_result.date,
+                        "site_id": site_id,
+                        "upload_increment": 0,
+                        "bonus_increment": 0,
+                        "seeding_score_increment": 0,
+                        "seeding_size_increment": 0,
+                        "seeding_count_increment": 0,
+                        "task_id": latest_result.task_id,
+                        "reference_task_id": latest_result.task_id
+                    }
+                    
+                    # 构造结果数据
+                    result_data[site_id] = {
+                        "daily_results": latest_result.dict(),
+                        "daily_increments": daily_increment,
+                        "last_success_time": datetime.combine(latest_result.date, datetime.min.time())
+                    }
+                    
+                except Exception as e:
+                    self.logger.error(f"处理站点 {site_id} 的数据失败: {str(e)}")
+                    continue
+            
+            return result_data
+            
+        except Exception as e:
+            self.logger.error(f"获取最后成功任务数据失败: {str(e)}")
             raise
 
 

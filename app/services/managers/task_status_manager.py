@@ -1,12 +1,11 @@
-from datetime import datetime, timezone
 import traceback
+from datetime import datetime, timezone
 from typing import Dict, Optional
-
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.logger import get_logger
 from models.models import Task, TaskStatus
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class TaskStatusManager:
@@ -56,7 +55,7 @@ class TaskStatusManager:
             
             if task:
                 task.status = status
-                task.updated_at = datetime.now(timezone.utc)
+                task.updated_at = datetime.now()
                 
                 if msg:
                     task.msg = msg

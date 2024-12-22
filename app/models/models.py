@@ -18,8 +18,8 @@ class TaskStatus(PyEnum):
     CANCELLED = "cancelled"
 
 class TimestampMixin:
-    created_at = Column(DateTime, default=datetime.now(timezone.utc), nullable=False)
-    updated_at = Column(DateTime, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc), nullable=False)
+    created_at = Column(DateTime, default=datetime.now(), nullable=False)
+    updated_at = Column(DateTime, default=datetime.now(), onupdate=datetime.now(), nullable=False)
     
 class Crawler(Base):
     __tablename__ = "crawlers"

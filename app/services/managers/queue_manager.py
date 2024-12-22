@@ -1,15 +1,15 @@
 import asyncio
+import traceback
 from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
-import traceback
 
 from core.logger import get_logger, setup_logger
 from models.models import Task, TaskStatus
 from schemas.task import TaskCreate, TaskResponse, TaskUpdate
+from services.managers.task_status_manager import task_status_manager
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from services.managers.task_status_manager import task_status_manager
 
 
 class QueueManager:
@@ -105,7 +105,7 @@ class QueueManager:
                                 site_id=site_id,
                                 status=TaskStatus.READY,
                                 created_at=task_info.get("queued_at"),
-                                updated_at=datetime.now(timezone.utc),
+                                updated_at=datetime.now(),
                                 task_metadata=task_info.get("task_metadata")
                             ))
                 else:
@@ -119,7 +119,7 @@ class QueueManager:
                                     site_id=site_id,
                                     status=TaskStatus.READY,
                                     created_at=task_info.get("queued_at"),
-                                    updated_at=datetime.now(timezone.utc),
+                                    updated_at=datetime.now(),
                                     task_metadata=task_info.get("task_metadata")
                                 ))
                 
@@ -151,8 +151,8 @@ class QueueManager:
                     task_id=task.task_id,
                     site_id=task.site_id,
                     status=TaskStatus.READY,
-                    created_at=datetime.now(timezone.utc),
-                    updated_at=datetime.now(timezone.utc),
+                    created_at=datetime.now(),
+                    updated_at=datetime.now(),
                 )
                 db.add(db_task)
                 await db.commit()
@@ -161,7 +161,7 @@ class QueueManager:
                 # 添加到队列
                 self._queues[task.site_id].append(task.task_id)
                 self._task_info[task.task_id] = {
-                    "queued_at": datetime.now(timezone.utc),
+                    "queued_at": datetime.now(),
                     "site_id": task.site_id,
                 }
                 
@@ -233,7 +233,7 @@ class QueueManager:
                     task_id,
                     status,
                     msg=msg,
-                    completed_at=datetime.now(timezone.utc)
+                    completed_at=datetime.now()
                 )
                 
                 # 获取任务信息
@@ -291,7 +291,7 @@ class QueueManager:
                         task_id,
                         TaskStatus.CANCELLED,
                         msg="任务已取消",
-                        completed_at=datetime.now(timezone.utc)
+                        completed_at=datetime.now()
                     )
                     
                     if task_id in self._task_info:
@@ -392,7 +392,7 @@ class QueueManager:
                             task.task_id,
                             TaskStatus.CANCELLED,
                             msg="任务已取消",
-                            completed_at=datetime.now(timezone.utc)
+                            completed_at=datetime.now()
                         )
                         
                         cleared_count += 1

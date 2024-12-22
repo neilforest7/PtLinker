@@ -5,7 +5,7 @@ from typing import List, Optional
 from core.database import get_db
 from core.logger import get_logger, setup_logger
 from fastapi import (APIRouter, BackgroundTasks, Depends, HTTPException, Query,
-                        status)
+                     status)
 from models.models import Task, TaskStatus
 from schemas.task import TaskCreate, TaskResponse, TaskUpdate
 from services.managers.process_manager import ProcessManager
@@ -58,7 +58,7 @@ async def retry_failed_tasks(
                     logger.debug(f"站点 {site_id} 的最近任务 {latest_task.task_id} 状态为失败/取消，准备重试")
                     
                     # 生成新的任务ID
-                    current_time = datetime.now(timezone.utc)
+                    current_time = datetime.now()
                     new_task_id = f"{site_id}-{current_time.strftime('%Y%m%d-%H%M%S')}-{str(uuid.uuid4())[:4]}"
                     
                     # 创建新任务
@@ -164,7 +164,7 @@ async def create_task(
                     continue
                     
                 # 2. 生成任务ID：{site_id}-YYYYMMDD-HHMMSS-4位uuid
-                current_time = datetime.now(timezone.utc)
+                current_time = datetime.now()
                 task_id = f"{current_site_id}-{current_time.strftime('%Y%m%d-%H%M%S')}-{str(uuid.uuid4())[:4]}"
                 
                 # 3. 创建任务

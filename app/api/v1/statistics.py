@@ -1,18 +1,14 @@
 from datetime import date
 from http.client import HTTPException
-from typing import Optional, List
-
-from fastapi import APIRouter, Depends, Query, status
-from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Dict, List, Optional
 
 from core.database import get_db
 from core.logger import get_logger, setup_logger
-from schemas.statistics import (
-    StatisticsRequest, StatisticsResponse,
-    MetricType, TimeUnit, CalculationType
-)
+from fastapi import APIRouter, Depends, Query, status
+from schemas.statistics import (CalculationType, MetricType, StatisticsRequest,
+                                StatisticsResponse, TimeUnit)
 from services.statistics_service import statistics_service
-
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter()
 setup_logger()
@@ -126,6 +122,40 @@ async def get_statistics(
     except Exception as e:
         error_msg = f"获取统计数据失败: {str(e)}"
         logger.error(error_msg, exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=error_msg
+        )
+
+
+@router.get("/last-success", response_model=Dict[str, Dict], summary="获取每个站点最后一次成功任务的数据")
+async def get_last_success_tasks(
+    site_id: Optional[str] = None,
+    db: AsyncSession = Depends(get_db)
+) -> Dict[str, Dict]:
+    """
+    获取每个站点最后一次成功任务的数据
+    
+    Args:
+        site_id: 可选的站点ID，如果提供则只返回该站点的数据
+        db: 数据库会话
+        
+    Returns:
+        Dict[str, Dict]: 包含每个站点最后一次成功任务的数据
+    """
+    try:
+        logger.info(f"开始获取最后成功任务数据 - 站点: {site_id}")
+        
+        # 调用服务层方法获取数据
+        result_data = await statistics_service.get_last_success_tasks(db, site_id)
+        
+        logger.info("最后成功任务数据获取成功")
+        return result_data
+        
+    except Exception as e:
+        error_msg = f"获取最后成功任务数据失败: {str(e)}"
+        logger.error(error_msg)
+        logger.debug("错误详情:", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=error_msg

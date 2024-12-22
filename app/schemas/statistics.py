@@ -1,6 +1,7 @@
 from datetime import date, datetime
 from enum import Enum
-from typing import Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
+
 from pydantic import BaseModel, Field
 
 
@@ -49,6 +50,7 @@ class DailyResult(BaseModel):
     download: Optional[float]
     ratio: Optional[float]
     bonus: Optional[float]
+    seeding_score: Optional[float]
     seeding_size: Optional[float]
     seeding_count: Optional[int]
     task_id: str
@@ -60,8 +62,10 @@ class DailyIncrement(BaseModel):
     site_id: str
     upload_increment: Optional[float] = 0
     bonus_increment: Optional[float] = 0
+    seeding_score_increment: Optional[float] = 0
     seeding_size_increment: Optional[float] = 0
     seeding_count_increment: Optional[int] = 0
+    task_id: str
     reference_task_id: str
 
 
@@ -86,6 +90,19 @@ class StatisticsMetadata(BaseModel):
     """统计元数据"""
     generated_at: datetime
     applied_filters: Dict[str, Union[str, List[str]]]
+
+
+class LastSuccessTaskResult(BaseModel):
+    """最后一次成功任务的结果数据"""
+    daily_results: Dict[str, Any]  # 每日结果数据
+    daily_increments: Dict[str, Any]  # 每日增量数据
+    last_success_time: datetime  # 最后成功时间
+
+
+class LastSuccessTasksResponse(BaseModel):
+    """所有站点最后一次成功任务的响应数据"""
+    sites: Dict[str, LastSuccessTaskResult]  # 站点ID到结果的映射
+    metadata: StatisticsMetadata  # 统计元数据
 
 
 class StatisticsResponse(BaseModel):
