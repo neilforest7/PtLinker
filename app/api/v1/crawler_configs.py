@@ -11,6 +11,45 @@ router = APIRouter(prefix="/crawler-configs", tags=["crawler_configs"])
 logger = get_logger(name=__name__, site_id="cr_conf_api")
 
 
+@router.get("", response_model=List[CrawlerConfigResponse], summary="获取爬虫配置列表")
+async def get_crawler_configs(
+    site_id: str = None,
+    db: AsyncSession = Depends(get_db)
+) -> List[CrawlerConfigResponse]:
+    """获取爬虫配置列表，如果指定site_id则只返回该站点的配置"""
+    try:
+        site_manager = SiteManager.get_instance()
+        # 确保站点管理器已初始化
+        if not site_manager._initialized:
+            logger.debug("站点管理器未初始化，正在初始化...")
+            await site_manager.initialize(db)
+            
+        if site_id:
+            # 获取单个站点的配置
+            site_setup = await site_manager.get_site_setup(site_id)
+            if not site_setup:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"站点 {site_id} 不存在"
+                )
+            return [CrawlerConfigResponse.model_validate(site_setup.crawler_config)] if site_setup.crawler_config else []
+        else:
+            # 获取所有站点的配置
+            sites = await site_manager.get_available_sites()
+            crawler_configs = [site.crawler_config for site in sites.values() if site.crawler_config]
+            logger.debug(f"成功获取 {len(crawler_configs)} 个爬虫配置")
+            return [CrawlerConfigResponse.model_validate(config) for config in crawler_configs]
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取爬虫配置失败: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"获取爬虫配置失败: {str(e)}"
+        )
+
+
 @router.put("/{site_id}", response_model=CrawlerConfigResponse, summary="更新站点的爬虫配置")
 async def update_crawler_config(
     site_id: str,
