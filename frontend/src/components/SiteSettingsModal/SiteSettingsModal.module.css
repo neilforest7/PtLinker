@@ -80,4 +80,17 @@
 
 :global(.ant-tabs-content) {
     min-height: 300px;
+}
+
+/* 全局设置项样式 */
+.globalValue :global(.ant-form-item-control-input-content) {
+    background-color: #fff7e6;
+    border-radius: 4px;
+    padding: 4px 8px;
+}
+
+.globalValue :global(.ant-input-number),
+.globalValue :global(.ant-select-selector),
+.globalValue :global(.ant-switch) {
+    background-color: #fff7e6 !important;
 } 

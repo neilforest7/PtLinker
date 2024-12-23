@@ -1,7 +1,6 @@
-import React, { useState } from 'react';
-import { Card, Button, Dropdown, Space, Tag, Typography, Popconfirm } from 'antd';
+import React, { useState, useEffect } from 'react';
+import { Card, Button, Space, Tag, Typography, Popconfirm, message, Spin } from 'antd';
 import {
-    MoreOutlined,
     SyncOutlined,
     ExperimentOutlined,
     BarChartOutlined,
@@ -11,7 +10,6 @@ import {
     PercentageOutlined,
     SettingOutlined
 } from '@ant-design/icons';
-import type { MenuProps } from 'antd';
 import {
     DndContext,
     closestCenter,
@@ -31,6 +29,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import styles from './Sites.module.css';
 import SiteSettingsModal from '../../components/SiteSettingsModal';
+import { siteConfigApi } from '../../api/siteConfig';
 
 const { Text, Link } = Typography;
 
@@ -75,7 +74,7 @@ const SortableSiteCard: React.FC<SortableSiteCardProps> = ({ site, onSettingsCli
         <div ref={setNodeRef} style={style} className={styles.siteWrapper}>
             <Card
                 className={styles.siteCard}
-                bodyStyle={{ padding: '12px' }}
+                // styles={{ padding: '12px' }}
                 actions={[
                     <SyncOutlined key="update" title="更新" />,
                     <ExperimentOutlined key="test" title="测试" />,
@@ -133,10 +132,10 @@ const SortableSiteCard: React.FC<SortableSiteCardProps> = ({ site, onSettingsCli
                     </Tag>
                     <Space className={styles.stats}>
                         <span>
-                            <UploadOutlined /> {site.upload} TB
+                            <UploadOutlined /> {site.upload} GB
                         </span>
                         <span>
-                            <DownloadOutlined /> {site.download} TB
+                            <DownloadOutlined /> {site.download} GB
                         </span>
                         <span>
                             <PercentageOutlined /> {site.ratio}
@@ -149,100 +148,11 @@ const SortableSiteCard: React.FC<SortableSiteCardProps> = ({ site, onSettingsCli
 };
 
 const Sites: React.FC = () => {
-    // 模拟数据
-    const [sites, setSites] = useState<SiteData[]>([
-        {
-            id: '1',
-            site_id: 'hdatoms',
-            name: '馒头',
-            base_url: 'https://hdatoms.org',
-            connect_status: 'online',
-            favicon: 'https://kp.m-team.cc/favicon.ico',
-            upload: 1.5,
-            download: 2.3,
-            ratio: parseFloat((1.5 / 2.3).toFixed(2))
-        },
-        {
-            id: '2',
-            site_id: 'pthome',
-            name: '铂金家',
-            base_url: 'https://pthome.net',
-            connect_status: 'offline',
-            favicon: 'https://pthome.net/favicon.ico',
-            upload: 0.8,
-            download: 1.2,
-            ratio: parseFloat((0.8 / 1.2).toFixed(2))
-        },
-        {
-            id: '3',
-            site_id: 'hdsky',
-            name: '天空',
-            base_url: 'https://hdsky.me',
-            connect_status: 'online',
-            favicon: 'https://hdsky.me/favicon.ico',
-            upload: 2.1,
-            download: 1.8,
-            ratio: parseFloat((2.1 / 1.8).toFixed(2))
-        },
-        {
-            id: '4',
-            site_id: 'ttg',
-            name: '听听歌',
-            base_url: 'https://totheglory.im',
-            connect_status: 'online',
-            favicon: 'https://totheglory.im/favicon.ico',
-            upload: 3.2,
-            download: 2.5,
-            ratio: parseFloat((3.2 / 2.5).toFixed(2))
-        },
-        {
-            id: '5',
-            site_id: 'chdbits',
-            name: '彩虹岛',
-            base_url: 'https://chdbits.co',
-            connect_status: 'offline',
-            favicon: 'https://chdbits.co/favicon.ico',
-            upload: 1.7,
-            download: 1.4,
-            ratio: parseFloat((1.7 / 1.4).toFixed(2))
-        },
-        {
-            id: '6',
-            site_id: 'ourbits',
-            name: '我堡',
-            base_url: 'https://ourbits.club',
-            connect_status: 'online',
-            favicon: 'https://ourbits.club/favicon.ico',
-            upload: 4.5,
-            download: 3.8,
-            ratio: parseFloat((4.5 / 3.8).toFixed(2))
-        },
-        {
-            id: '7',
-            site_id: 'pterclub',
-            name: '猫站',
-            base_url: 'https://pterclub.com',
-            connect_status: 'online',
-            favicon: 'https://pterclub.com/favicon.ico',
-            upload: 2.8,
-            download: 2.1,
-            ratio: parseFloat((2.8 / 2.1).toFixed(2))
-        },
-        {
-            id: '8',
-            site_id: 'hdchina',
-            name: 'HDC',
-            base_url: 'https://hdchina.org',
-            connect_status: 'online',
-            favicon: 'https://hdhome.org/favicon.ico',
-            upload: 5.6,
-            download: 4.2,
-            ratio: parseFloat((5.6 / 4.2).toFixed(2))
-        }
-    ]);
-
+    const [sites, setSites] = useState<SiteData[]>([]);
+    const [loading, setLoading] = useState(false);
     const [selectedSite, setSelectedSite] = useState<SiteData | undefined>();
     const [settingsVisible, setSettingsVisible] = useState(false);
+    const [originalValues, setOriginalValues] = useState<any>(null);
 
     const sensors = useSensors(
         useSensor(PointerSensor),
@@ -263,49 +173,262 @@ const Sites: React.FC = () => {
         }
     };
 
-    const handleSettingsClick = (site: SiteData) => {
-        setSelectedSite(site);
-        setSettingsVisible(true);
+    const handleSettingsClick = async (site: SiteData) => {
+        try {
+            setLoading(true);
+            const [siteConfig, crawlerConfig, credential] = await Promise.all([
+                siteConfigApi.getSiteConfig(site.site_id),
+                siteConfigApi.getCrawlerConfig(site.site_id),
+                siteConfigApi.getCredential(site.site_id).catch(() => null)
+            ]);
+
+            // 保存原始值
+            setOriginalValues({
+                site_url: siteConfig.site_url,
+                login_config: JSON.stringify(siteConfig.login_config || {}, null, 2),
+                extract_rules: JSON.stringify(siteConfig.extract_rules || {}, null, 2),
+                checkin_config: JSON.stringify(siteConfig.checkin_config || {}, null, 2),
+                ...crawlerConfig,
+                ...(credential || {})
+            });
+
+            setSelectedSite(site);
+            setSettingsVisible(true);
+        } catch (error) {
+            message.error('加载站点配置失败');
+            console.error('加载站点配置失败:', error);
+        } finally {
+            setLoading(false);
+        }
     };
 
-    const handleSettingsSave = (values: any) => {
-        console.log('Settings saved:', values);
-        setSettingsVisible(false);
+    const handleSettingsSave = async (values: any, globalValues?: Record<string, boolean>) => {
+        try {
+            setLoading(true);
+            const updates = [];
+
+            if (selectedSite?.site_id && originalValues) {
+                // 处理站点配置更新
+                const siteConfigChanges: Record<string, any> = {};
+                let hasSiteConfigChanges = false;
+
+                // 检查 site_url 变化
+                if (values.site_url !== originalValues.site_url
+                    && typeof values.site_url !== 'undefined'
+                    && values.site_url !== null
+                    && values.site_url !== ''
+                    && values.site_url.startsWith('http')
+                ) {
+                    siteConfigChanges.site_url = values.site_url;
+                    hasSiteConfigChanges = true;
+                }
+
+                // 检查 JSON 配置变化
+                const jsonFields = ['login_config', 'extract_rules', 'checkin_config'];
+                for (const field of jsonFields) {
+                    try {
+                        const newValue = JSON.parse(values[field] || '{}');
+                        const oldValue = JSON.parse(originalValues[field] || '{}');
+                        if (JSON.stringify(newValue) !== JSON.stringify(oldValue)) {
+                            siteConfigChanges[field] = newValue;
+                            hasSiteConfigChanges = true;
+                        }
+                    } catch (e) {
+                        message.error(`${field} 格式错误`);
+                        return;
+                    }
+                }
+
+                // 处理爬虫配置更新
+                const crawlerConfigChanges: Record<string, any> = {};
+                let hasCrawlerConfigChanges = false;
+                const crawlerFields = ['enabled', 'use_proxy', 'proxy_url', 'fresh_login', 
+                                        'captcha_method', 'captcha_skip', 'timeout', 
+                                        'headless', 'login_max_retry'];
+                
+                crawlerFields.forEach(field => {
+                    const isGlobalValue = globalValues?.[field] || false;
+                    
+                    // 只有在值不是全局设置且确实发生变化时才更新
+                    if (!isGlobalValue && 
+                        typeof values[field] !== 'undefined' &&
+                        values[field] !== null &&
+                        values[field] !== originalValues[field]) {
+                        crawlerConfigChanges[field] = values[field];
+                        hasCrawlerConfigChanges = true;
+                    }
+                });
+
+                // 处理凭证更新
+                const credentialChanges: Record<string, any> = {};
+                let hasCredentialChanges = false;
+                const credentialFields = ['enable_manual_cookies', 'manual_cookies', 
+                                        'username', 'password', 'authorization', 'apikey'];
+                
+                credentialFields.forEach(field => {
+                    if (typeof values[field] !== 'undefined' && 
+                        values[field] !== null && 
+                        values[field] !== originalValues[field]) {
+                        credentialChanges[field] = values[field];
+                        hasCredentialChanges = true;
+                    }
+                });
+
+                // 只有有变更时才发送更新请求
+                if (hasSiteConfigChanges) {
+                    console.log('siteConfigChanges', siteConfigChanges);
+                    updates.push(siteConfigApi.updateSiteConfig(selectedSite.site_id, siteConfigChanges));
+                }
+
+                if (hasCrawlerConfigChanges) {
+                    console.log('crawlerConfigChanges', crawlerConfigChanges);
+                    updates.push(siteConfigApi.updateCrawlerConfig(selectedSite.site_id, crawlerConfigChanges));
+                }
+
+                if (hasCredentialChanges) {
+                    console.log('credentialChanges', credentialChanges);
+                    updates.push(siteConfigApi.updateCredential(selectedSite.site_id, credentialChanges));
+                }
+
+                if (updates.length > 0) {
+                    console.log('all updates', updates);
+                    await Promise.all(updates);
+                    message.success('保存成功');
+                    loadSitesData();
+                } else {
+                    message.info('没有需要保存的更改');
+                }
+            }
+            setSettingsVisible(false);
+            setOriginalValues(null);
+        } catch (error) {
+            message.error('保存失败');
+            console.error('保存失败:', error);
+        } finally {
+            setLoading(false);
+        }
     };
+
+    const loadSitesData = async () => {
+        try {
+            setLoading(true);
+            const [siteConfigs, statistics, tasks] = await Promise.all([
+                siteConfigApi.getAllSiteConfigs(),
+                siteConfigApi.getSiteStatistics(),
+                siteConfigApi.getAllSitesTasks()
+            ]);
+
+            // 处理统计数据
+            const statsMap = new Map();
+            if (statistics.metrics.daily_results) {
+                statistics.metrics.daily_results.forEach((result: any) => {
+                    statsMap.set(result.site_id, {
+                        upload: result.upload || 0,
+                        download: result.download || 0,
+                        ratio: result.ratio || 0
+                    });
+                });
+            }
+
+            // 处理任务状态
+            const tasksMap = new Map();
+            tasks.forEach((task: any) => {
+                const currentTask = tasksMap.get(task.site_id);
+                // 如果是第一个任务或者比现有任务更新
+                if (!currentTask || new Date(task.created_at) > new Date(currentTask.created_at)) {
+                    tasksMap.set(task.site_id, task);
+                }
+            });
+
+            // 判断任务状态是否为今天
+            const isToday = (dateStr: string) => {
+                const taskDate = new Date(dateStr);
+                const today = new Date();
+                return taskDate.getDate() === today.getDate() &&
+                    taskDate.getMonth() === today.getMonth() &&
+                    taskDate.getFullYear() === today.getFullYear();
+            };
+
+            // 组合数据
+            const sitesData = siteConfigs.map(config => {
+                const stats = statsMap.get(config.site_id) || {
+                    upload: 0,
+                    download: 0,
+                    ratio: 0
+                };
+
+                // 获取该站点的最新任务
+                const latestTask = tasksMap.get(config.site_id);
+                
+                // 判断该站点的连接状态
+                let connect_status: 'online' | 'offline' = 'offline';
+                if (latestTask) {
+                    const isTaskToday = isToday(latestTask.created_at);
+                    const isTaskSuccess = latestTask.status === 'success';
+                    connect_status = (isTaskToday && isTaskSuccess) ? 'online' : 'offline';
+                }
+                
+                return {
+                    id: config.site_id,
+                    site_id: config.site_id,
+                    name: config.site_id,
+                    base_url: config.site_url,
+                    connect_status,
+                    favicon: `${config.site_url}/favicon.ico`,
+                    upload: stats.upload,
+                    download: stats.download,
+                    ratio: stats.ratio
+                };
+            });
+
+            setSites(sitesData);
+        } catch (error) {
+            message.error('加载站点数据失败');
+            console.error('加载站点数据失败:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        loadSitesData();
+    }, []);
 
     return (
-        <div className={styles.sitesContainer}>
-            <div className={styles.header}>
-                <Button type="primary">添加站点</Button>
-            </div>
-            <DndContext
-                sensors={sensors}
-                collisionDetection={closestCenter}
-                onDragEnd={handleDragEnd}
-            >
-                <SortableContext
-                    items={sites.map(site => site.id)}
-                    strategy={rectSortingStrategy}
+        <Spin spinning={loading}>
+            <div className={styles.sitesContainer}>
+                <div className={styles.header}>
+                    <Button type="primary">添加站点</Button>
+                </div>
+                <DndContext
+                    sensors={sensors}
+                    collisionDetection={closestCenter}
+                    onDragEnd={handleDragEnd}
                 >
-                    <div className={styles.sitesGrid}>
-                        {sites.map((site) => (
-                            <SortableSiteCard
-                                key={site.id}
-                                site={site}
-                                onSettingsClick={handleSettingsClick}
-                            />
-                        ))}
-                    </div>
-                </SortableContext>
-            </DndContext>
+                    <SortableContext
+                        items={sites.map(site => site.id)}
+                        strategy={rectSortingStrategy}
+                    >
+                        <div className={styles.sitesGrid}>
+                            {sites.map((site) => (
+                                <SortableSiteCard
+                                    key={site.id}
+                                    site={site}
+                                    onSettingsClick={handleSettingsClick}
+                                />
+                            ))}
+                        </div>
+                    </SortableContext>
+                </DndContext>
 
-            <SiteSettingsModal
-                visible={settingsVisible}
-                site={selectedSite}
-                onClose={() => setSettingsVisible(false)}
-                onSave={handleSettingsSave}
-            />
-        </div>
+                <SiteSettingsModal
+                    visible={settingsVisible}
+                    site={selectedSite}
+                    onClose={() => setSettingsVisible(false)}
+                    onSave={handleSettingsSave}
+                />
+            </div>
+        </Spin>
     );
 };
 
