@@ -9,7 +9,25 @@ from sqlalchemy.pool import AsyncAdaptedQueuePool
 _logger = get_logger(__name__, "database")
 
 # 创建带连接池的异步引擎
+from core.config import database_settings
+from core.logger import get_logger
+from fastapi import Request
+from sqlalchemy.ext.asyncio import (AsyncSession, async_sessionmaker,
+                                    create_async_engine)
+from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.pool import AsyncAdaptedQueuePool
+
+_logger = get_logger(__name__, "database")
+
+# 创建带连接池的异步引擎
 engine = create_async_engine(
+    database_settings.DATABASE_URL,
+    poolclass=AsyncAdaptedQueuePool,
+    pool_size=database_settings.DB_POOL_SIZE,
+    max_overflow=database_settings.DB_MAX_OVERFLOW,
+    pool_timeout=database_settings.DB_POOL_TIMEOUT,
+    pool_recycle=database_settings.DB_POOL_RECYCLE,
+    echo=database_settings.DB_ECHO,
     database_settings.DATABASE_URL,
     poolclass=AsyncAdaptedQueuePool,
     pool_size=database_settings.DB_POOL_SIZE,
@@ -20,6 +38,7 @@ engine = create_async_engine(
 )
 
 # 创建会话工厂
+async_session = async_sessionmaker(
 async_session = async_sessionmaker(
     engine,
     class_=AsyncSession,
@@ -77,14 +96,20 @@ async def init_db():
         _logger.info("Database tables created successfully")
     except Exception as e:
         _logger.error(f"Database initialization failed: {str(e)}")
+        _logger.error(f"Database initialization failed: {str(e)}")
         raise
 
+# 数据库清理函数
+async def cleanup_db():
 # 数据库清理函数
 async def cleanup_db():
     """清理数据库连接"""
     try:
         await engine.dispose()
         _logger.info("Database connections disposed successfully")
+        _logger.info("Database connections disposed successfully")
     except Exception as e:
+        _logger.error(f"Failed to dispose database connections: {str(e)}")
+        raise
         _logger.error(f"Failed to dispose database connections: {str(e)}")
         raise
