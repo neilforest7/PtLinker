@@ -111,5 +111,36 @@ export const siteConfigApi = {
             params: { limit }
         });
         return response.data;
-    }
+    },
+
+    // 创建任务（可选指定站点或为所有站点创建）
+    createTasks: async (createForAllSites: boolean = true, siteId?: string): Promise<TaskResponse[]> => {
+        const response = await axios.post(`${BASE_URL}/tasks`, null, {
+            params: {
+                site_id: siteId,
+                create_for_all_sites: createForAllSites
+            }
+        });
+        return response.data;
+    },
+
+    // 重试失败的任务
+    retryFailedTasks: async (): Promise<TaskResponse[]> => {
+        const response = await axios.post(`${BASE_URL}/tasks/retry-failed`);
+        return response.data;
+    },
+
+    // 启动所有待处理任务
+    startQueueTasks: async (): Promise<any> => {
+        const response = await axios.post(`${BASE_URL}/queue/start`);
+        return response.data;
+    },
+
+    // 清除待处理任务队列
+    clearPendingTasks: async (siteId?: string): Promise<any> => {
+        const response = await axios.delete(`${BASE_URL}/queue/clear`, {
+            params: { site_id: siteId }
+        });
+        return response.data;
+    },
 }; 

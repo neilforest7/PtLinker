@@ -1,0 +1,49 @@
+.tasksContainer {
+    padding: 16px;
+}
+
+.controlBar {
+    margin-bottom: 24px;
+    padding: 16px;
+    background: #fafafa;
+    border-radius: 4px;
+}
+
+.taskCard {
+    height: 100%;
+    transition: all 0.3s;
+}
+
+.taskCard:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.taskHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+}
+
+.taskContent {
+    color: rgba(0, 0, 0, 0.45);
+    font-size: 12px !important;
+}
+
+.smallText :global(.ant-tag) {
+    font-size: 1px !important;
+}
+
+.smallText :global(.ant-typography) {
+    font-size: 10px !important;
+    /* line-height: 1.5 !important; */
+}
+
+.taskContent :global(.ant-progress) {
+    margin-top: 12px;
+    /* line-height: 1; */
+}
+
+.taskContent :global(.ant-progress-text) {
+    font-size: 12px;
+} 

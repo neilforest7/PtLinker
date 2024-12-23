@@ -48,9 +48,10 @@ interface SiteData {
 interface SortableSiteCardProps {
     site: SiteData;
     onSettingsClick: (site: SiteData) => void;
+    onUpdateClick: (site: SiteData) => void;
 }
 
-const SortableSiteCard: React.FC<SortableSiteCardProps> = ({ site, onSettingsClick }) => {
+const SortableSiteCard: React.FC<SortableSiteCardProps> = ({ site, onSettingsClick, onUpdateClick }) => {
     const {
         attributes,
         listeners,
@@ -76,7 +77,20 @@ const SortableSiteCard: React.FC<SortableSiteCardProps> = ({ site, onSettingsCli
                 className={styles.siteCard}
                 // styles={{ padding: '12px' }}
                 actions={[
-                    <SyncOutlined key="update" title="更新" />,
+                    <Popconfirm
+                        key="update"
+                        placement='topLeft'
+                        title="确认更新"
+                        description="确定要更新该站点吗？"
+                        okText="确定"
+                        cancelText="取消"
+                        onConfirm={(e) => {
+                            e?.stopPropagation();
+                            onUpdateClick(site);
+                        }}
+                    >
+                        <SyncOutlined title="更新" />
+                    </Popconfirm>,
                     <ExperimentOutlined key="test" title="测试" />,
                     <BarChartOutlined key="stats" title="数据" />,
                     <SettingOutlined 
@@ -249,7 +263,7 @@ const Sites: React.FC = () => {
                 crawlerFields.forEach(field => {
                     const isGlobalValue = globalValues?.[field] || false;
                     
-                    // 只有在值不是全局设置且确实发生变化时才更新
+                    // 只有在值不是全局设置且确实发生变化时更新
                     if (!isGlobalValue && 
                         typeof values[field] !== 'undefined' &&
                         values[field] !== null &&
@@ -390,6 +404,20 @@ const Sites: React.FC = () => {
         }
     };
 
+    const handleUpdateClick = async (site: SiteData) => {
+        try {
+            const tasks = await siteConfigApi.createTasks(false, site.site_id);
+            if (tasks.length > 0) {
+                message.success('成功创建更新任务');
+            } else {
+                message.warning('创建任务失败，请检查站点配置');
+            }
+        } catch (error) {
+            message.error('创建更新任务失败');
+            console.error('创建更新任务失败:', error);
+        }
+    };
+
     useEffect(() => {
         loadSitesData();
     }, []);
@@ -398,7 +426,55 @@ const Sites: React.FC = () => {
         <Spin spinning={loading}>
             <div className={styles.sitesContainer}>
                 <div className={styles.header}>
-                    <Button type="primary">添加站点</Button>
+                    <Space>
+                        <Button type="primary">添加站点</Button>
+                        <Popconfirm
+                            placement='bottomLeft'
+                            title="确认开始爬取"
+                            description="确定要开始爬取所有站点吗？"
+                            okText="确定"
+                            cancelText="取消"
+                            onConfirm={async () => {
+                                try {
+                                    const tasks = await siteConfigApi.createTasks(true);
+                                    const successCount = tasks.length;
+                                    if (successCount > 0) {
+                                        message.success(`成功创建 ${successCount} 个任务`);
+                                    } else {
+                                        message.warning('没有创建任何任务，请检查站点配置');
+                                    }
+                                } catch (error) {
+                                    message.error('创建任务失败');
+                                    console.error('创建任务失败:', error);
+                                }
+                            }}
+                        >
+                            <Button icon={<SyncOutlined />}>开始爬取所有站点</Button>
+                        </Popconfirm>
+                        <Popconfirm
+                            placement='bottomLeft'
+                            title="确认重试"
+                            description="确定要重试所有失败的站点吗？"
+                            okText="确定"
+                            cancelText="取消"
+                            onConfirm={async () => {
+                                try {
+                                    const tasks = await siteConfigApi.retryFailedTasks();
+                                    const successCount = tasks.length;
+                                    if (successCount > 0) {
+                                        message.success(`成功重试 ${successCount} 个失败任务`);
+                                    } else {
+                                        message.info('没有找到需要重试的失败任务');
+                                    }
+                                } catch (error) {
+                                    message.error('重试失败任务失败');
+                                    console.error('重试失败任务失败:', error);
+                                }
+                            }}
+                        >
+                            <Button icon={<SyncOutlined />}>重试失败站点</Button>
+                        </Popconfirm>
+                    </Space>
                 </div>
                 <DndContext
                     sensors={sensors}
@@ -415,6 +491,7 @@ const Sites: React.FC = () => {
                                     key={site.id}
                                     site={site}
                                     onSettingsClick={handleSettingsClick}
+                                    onUpdateClick={handleUpdateClick}
                                 />
                             ))}
                         </div>

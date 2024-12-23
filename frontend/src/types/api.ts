@@ -132,4 +132,5 @@ export interface TaskResponse {
     task_metadata?: any;
     system_info?: any;
     duration?: number;
+    error_message?: string;
 }

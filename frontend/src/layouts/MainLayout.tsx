@@ -5,6 +5,7 @@ import {
   LineChartOutlined,
   ExperimentOutlined,
   SettingOutlined,
+  OrderedListOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 
@@ -16,6 +17,11 @@ const menuItems = [
     key: '/sites',
     icon: <DesktopOutlined />,
     label: '站点管理',
+  },
+  {
+    key: '/tasks',
+    icon: <OrderedListOutlined />,
+    label: '任务队列',
   },
   {
     key: '/statistics',
