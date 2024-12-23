@@ -2,9 +2,11 @@ import traceback
 from contextlib import asynccontextmanager
 
 import uvicorn
+from api.v1 import crawler_configs, credentials, queue
 from api.v1 import settings as settings_api
-from api.v1 import site_configs, tasks, statistics, queue, crawler_configs, credentials
-from core.database import cleanup_db, get_db, init_db
+from api.v1 import site_configs, statistics, tasks
+from core.database import (cleanup_db, db_session_middleware, get_db,
+                            get_init_db, init_db)
 from core.logger import get_logger, setup_logger
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -48,7 +50,7 @@ async def lifespan(app: FastAPI):
         # 2. 获取数据库会话
         _logger.debug("Getting database session")
         try:
-            db = await anext(get_db())
+            db = await get_init_db()
             _logger.debug("Database session acquired")
         except Exception as session_error:
             error_msg = f"Failed to get database session: {session_error.__class__.__name__}"
@@ -172,7 +174,8 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan
 )
-
+# 添加数据库会话中间件
+app.middleware("http")(db_session_middleware)
 # 配置CORS
 app.add_middleware(
     CORSMiddleware,
