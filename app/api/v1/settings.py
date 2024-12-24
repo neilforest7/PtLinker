@@ -33,51 +33,21 @@ async def get_settings(db: AsyncSession = Depends(get_db)) -> SettingsResponse:
             detail=f"获取系统设置失败: {str(e)}"
         )
 
-
-# @router.post("", response_model=SettingsResponse)
-# async def create_settings(
-#     settings_data: SettingsCreate,
-#     db: AsyncSession = Depends(get_db)
-# ) -> SettingsResponse:
-#     """创建新的系统设置（会覆盖现有设置）"""
-#     try:
-#         # 确保设置已初始化
-#         if not settings._settings:
-#             logger.debug("设置未初始化，正在初始化...")
-#             await settings.initialize(db)
-            
-#         # 更新所有设置
-#         logger.debug("正在更新所有设置")
-#         await settings.update_settings(db, settings_data.model_dump())
-        
-#         # 获取更新后的设置
-#         settings_dict = await settings.get_all_settings()
-#         logger.debug("设置创建/更新成功")
-#         return SettingsResponse(**settings_dict)
-        
-#     except Exception as e:
-#         logger.error(f"创建设置失败: {str(e)}", exc_info=True)
-#         raise HTTPException(
-#             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-#             detail=f"创建系统设置失败: {str(e)}"
-#         )
-
-
 @router.patch("", response_model=SettingsResponse, summary="更新系统设置（部分更新）")
 async def update_settings(
     settings_data: SettingsUpdate,
     db: AsyncSession = Depends(get_db)
 ) -> SettingsResponse:
     """更新系统设置（部分更新）"""
-    # TODO: 422 Unprocessable 
     try:
         # 确保设置已初始化
         if not SettingManager.get_instance()._settings:
             logger.debug("设置未初始化，正在初始化...")
             await SettingManager.get_instance().initialize(db)
             
-        # 只更新非空值
-        update_data = {k: v for k, v in settings_data.model_dump().items() if v is not None}
+        # 只更新非空值，并自动设置更新时间
+        update_data = {k: v for k, v in settings_data.model_dump().items() 
+                        if v is not None and k != 'updated_at'}
         if update_data:
             logger.debug(f"正在更新设置: {update_data}")
             await SettingManager.get_instance().update_settings(db, update_data)
@@ -175,7 +145,7 @@ async def set_setting_value(
             
         # 更新设置值
         logger.debug(f"正在设置 {key} 的值: {value.get('value')}")
-        await SettingManager.get_instance().set_setting(db, key, value.get("value"))
+        await SettingManager.get_instance().update_settings(db, {key: value.get('value')})
         
         # 获取更新后的值
         updated_value = await SettingManager.get_instance().get_setting(key)

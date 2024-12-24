@@ -194,11 +194,21 @@ class SettingManager:
             raise RuntimeError("Settings not initialized. Call initialize() first.")
             
         try:
+            # 获取当前会话中的设置对象
+            stmt = select(DBSettings).where(DBSettings.id == self._settings.id)
+            result = await db.execute(stmt)
+            current_settings = result.scalar_one()
+            
+            # 更新实例属性
             for key, value in settings.items():
-                if hasattr(self._settings, key):
-                    setattr(self._settings, key, value)
+                if hasattr(current_settings, key):
+                    setattr(current_settings, key, value)
                     self._cache[key] = value
-                    
+            
+            # 更新内存中的实例
+            self._settings = current_settings
+            
+            # 提交更改
             await db.commit()
             self.logger.info("Settings updated successfully")
             

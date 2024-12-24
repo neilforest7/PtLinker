@@ -77,9 +77,10 @@ class SettingsCreate(SettingsBase):
 
 class SettingsUpdate(BaseModel):
     """更新配置模型"""
-    updated_at: datetime
+    updated_at: Optional[datetime] = None
     
     crawler_config_path: Optional[str] = None
+    crawler_credential_path: Optional[str] = None
     crawler_storage_path: Optional[str] = None
     crawler_max_concurrency: Optional[int] = None
     fresh_login: Optional[bool] = None
