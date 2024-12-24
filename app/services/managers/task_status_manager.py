@@ -64,11 +64,15 @@ class TaskStatusManager:
                 if completed_at:
                     task.completed_at = completed_at
                 if task_metadata:
-                    if task.task_metadata:
-                        task.task_metadata.update(task_metadata)
-                    else:
-                        task.task_metadata = task_metadata
+                    # 创建新的字典来触发SQLAlchemy的更改检测
+                    current_metadata = dict(task.task_metadata or {})
+                    current_metadata.update(task_metadata)
+                    task.task_metadata = current_metadata  # 重新赋值整个字典
                     
+                    self.logger.warning(f"更新后的 task_metadata: {task.task_metadata}")
+                
+                # 标记字段为已修改
+                db.add(task)
                 await db.commit()
                 
                 log_context = f"[站点: {site_id or task.site_id}] " if site_id or task.site_id else ""

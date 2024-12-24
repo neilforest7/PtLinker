@@ -1,24 +1,23 @@
 import asyncio
 import os
 import sys
+import traceback
 from datetime import datetime
 from multiprocessing import Process
 from pathlib import Path
 from typing import Dict, Optional
-import traceback
 
-from services.managers.result_manager import ResultManager
-from services.managers.setting_manager import SettingManager
 from core.database import AsyncSession
 from core.logger import get_logger, setup_logger
 from models.models import Task, TaskStatus
 from schemas.task import TaskCreate, TaskResponse, TaskUpdate
 from services.crawler.site_crawler import SiteCrawler
-from services.managers.site_manager import SiteManager
-from services.managers.setting_manager import SettingManager
 from services.managers.browserstate_manager import BrowserStateManager
-from sqlalchemy import select
+from services.managers.result_manager import ResultManager
+from services.managers.setting_manager import SettingManager
+from services.managers.site_manager import SiteManager
 from services.managers.task_status_manager import task_status_manager
+from sqlalchemy import select
 
 
 class CrawlerProcess(Process):
@@ -50,7 +49,7 @@ class CrawlerProcess(Process):
                 
                 # 初始化数据库连接
                 from core import database
-                db = await anext(database.get_db())
+                db = await database.get_init_db()
                 
                 # 更新任务状态为 PENDING
                 await self._update_task_status(db, TaskStatus.PENDING, "任务初始化中")
@@ -400,6 +399,9 @@ class ProcessManager:
                 
                 self.logger.info(f"成功清理 {len(running_tasks)} 个进程")
                 
+                if self._db:
+                    await self._db.close()
+                    
             except Exception as e:
                 self.logger.error(f"清理进程时发生错误: {str(e)}")
                 self.logger.debug("错误详情:", exc_info=True)

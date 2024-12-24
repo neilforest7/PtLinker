@@ -54,7 +54,10 @@ class BaseCrawler(ABC):
         
         # 7. 浏览器初始化
         self.browser: Optional[Chromium] = None
-            
+        
+        self._progress = 0
+        self._total_steps = 100  # 总步骤数
+        
     async def set_db(self, db: AsyncSession):
         """设置数据库会话"""
         self.db = db
@@ -64,13 +67,13 @@ class BaseCrawler(ABC):
         status: TaskStatus,
         msg: Optional[str] = None,
         error_details: Optional[Dict] = None,
-        completed_at: Optional[datetime] = None
-    ) -> None:
+        completed_at: Optional[datetime] = None,
+        task_metadata: Optional[Dict] = None) -> None:
         """更新任务状态"""
         if not self.db:
             self.logger.error("数据库会话未初始化，无法更新任务状态")
             return
-            
+        self.logger.warning(f"更新任务进度: {self._progress}")
         await task_status_manager.update_task_status(
             db=self.db,
             task_id=self.task_id,
@@ -78,6 +81,7 @@ class BaseCrawler(ABC):
             msg=msg,
             completed_at=completed_at,
             error_details=error_details,
+            task_metadata=task_metadata,
             site_id=self.site_id
         )
 
@@ -85,11 +89,14 @@ class BaseCrawler(ABC):
         """启动爬虫"""
         try:
             # 初始化浏览器
+            await self._update_progress(1, 6, "正在初始化浏览器")
             init_result = await self._init_browser()
             
             # 执行具体的爬取任务
             if init_result:
+                await self._update_progress(2, 6, "正在执行爬取任务")
                 await self._crawl(self.browser)
+                await self._update_progress(5, 6, "正在执行签到任务")
                 await self._checkin(self.browser)
             else:
                 await self._update_task_status(TaskStatus.FAILED, "初始化浏览器失败，跳过爬取")
@@ -101,6 +108,7 @@ class BaseCrawler(ABC):
             raise
         finally:
             # 清理资源
+            await self._update_progress(6, 6, "正在清理资源")
             await self._cleanup()
 
     async def _init_browser(self) -> None:
@@ -641,3 +649,17 @@ class BaseCrawler(ABC):
         except Exception as e:
             self.logger.error(f"保存签到结果失败: {str(e)}")
             raise
+
+    async def _update_progress(self, current_step: int, total_steps: Optional[int] = None, msg: Optional[str] = None):
+        """更新任务进度"""
+        if total_steps:
+            self._total_steps = total_steps
+        
+        self._progress = min(100, int((current_step / self._total_steps) * 100))
+        self.logger.warning(f"更新任务进度: {self._progress}")
+        # 更新任务状态，包含进度信息
+        await self._update_task_status(
+            status=TaskStatus.RUNNING,
+            msg=msg,
+            task_metadata={ "progress": self._progress }
+        )

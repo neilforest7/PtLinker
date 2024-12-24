@@ -3,10 +3,10 @@ from typing import Any, Dict, Literal, Optional
 from urllib.parse import urljoin
 
 from DrissionPage import Chromium
-from utils.url import convert_url
-
+from models.models import TaskStatus
 from schemas.siteconfig import ExtractRuleSet, WebElement
 from schemas.sitesetup import SiteSetup
+from utils.url import convert_url
 
 from .base_crawler import BaseCrawler
 
@@ -30,15 +30,17 @@ class SiteCrawler(BaseCrawler):
             
             try:
                 # 提取所有数据
+                await self._update_progress(3, 6, "正在提取数据")
                 data = await self._extract_all_data(tab)
                 
                 # 清洗数据
+                await self._update_progress(4, 6, "正在清洗数据")
                 cleaned_data = await self._clean_data(data)
                 
                 # 保存数据
                 self.logger.debug("保存提取的数据")
                 await self._save_crawl_data(cleaned_data)
-                
+
             finally:
                 # 确保标签页被关闭
                 self.logger.debug("关闭标签页")
@@ -49,6 +51,11 @@ class SiteCrawler(BaseCrawler):
             # 保存错误现场
             await self._save_screenshot(browser, 'error')
             await self._save_page_source(browser, 'error')
+            await self._update_task_status(
+                TaskStatus.FAILED,
+                msg=f"爬取失败: {str(e)}",
+                error_details={"error": str(e)}
+            )
             raise
 
     async def _checkin(self, browser: Chromium):
