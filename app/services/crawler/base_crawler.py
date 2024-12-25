@@ -108,7 +108,7 @@ class BaseCrawler(ABC):
             raise
         finally:
             # 清理资源
-            await self._update_progress(6, 6, "正在清理资源")
+            # await self._update_progress(6, 6, "正在清理资源")
             await self._cleanup()
 
     async def _init_browser(self) -> None:

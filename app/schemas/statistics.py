@@ -50,6 +50,7 @@ class DailyResult(BaseModel):
     download: Optional[float]
     ratio: Optional[float]
     bonus: Optional[float]
+    bonus_per_hour: Optional[float]
     seeding_score: Optional[float]
     seeding_size: Optional[float]
     seeding_count: Optional[int]
@@ -61,6 +62,7 @@ class DailyIncrement(BaseModel):
     date: date
     site_id: str
     upload_increment: Optional[float] = 0
+    download_increment: Optional[float] = 0
     bonus_increment: Optional[float] = 0
     seeding_score_increment: Optional[float] = 0
     seeding_size_increment: Optional[float] = 0

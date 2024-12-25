@@ -199,6 +199,19 @@ class SettingManager:
             result = await db.execute(stmt)
             current_settings = result.scalar_one()
             
+            # 处理需要去重的字段
+            list_fields = ['captcha_skip_sites', 'checkin_sites']
+            for field in list_fields:
+                if field in settings:
+                    # 将字符串分割成列表,去重,再合并回字符串
+                    if settings[field]:
+                        items = settings[field].split(',')
+                        # 去除空字符串并去重
+                        unique_items = list(dict.fromkeys(item.strip() for item in items if item.strip()))
+                        settings[field] = ','.join(unique_items)
+                    else:
+                        settings[field] = ''
+            
             # 更新实例属性
             for key, value in settings.items():
                 if hasattr(current_settings, key):
