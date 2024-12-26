@@ -5,7 +5,7 @@ from typing import List, Optional
 from core.database import get_db
 from core.logger import get_logger, setup_logger
 from fastapi import (APIRouter, BackgroundTasks, Depends, HTTPException, Query,
-                        status)
+                     status)
 from models.models import Task, TaskStatus
 from schemas.task import TaskCreate, TaskResponse, TaskUpdate
 from services.managers.process_manager import ProcessManager
@@ -19,6 +19,9 @@ logger = get_logger(__name__, "task_api")
 
 def get_site_manager():
     return SiteManager.get_instance()
+
+def get_process_manager():
+    return ProcessManager()
 
 @router.post("/retry-failed", response_model=List[TaskResponse], summary="重试所有站点的最近失败任务")
 async def retry_failed_tasks(
@@ -295,7 +298,8 @@ async def list_tasks(
 async def cancel_task(
     task_id: str,
     db: AsyncSession = Depends(get_db),
-    queue_manager: QueueManager = Depends(lambda: QueueManager())
+    queue_manager: QueueManager = Depends(lambda: QueueManager()),
+    process_manager: ProcessManager = Depends(get_process_manager)
 ) -> dict:
     """
     取消指定的任务
@@ -304,6 +308,7 @@ async def cancel_task(
         task_id: 任务ID
         db: 数据库会话
         queue_manager: 队列管理器
+        process_manager: 进程管理器
         
     Returns:
         dict: 操作结果
@@ -328,14 +333,17 @@ async def cancel_task(
             logger.warning(f"任务已完成或已取消，无法取消 - 任务ID: {task_id}, 状态: {task.status}")
             return {"message": f"任务已是终态: {task.status}"}
             
-        # 3. 从队列中移除任务
-        logger.debug(f"从队列中移除任务 - 任务ID: {task_id}")
-        await queue_manager.remove_task(task_id)
+        # 3. 如果任务正在运行，停止进程
+        if task.status == TaskStatus.RUNNING:
+            logger.info(f"停止运行中的任务进程 - 任务ID: {task_id}")
+            if await process_manager.stop_task(task_id):
+                logger.info(f"成功停止任务进程 - 任务ID: {task_id}")
+            else:
+                logger.warning(f"停止任务进程失败或进程已不存在 - 任务ID: {task_id}")
         
-        # 4. 更新任务状态
-        task.status = TaskStatus.CANCELLED
-        task.completed_at = datetime.now()
-        await db.commit()
+        # 4. 从队列中移除任务
+        logger.debug(f"从队列中移除任务 - 任务ID: {task_id}")
+        await queue_manager.cancel_task(task_id, db)
         
         logger.info(f"任务取消成功 - 任务ID: {task_id}")
         return {"message": "任务已取消"}
