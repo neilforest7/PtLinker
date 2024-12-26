@@ -4,9 +4,13 @@
 
 .controlBar {
     margin-bottom: 24px;
-    padding: 16px;
-    background: #fafafa;
-    border-radius: 4px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    /* padding: 16px; */
+    /* background: #fafafa; */
+    /* border-radius: 4px; */
 }
 
 .taskCard {
@@ -46,4 +50,16 @@
 
 .taskContent :global(.ant-progress-text) {
     font-size: 12px;
+}
+
+.taskActions {
+    margin-top: 12px;
+    display: flex;
+    justify-content: flex-start;
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+.taskActions:hover {
+    opacity: 1;
 } 

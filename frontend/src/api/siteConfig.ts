@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { SiteConfigResponse, CrawlerConfigResponse, SettingsResponse, CrawlerCredentialResponse, TaskResponse } from '../types/api';
+import { SiteConfigResponse, CrawlerConfigResponse, SettingsResponse, CrawlerCredentialResponse, TaskResponse, StatisticsHistoryResponse } from '../types/api';
 
 const BASE_URL = '/api/v1';
 
@@ -81,6 +81,12 @@ export const siteConfigApi = {
         return response.data;
     },
 
+    // 获取所有爬虫配置
+    getAllCrawlerConfigs: async (): Promise<CrawlerConfigResponse[]> => {
+        const response = await axios.get(`${BASE_URL}/crawler-configs`);
+        return response.data;
+    },
+    
     // 获取站点统计数据
     getSiteStatistics: async (siteId?: string) => {
         const response = await axios.get(`${BASE_URL}/statistics`, {
@@ -141,6 +147,40 @@ export const siteConfigApi = {
         const response = await axios.delete(`${BASE_URL}/queue/clear`, {
             params: { site_id: siteId }
         });
+        return response.data;
+    },
+
+    // 获取系统设置
+    getSettings: async (): Promise<SettingsResponse> => {
+        const response = await axios.get(`${BASE_URL}/settings`);
+        return response.data;
+    },
+
+    // 更新系统设置
+    updateSettings: async (settings: Partial<SettingsResponse>): Promise<SettingsResponse> => {
+        const response = await axios.patch(`${BASE_URL}/settings`, settings);
+        return response.data;
+    },
+
+    // 重置系统设置
+    resetSettings: async (): Promise<SettingsResponse> => {
+        const response = await axios.post(`${BASE_URL}/settings/reset`);
+        return response.data;
+    },
+
+    // 获取所有站点最新统计数据
+    getLastSuccessStatistics: async () => {
+        const response = await axios.get(`${BASE_URL}/statistics/last-success`);
+        return response.data;
+    },
+
+    async getStatisticsHistory(): Promise<StatisticsHistoryResponse> {
+        const response = await axios.get('/api/v1/statistics');
+        return response.data;
+    },
+
+    cancelTask: async (taskId: string): Promise<any> => {
+        const response = await axios.delete(`${BASE_URL}/tasks/${taskId}`);
         return response.data;
     },
 }; 

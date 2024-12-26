@@ -72,9 +72,6 @@ export interface BaseResponse {
 }
 
 export interface SettingsResponse {
-    id: number;
-    created_at: string;
-    updated_at: string;
     crawler_config_path: string;
     crawler_credential_path: string;
     crawler_storage_path: string;
@@ -108,7 +105,12 @@ export interface SettingsResponse {
     captcha_storage_path: string;
     enable_checkin: boolean;
     checkin_sites: string;
+    id?: number;
+    created_at?: string;
+    updated_at?: string;
 }
+
+export interface SettingsUpdate extends Partial<Omit<SettingsResponse, 'id' | 'created_at' | 'updated_at'>> {}
 
 export interface CrawlerCredentialResponse {
     site_id: string;
@@ -134,3 +136,90 @@ export interface TaskResponse {
     duration?: number;
     error_message?: string;
 }
+
+// 统计数据相关接口
+export interface DailyResult {
+    date: string;
+    site_id: string;
+    username: string;
+    upload: number;
+    download: number;
+    ratio: number;
+    bonus: number;
+    seeding_score: number | null;
+    seeding_size: number;
+    seeding_count: number;
+    task_id: string;
+}
+
+export interface DailyIncrement {
+    date: string;
+    site_id: string;
+    upload_increment: number;
+    bonus_increment: number;
+    seeding_score_increment: number | null;
+    seeding_size_increment: number;
+    seeding_count_increment: number;
+    task_id: string;
+    reference_task_id: string;
+}
+
+export interface SiteStatistics {
+    daily_results: DailyResult;
+    daily_increments: DailyIncrement;
+    last_success_time: string;
+}
+
+export interface StatisticsResponse {
+    [site_id: string]: SiteStatistics;
+}
+
+export interface StatisticsHistoryResponse {
+    time_range: {
+        start: string;
+        end: string;
+    };
+    metrics: {
+        daily_results: Array<{
+            date: string;
+            site_id: string;
+            username: string;
+            upload: number;
+            download: number;
+            ratio: number;
+            bonus: number;
+            bonus_per_hour: number | null;
+            seeding_score: number | null;
+            seeding_size: number;
+            seeding_count: number;
+            task_id: string;
+        }>;
+        daily_increments: Array<{
+            date: string;
+            site_id: string;
+            upload_increment: number;
+            download_increment: number;
+            bonus_increment: number;
+            seeding_score_increment: number | null;
+            seeding_size_increment: number | null;
+            seeding_count_increment: number | null;
+            task_id: string;
+            reference_task_id: string;
+        }>;
+    };
+    summary: {
+        total_sites: number;
+        total_upload_increment: number;
+        total_bonus_increment: number;
+        successful_checkins: number;
+    };
+    metadata: {
+        generated_at: string;
+        applied_filters: {
+            site_id: string[];
+            time_unit: string;
+            calculation: string;
+        };
+    };
+}
+

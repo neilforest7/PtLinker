@@ -1,0 +1,28 @@
+.settingsContainer {
+    padding: 16px;
+}
+
+.settingSection {
+    margin-bottom: 16px;
+    border: 1px solid #e2e2e2;
+}
+
+.settingSection :global(.ant-card-head) {
+    min-height: 45px;
+    padding: 0 12px;
+    background-color: #f3f3f3;
+}
+
+.settingSection :global(.ant-card-head-title) {
+    padding: 8px;
+}
+
+.settingSection :global(.ant-card-body) {
+    padding: 16px;
+}
+
+.formActions {
+    /* margin-top: 24px; */
+    /* text-align: right; */
+    padding-top: 0px;
+} 
