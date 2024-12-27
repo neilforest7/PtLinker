@@ -29,6 +29,7 @@ class TaskStatusManager:
         status: TaskStatus,
         msg: Optional[str] = None,
         completed_at: Optional[datetime] = None,
+        updated_at: Optional[datetime] = datetime.now(),
         error_details: Optional[Dict] = None,
         task_metadata: Optional[Dict] = None,
         site_id: Optional[str] = None  # 用于日志记录
@@ -63,6 +64,8 @@ class TaskStatusManager:
                     task.error_details = error_details
                 if completed_at:
                     task.completed_at = completed_at
+                if updated_at:
+                    task.updated_at = updated_at
                 if task_metadata:
                     # 创建新的字典来触发SQLAlchemy的更改检测
                     current_metadata = dict(task.task_metadata or {})

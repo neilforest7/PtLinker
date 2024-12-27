@@ -8,8 +8,9 @@ from schemas.result import ResultResponse
 
 class TaskStatus(str, Enum):
     """任务状态枚举"""
-    READY = "ready"
     PENDING = "pending"
+    QUEUED = "queued"
+    READY = "ready"
     RUNNING = "running"
     SUCCESS = "success"
     FAILED = "failed"

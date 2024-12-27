@@ -10,12 +10,13 @@ from core.database import Base
 
 class TaskStatus(PyEnum):
     """任务状态枚举"""
-    READY = "ready"
-    PENDING = "pending"
-    RUNNING = "running"
-    SUCCESS = "success"
-    FAILED = "failed"
-    CANCELLED = "cancelled"
+    PENDING = "pending"     # 初始状态
+    QUEUED = "queued"      # 在队列中等待
+    READY = "ready"         # 准备就绪
+    RUNNING = "running"   # 正在运行
+    SUCCESS = "success"   # 成功
+    FAILED = "failed"     # 失败
+    CANCELLED = "cancelled" # 已取消
 
 class TimestampMixin:
     created_at = Column(DateTime, default=datetime.now(), nullable=False)

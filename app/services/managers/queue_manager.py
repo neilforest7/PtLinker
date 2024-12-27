@@ -29,6 +29,59 @@ class QueueManager:
         """
         self._max_concurrency = max_concurrency
         self.logger.info(f"Queue manager initialized with max concurrency: {max_concurrency}")
+        
+        # 启动定期检查任务
+        asyncio.create_task(self._periodic_queue_check())
+        
+    async def _periodic_queue_check(self):
+        """定期检查队列状态并处理任务"""
+        while True:
+            try:
+                # 获取数据库会话
+                self.logger.info("周期检查队列状态")
+                from core import database
+                db = await database.get_init_db()
+                
+                # 检查当前运行任务数量，计算可用槽位
+                running_count = len(self._running_tasks)
+                if running_count < self._max_concurrency:
+
+                    # 计算可分配数量
+                    available_slots = self._max_concurrency - running_count
+                    
+                    # 获取QUEUED状态的任务
+                    stmt = (
+                        select(Task)
+                        .where(Task.status == TaskStatus.QUEUED)
+                        .order_by(Task.created_at.asc())
+                        .limit(available_slots)
+                    )
+                    result = await db.execute(stmt)
+                    queued_tasks = result.scalars().all()
+                    
+                    # 将任务标记为READY
+                    for task in queued_tasks:
+                        await self._update_task_status(
+                            db,
+                            task.task_id,
+                            TaskStatus.READY,
+                            "任务准备就绪"
+                        )
+                        self.logger.info(f"任务 {task.task_id} 已标记为READY状态")
+                
+                await db.commit()
+                
+            except Exception as e:
+                self.logger.error(f"队列检查失败: {str(e)}")
+                self.logger.debug("错误详情:", exc_info=True)
+                if db:
+                    await db.rollback()
+            finally:
+                if db:
+                    await db.close()
+                    
+            # 每30秒检查一次
+            await asyncio.sleep(30)
 
     async def _update_task_status(self, db: AsyncSession, task_id: str, status: TaskStatus, 
                                 msg: Optional[str] = None,
@@ -53,7 +106,7 @@ class QueueManager:
         )
         
     async def get_pending_tasks(self, site_id: Optional[str] = None, db: AsyncSession = None) -> List[TaskCreate]:
-        """获取待处理的任务列表，包括数据库中的READY状态任务
+        """获取待处理的任务列表
         
         Args:
             site_id: 可选的站点ID，如果提供则只返回该站点的任务
@@ -66,11 +119,18 @@ class QueueManager:
             try:
                 pending_tasks = []
                 
-                # 1. 从数据库中获取READY状态的任务（优先从数据库获取，确保状态一致性）
+                # 1. 从数据库中获取非终态的任务
                 if db:
-                    query = select(Task).where(Task.status == TaskStatus.READY)
+                    query = select(Task).where(
+                        Task.status.in_([
+                            TaskStatus.PENDING,
+                            TaskStatus.QUEUED,
+                            TaskStatus.READY
+                        ])
+                    )
                     if site_id:
                         query = query.where(Task.site_id == site_id)
+                    query = query.order_by(Task.created_at.asc())
                     
                     result = await db.execute(query)
                     db_tasks = result.scalars().all()
@@ -80,7 +140,7 @@ class QueueManager:
                         pending_tasks.append(TaskCreate(
                             task_id=task.task_id,
                             site_id=task.site_id,
-                            status=TaskStatus.READY,
+                            status=task.status,
                             created_at=task.created_at,
                             updated_at=task.updated_at,
                             task_metadata=task.task_metadata
@@ -92,36 +152,6 @@ class QueueManager:
                                 "queued_at": task.created_at,
                                 "site_id": task.site_id,
                             }
-                
-                # 2. 从内存队列中获取任务（确保包含最新添加但还未持久化到数据库的任务）
-                if site_id:
-                    # 处理指定站点的任务
-                    task_ids = self._queues[site_id]
-                    for task_id in task_ids:
-                        task_info = self._task_info.get(task_id)
-                        if task_info and task_id not in [t.task_id for t in pending_tasks]:
-                            pending_tasks.append(TaskCreate(
-                                task_id=task_id,
-                                site_id=site_id,
-                                status=TaskStatus.READY,
-                                created_at=task_info.get("queued_at"),
-                                updated_at=datetime.now(),
-                                task_metadata=task_info.get("task_metadata")
-                            ))
-                else:
-                    # 处理所有站点的任务
-                    for site_id, task_ids in self._queues.items():
-                        for task_id in task_ids:
-                            task_info = self._task_info.get(task_id)
-                            if task_info and task_id not in [t.task_id for t in pending_tasks]:
-                                pending_tasks.append(TaskCreate(
-                                    task_id=task_id,
-                                    site_id=site_id,
-                                    status=TaskStatus.READY,
-                                    created_at=task_info.get("queued_at"),
-                                    updated_at=datetime.now(),
-                                    task_metadata=task_info.get("task_metadata")
-                                ))
                 
                 self.logger.debug(f"获取到 {len(pending_tasks)} 个待处理任务")
                 if site_id:
@@ -150,7 +180,7 @@ class QueueManager:
                 db_task = Task(
                     task_id=task.task_id,
                     site_id=task.site_id,
-                    status=TaskStatus.READY,
+                    status=TaskStatus.PENDING,
                     created_at=datetime.now(),
                     updated_at=datetime.now(),
                 )
@@ -183,32 +213,36 @@ class QueueManager:
                 if site_id in self._running_tasks:
                     return None
                 
-                # 检查队列是否为空
-                if not self._queues[site_id]:
+                # 检查是否达到最大并发数
+                if len(self._running_tasks) >= self._max_concurrency:
                     return None
                 
-                # 获取下一个任务
-                task_id = self._queues[site_id].pop(0)
-                
-                # 更新任务状态为 PENDING
-                await self._update_task_status(
-                    db,
-                    task_id,
-                    TaskStatus.PENDING,
-                    "任务准备执行",
+                # 获取该站点的READY状态任务
+                stmt = (
+                    select(Task)
+                    .where(Task.site_id == site_id)
+                    .where(Task.status == TaskStatus.READY)
+                    .order_by(Task.created_at.asc())
+                    .limit(1)
                 )
-                
-                # 记录运行中的任务
-                self._running_tasks[site_id] = task_id
-                
-                # 获取更新后的任务
-                stmt = select(Task).where(Task.task_id == task_id)
                 result = await db.execute(stmt)
                 task = result.scalar_one_or_none()
                 
-                if task:
-                    return TaskResponse.model_validate(task)
-                return None
+                if not task:
+                    return None
+                
+                # 更新任务状态为 RUNNING
+                await self._update_task_status(
+                    db=db,
+                    task_id=task.task_id,
+                    status=TaskStatus.RUNNING,
+                    msg="任务开始执行",
+                )
+                
+                # 记录运行中的任务
+                self._running_tasks[site_id] = task.task_id
+                
+                return TaskResponse.model_validate(task)
                 
             except Exception as e:
                 error_msg = str(e)
@@ -227,33 +261,42 @@ class QueueManager:
         """完成任务"""
         async with self._lock:
             try:
-                # 更新任务状态
-                await self._update_task_status(
-                    db,
-                    task_id,
-                    status,
-                    msg=msg,
-                    completed_at=datetime.now()
-                )
-                
                 # 获取任务信息
                 stmt = select(Task).where(Task.task_id == task_id)
                 result = await db.execute(stmt)
                 task = result.scalar_one_or_none()
                 
-                if task:
-                    # 清理运行状态
-                    site_id = task.site_id
-                    if site_id in self._running_tasks and self._running_tasks[site_id] == task_id:
-                        del self._running_tasks[site_id]
-                    
-                    if task_id in self._task_info:
-                        del self._task_info[task_id]
-                    
-                    self.logger.info(f"任务 {task_id} 已完成，状态: {status}")
-                    return True
-                    
-                return False
+                if not task:
+                    self.logger.error(f"任务不存在: {task_id}")
+                    return False
+                
+                # 只有RUNNING状态的任务可以被完成
+                if task.status != TaskStatus.RUNNING:
+                    self.logger.warning(f"任务 {task_id} 状态为 {task.status}，不能标记为完成")
+                    return False
+                
+                # 更新任务状态
+                await self._update_task_status(
+                    db=db,
+                    task_id=task_id,
+                    status=status,
+                    msg=msg,
+                    completed_at=datetime.now()
+                )
+                
+                # 清理运行状态
+                site_id = task.site_id
+                if site_id in self._running_tasks and self._running_tasks[site_id] == task_id:
+                    del self._running_tasks[site_id]
+                
+                # 清理队列信息
+                if task_id in self._task_info:
+                    del self._task_info[task_id]
+                if task_id in self._queues[site_id]:
+                    self._queues[site_id].remove(task_id)
+                
+                self.logger.info(f"任务 {task_id} 已完成，状态: {status}")
+                return True
                 
             except Exception as e:
                 error_msg = str(e)
@@ -275,32 +318,37 @@ class QueueManager:
                 result = await db.execute(stmt)
                 task = result.scalar_one_or_none()
                 
-                if task:
-                    # 如果任务在队列中，移除它
-                    site_id = task.site_id
-                    if task_id in self._queues[site_id]:
-                        self._queues[site_id].remove(task_id)
-                    
-                    # 如果任务正在运行，清理运行状态
-                    if site_id in self._running_tasks and self._running_tasks[site_id] == task_id:
-                        del self._running_tasks[site_id]
-                    
-                    # 更新任务状态
-                    await self._update_task_status(
-                        db,
-                        task_id,
-                        TaskStatus.CANCELLED,
-                        msg="任务已取消",
-                        completed_at=datetime.now()
-                    )
-                    
-                    if task_id in self._task_info:
-                        del self._task_info[task_id]
-                    
-                    self.logger.info(f"任务 {task_id} 已取消")
-                    return True
-                    
-                return False
+                if not task:
+                    self.logger.error(f"任务不存在: {task_id}")
+                    return False
+                
+                # 检查任务是否可以取消
+                if task.status in [TaskStatus.SUCCESS, TaskStatus.FAILED, TaskStatus.CANCELLED]:
+                    self.logger.warning(f"任务 {task_id} 状态为 {task.status}，不能取消")
+                    return False
+                
+                # 更新任务状态
+                await self._update_task_status(
+                    db=db,
+                    task_id=task_id,
+                    status=TaskStatus.CANCELLED,
+                    msg="任务已取消",
+                    completed_at=datetime.now()
+                )
+                
+                # 清理运行状态
+                site_id = task.site_id
+                if site_id in self._running_tasks and self._running_tasks[site_id] == task_id:
+                    del self._running_tasks[site_id]
+                
+                # 清理队列信息
+                if task_id in self._task_info:
+                    del self._task_info[task_id]
+                if task_id in self._queues[site_id]:
+                    self._queues[site_id].remove(task_id)
+                
+                self.logger.info(f"任务 {task_id} 已取消")
+                return True
                 
             except Exception as e:
                 error_msg = str(e)
@@ -388,9 +436,9 @@ class QueueManager:
                         
                         # 更新任务状态
                         await self._update_task_status(
-                            db,
-                            task.task_id,
-                            TaskStatus.CANCELLED,
+                            db=db,
+                            task_id=task.task_id,
+                            status=TaskStatus.CANCELLED,
                             msg="任务已取消",
                             completed_at=datetime.now()
                         )
@@ -418,6 +466,83 @@ class QueueManager:
                 self.logger.debug("错误详情:", exc_info=True)
                 await db.rollback()
                 raise
+
+    async def start_queue(self, db: AsyncSession) -> bool:
+        """启动队列处理
+        
+        将所有PENDING任务转为QUEUED状态，并尝试启动可以启动的任务
+        
+        Args:
+            db: 数据库会话
+            
+        Returns:
+            bool: 是否成功启动队列处理
+        """
+        async with self._lock:
+            try:
+                # 1. 将所有PENDING任务转为QUEUED
+                stmt = (
+                    select(Task)
+                    .where(Task.status == TaskStatus.PENDING)
+                    .order_by(Task.created_at.asc())
+                )
+                result = await db.execute(stmt)
+                pending_tasks = result.scalars().all()
+                
+                for task in pending_tasks:
+                    await self._update_task_status(
+                        db,
+                        task.task_id,
+                        TaskStatus.QUEUED,
+                        "任务已加入队列"
+                    )
+                    # 确保任务在内存队列中
+                    if task.task_id not in self._queues[task.site_id]:
+                        self._queues[task.site_id].append(task.task_id)
+                        self._task_info[task.task_id] = {
+                            "queued_at": datetime.now(),
+                            "site_id": task.site_id,
+                        }
+                
+                self.logger.info(f"已将 {len(pending_tasks)} 个PENDING任务转为QUEUED状态")
+                
+                # 2. 检查当前运行任务数量，计算可用槽位
+                running_count = len(self._running_tasks)
+                available_slots = self._max_concurrency - running_count
+                
+                if available_slots > 0:
+                    # 3. 获取QUEUED状态的任务
+                    stmt = (
+                        select(Task)
+                        .where(Task.status == TaskStatus.QUEUED)
+                        .order_by(Task.created_at.asc())
+                        .limit(available_slots)
+                    )
+                    result = await db.execute(stmt)
+                    queued_tasks = result.scalars().all()
+                    
+                    # 4. 将可以启动的任务标记为READY
+                    for task in queued_tasks:
+                        await self._update_task_status(
+                            db,
+                            task.task_id,
+                            TaskStatus.READY,
+                            "任务准备就绪"
+                        )
+                        self.logger.info(f"任务 {task.task_id} 已标记为READY状态")
+                    
+                    self.logger.info(f"已将 {len(queued_tasks)} 个QUEUED任务转为READY状态")
+                else:
+                    self.logger.info("当前没有可用的执行槽位，所有任务保持QUEUED状态")
+                
+                await db.commit()
+                return True
+                
+            except Exception as e:
+                self.logger.error(f"启动队列处理失败: {str(e)}")
+                self.logger.debug("错误详情:", exc_info=True)
+                await db.rollback()
+                return False
 
 
 # 全局队列管理器实例

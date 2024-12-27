@@ -7,6 +7,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
+from httpx import NetworkError
+
 from core.logger import get_logger, setup_logger
 from DrissionPage import Chromium, ChromiumOptions
 from handlers.checkin import CheckInHandler
@@ -101,6 +103,10 @@ class BaseCrawler(ABC):
             else:
                 await self._update_task_status(TaskStatus.FAILED, "初始化浏览器失败，跳过爬取")
                 self.logger.warning(f"{self.site_id} 初始化浏览器失败，跳过爬取")
+        except NetworkError as e:
+            await self._handle_network_error(e)
+        except TimeoutError as e:
+            await self._handle_timeout_error(e)
         except Exception as e:
             self.logger.error(f"爬虫运行失败: {str(e)}")
             self.logger.debug("错误详情:", exc_info=True)

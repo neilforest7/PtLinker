@@ -5,7 +5,7 @@ import traceback
 from datetime import datetime
 from multiprocessing import Process
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 from core.database import AsyncSession
 from core.logger import get_logger, setup_logger
@@ -149,9 +149,12 @@ class ProcessManager:
     def __init__(self):
         self._processes: Dict[str, CrawlerProcess] = {}  # task_id -> process
         self._status: Dict[str, Dict] = {}  # task_id -> status
+        self._running_sites: Dict[str, str] = {}  # site_id -> task_id
         self._lock = asyncio.Lock()
         self._queue_manager = None
         self._db = None
+        self._task_timeout = 240  # 默认超时时间（秒）
+        self._max_concurrency = 1  # 默认最大并发数
         self.logger = get_logger(name=__name__, site_id="ProcessMgr")
         
     async def initialize(self, queue_manager, db: AsyncSession) -> None:
@@ -159,190 +162,278 @@ class ProcessManager:
         self._queue_manager = queue_manager
         self._db = db
         
+        # 获取最大并发数设置
+        from services.managers.setting_manager import SettingManager
+        self._max_concurrency = await SettingManager.get_instance().get_setting("crawler_max_concurrency")
+        self.logger.info(f"Process manager initialized with max concurrency: {self._max_concurrency}")
+        
         # 创建定期检查任务
         async def periodic_check():
             while True:
-                await asyncio.sleep(60)  # 每60秒检查一次
-                await self.check_all_tasks()
-                self.logger.info("周期检查任务状态")
+                try:
+                    await self.check_all_tasks()
+                    self.logger.info("周期检查任务状态")
+                except Exception as e:
+                    self.logger.error(f"周期检查任务失败: {str(e)}")
+                    self.logger.debug("错误详情:", exc_info=True)
+                await asyncio.sleep(5)  # 每5秒检查一次
+                
         # 启动定期检查任务
         asyncio.create_task(periodic_check())
         
-        self.logger.info("Process manager initialized")
-        
-    async def _cleanup_finished_process(self, task_id: str) -> None:
-        """清理已完成的进程"""
-        async with self._lock:
-            if task_id in self._processes:
-                process = self._processes[task_id]
-                # 等待进程完全结束
-                if not process.is_alive():
-                    process.join(timeout=1)
-                    # 从字典中移除
-                    del self._processes[task_id]
-                    if task_id in self._status:
-                        del self._status[task_id]
-                    self.logger.debug(f"已清理完成的任务: {task_id}")
-    
     async def check_task_status(self, task_id: str) -> Optional[Dict]:
-        """检查任务状态"""
+        """检查任务状态
+        
+        Args:
+            task_id: 任务ID
+            
+        Returns:
+            Optional[Dict]: 任务状态信息，包含 is_alive、exit_code 和 running_time
+        """
         if task_id not in self._processes:
             return None
             
         process = self._processes[task_id]
         status = self._status[task_id].copy()
+        
+        # 计算运行时间
+        running_time = (datetime.now() - status["start_time"]).total_seconds()
+        
         status.update({
             "is_alive": process.is_alive(),
-            "exit_code": process.exitcode if not process.is_alive() else None
+            "exit_code": process.exitcode if not process.is_alive() else None,
+            "running_time": running_time,
+            "is_timeout": running_time > self._task_timeout
         })
         
-        # 如果进程已经结束，清理它
-        if not process.is_alive():
-            await self._cleanup_finished_process(task_id)
-            
         return status
-    
-    async def start_crawlertask(self, task: TaskCreate, db: AsyncSession) -> Optional[TaskResponse]:
-        """启动任务进程"""
+        
+    async def start_crawlertask(self, db: AsyncSession) -> List[TaskResponse]:
+        """启动所有READY状态的任务进程
+        
+        Args:
+            db: 数据库会话
+            
+        Returns:
+            List[TaskResponse]: 成功启动的任务列表
+        """
         async with self._lock:
             try:
-                # 检查任务是否存在
-                stmt = select(Task).where(Task.task_id == task.task_id)
+                # 确保已经初始化
+                if not self._queue_manager:
+                    from services.managers.queue_manager import queue_manager
+                    self._queue_manager = queue_manager
+                    self.logger.info("已获取queue_manager")
+                
+                # 获取所有READY状态的任务
+                stmt = (
+                    select(Task)
+                    .where(Task.status == TaskStatus.READY)
+                    .order_by(Task.created_at.asc())
+                )
                 result = await db.execute(stmt)
-                db_task = result.scalar_one_or_none()
+                ready_tasks = result.scalars().all()
                 
-                if db_task:
-                    # 检查任务状态，只有READY状态的任务可以启动
-                    if db_task.status != TaskStatus.READY:
-                        self.logger.warning(f"任务 {task.task_id} 状态为 {db_task.status}，不启动")
-                        return None
-                else:
-                    # 创建新任务
-                    db_task = Task(
-                        task_id=task.task_id,
-                        site_id=task.site_id,
-                        status=TaskStatus.READY,
-                        task_metadata=task.task_metadata
-                    )
-                    db.add(db_task)
-                    await db.commit()
-                    await db.refresh(db_task)
+                if not ready_tasks:
+                    self.logger.info("没有READY状态的任务需要启动")
+                    return []
                 
-                # 检查进程状态
-                if task.task_id in self._processes:
-                    status = await self.check_task_status(task.task_id)
-                    if status and status["is_alive"]:
-                        self.logger.warning(f"任务 {task.task_id} 已经在运行")
-                        return None
+                self.logger.info(f"找到 {len(ready_tasks)} 个READY状态的任务")
+                started_tasks = []
                 
                 # 构建日志路径
                 log_path = str(Path(__file__).parent.parent.parent / 'logs' / 'tasks')
                 
-                # 创建并启动进程
-                process = CrawlerProcess(
-                    site_id=task.site_id,
-                    task_id=task.task_id,
-                    log_dir=log_path
-                )
-                process.start()
+                # 尝试启动每个任务
+                for task in ready_tasks:
+                    try:
+                        # 检查站点是否已有运行中的任务
+                        if task.site_id in self._running_sites:
+                            self.logger.warning(f"站点 {task.site_id} 已有运行中的任务，跳过任务 {task.task_id}")
+                            continue
+                            
+                        # 检查进程状态
+                        if task.task_id in self._processes:
+                            status = await self.check_task_status(task.task_id)
+                            if status and status["is_alive"]:
+                                self.logger.warning(f"任务 {task.task_id} 已经在运行")
+                                continue
+                        
+                        # 创建并启动进程
+                        process = CrawlerProcess(
+                            site_id=task.site_id,
+                            task_id=task.task_id,
+                            log_dir=log_path
+                        )
+                        process.start()
+                        self.logger.info(f"任务 {task.task_id} 启动 (PID: {process.pid})")
+                        
+                        # 存储进程信息
+                        self._processes[task.task_id] = process
+                        self._status[task.task_id] = {
+                            "start_time": datetime.now(),
+                            "pid": process.pid,
+                            "site_id": task.site_id
+                        }
+                        
+                        # 更新任务状态为RUNNING
+                        await self._queue_manager._update_task_status(
+                            db=db,
+                            task_id=task.task_id,
+                            status=TaskStatus.RUNNING,
+                            msg="任务已启动",
+                            task_metadata={
+                                "pid": process.pid,
+                            }
+                        )
+                        
+                        # 记录运行中的任务
+                        self._running_sites[task.site_id] = task.task_id
+                        started_tasks.append(TaskResponse.model_validate(task))
+                        self.logger.info(f"任务 {task.task_id} 启动成功 (PID: {process.pid})")
+                        
+                    except Exception as e:
+                        self.logger.error(f"启动任务 {task.task_id} 失败: {str(e)}")
+                        self.logger.debug("错误详情:", exc_info=True)
+                        # 如果启动失败，确保清理任何可能创建的进程记录
+                        if task.task_id in self._processes:
+                            await self.cleanup_task(task.task_id)
+                        continue
                 
-                # 存储进程信息
-                self._processes[task.task_id] = process
-                self._status[task.task_id] = {
-                    "start_time": datetime.now(),
-                    "pid": process.pid,
-                    "site_id": task.site_id
-                }
-                
-                # 更新任务状态为 RUNNING
-                await self._update_task_status(
-                    db, 
-                    task.task_id, 
-                    TaskStatus.RUNNING, 
-                    "任务已启动",
-                    task_metadata={"pid": process.pid}
-                )
-                
-                self.logger.info(f"任务 {task.task_id} 启动成功 (PID: {process.pid})")
-                return TaskResponse.model_validate(db_task)
+                self.logger.info(f"成功启动 {len(started_tasks)}/{len(ready_tasks)} 个任务")
+                return started_tasks
                 
             except Exception as e:
-                # 如果启动过程中出错，确保清理任何可能创建的进程记录
-                if task.task_id in self._processes:
-                    await self._cleanup_finished_process(task.task_id)
                 error_msg = str(e)
                 error_details = {
                     "error_type": type(e).__name__,
                     "error_message": str(e),
                     "traceback": traceback.format_exc()
                 }
-                self.logger.error(f"启动任务 {task.task_id} 失败: {error_msg}")
+                self.logger.error(f"启动任务失败: {error_msg}")
                 self.logger.debug("错误详情:", exc_info=True)
+                return []
                 
-                # 更新任务状态为 FAILED
-                await self._update_task_status(
-                    db,
-                    task.task_id,
-                    TaskStatus.FAILED,
-                    error_msg,
-                    datetime.now(),
-                    error_details
-                )
-                return None
-    
-    async def stop_task(self, task_id: str) -> bool:
-        """停止任务进程"""
-        async with self._lock:
-            if task_id not in self._processes:
-                self.logger.warning(f"任务 {task_id} 不存在或已停止")
-                return False
+    async def cleanup_task(self, task_id: str) -> bool:
+        """清理任务进程
+        
+        Args:
+            task_id: 任务ID
             
+        Returns:
+            bool: 是否成功清理
+        """
+        async with self._lock:
             try:
+                if task_id not in self._processes:
+                    self.logger.warning(f"任务 {task_id} 不存在或已清理")
+                    return False
+                
                 process = self._processes[task_id]
                 if process.is_alive():
+                    self.logger.info(f"停止进程 - 任务ID: {task_id}, PID: {process.pid}")
                     process.terminate()
                     process.join(timeout=5)
                     if process.is_alive():
+                        self.logger.warning(f"进程未响应，强制终止 - 任务ID: {task_id}")
                         process.kill()
                         process.join()
                 
-                # 更新任务状态为 CANCELLED
-                if self._db:
-                    await self._update_task_status(
-                        self._db,
-                        task_id,
-                        TaskStatus.CANCELLED,
-                        "任务已手动停止",
-                        datetime.now()
-                    )
-                
+                # 清理进程记录
                 del self._processes[task_id]
-                del self._status[task_id]
                 
-                self.logger.info(f"任务 {task_id} 已停止")
+                # 清理状态记录
+                if task_id in self._status:
+                    site_id = self._status[task_id].get("site_id")
+                    if site_id and site_id in self._running_sites and self._running_sites[site_id] == task_id:
+                        del self._running_sites[site_id]
+                        self.logger.debug(f"已从运行中站点列表移除: {site_id}")
+                    del self._status[task_id]
+                
+                self.logger.info(f"任务 {task_id} 已清理")
                 return True
                 
             except Exception as e:
-                self.logger.error(f"停止任务 {task_id} 失败: {str(e)}")
+                self.logger.error(f"清理任务 {task_id} 失败: {str(e)}")
+                self.logger.debug("错误详情:", exc_info=True)
                 return False
-    
-    async def _update_task_status(self, db: AsyncSession, task_id: str, status: TaskStatus, 
-                                msg: Optional[str] = None,
-                                completed_at: Optional[datetime] = None,
-                                error_details: Optional[Dict] = None,
-                                task_metadata: Optional[Dict] = None) -> None:
-        """更新任务状态"""
-        await task_status_manager.update_task_status(
-            db=db,
-            task_id=task_id,
-            status=status,
-            msg=msg,
-            completed_at=completed_at,
-            error_details=error_details,
-            task_metadata=task_metadata,
-            site_id=self._status.get(task_id, {}).get("site_id")
-        )
-        
+                
+    async def check_all_tasks(self):
+        """检查所有任务的状态"""
+        try:
+            # 获取新的数据库会话
+            if not self._db:
+                from core import database
+                self._db = await database.get_init_db()
+            try:
+                task_ids = list(self._processes.keys())
+                for task_id in task_ids:
+                    try:
+                        status = await self.check_task_status(task_id)
+                        if status:
+                            # 检查是否超时
+                            if status["is_alive"] and status["is_timeout"]:
+                                self.logger.warning(f"任务 {task_id} 执行超时 ({status['running_time']:.1f}s > {self._task_timeout}s)，强制终止")
+                                # 强制终止进程并清理状态
+                                await self.cleanup_task(task_id)
+                                # 更新任务状态为失败
+                                await self._queue_manager._update_task_status(
+                                    db=self._db,
+                                    task_id=task_id,
+                                    status=TaskStatus.FAILED,
+                                    msg=f"任务执行超时（{status['running_time']:.1f}s > {self._task_timeout}s）"
+                                )
+                                continue
+                                
+                            # 如果进程已经结束
+                            if not status["is_alive"]:
+                                self.logger.info(f"任务 {task_id} 进程已结束 (退出码: {status['exit_code']})")
+                                # 获取站点ID用于清理
+                                site_id = self._status[task_id].get("site_id") if task_id in self._status else None
+                                
+                                # 根据退出码更新任务状态
+                                if status["exit_code"] == 0:
+                                    await self._queue_manager.complete_task(
+                                        task_id,
+                                        self._db,
+                                        TaskStatus.SUCCESS,
+                                        f"任务执行完成（耗时：{status['running_time']:.1f}s）"
+                                    )
+                                else:
+                                    await self._queue_manager.complete_task(
+                                        task_id,
+                                        self._db,
+                                        TaskStatus.FAILED,
+                                        f"任务执行失败（退出码: {status['exit_code']}，耗时：{status['running_time']:.1f}s）"
+                                    )
+                                
+                                # 清理进程记录和运行状态
+                                await self.cleanup_task(task_id)
+                                
+                    except Exception as e:
+                        self.logger.error(f"检查任务 {task_id} 状态时出错: {str(e)}")
+                        self.logger.debug("错误详情:", exc_info=True)
+                        # 发生错误时也尝试清理
+                        await self.cleanup_task(task_id)
+                        continue
+                
+                # 检查并启动READY状态的任务
+                running_count = len(self._running_sites)
+                if running_count < self._max_concurrency:
+                    self.logger.debug(f"当前运行任务数: {running_count}, 尝试启动新任务")
+                    started_tasks = await self.start_crawlertask(self._db)
+                    if started_tasks:
+                        self.logger.info(f"定期检查时启动了 {len(started_tasks)} 个新任务")
+                
+            finally:
+                if self._db:
+                    await self._db.close()
+                    self._db = None
+                    
+        except Exception as e:
+            self.logger.error(f"检查任务状态时出错: {str(e)}")
+            self.logger.debug("错误详情:", exc_info=True)
+            
     async def cleanup(self):
         """清理所有进程"""
         async with self._lock:
@@ -351,51 +442,20 @@ class ProcessManager:
                 # 获取所有正在运行的任务
                 running_tasks = list(self._processes.keys())
                 
-                # 更新所有正在运行的任务状态为 CANCELLED
+                # 清理每个任务
                 for task_id in running_tasks:
                     try:
-                        process = self._processes[task_id]
+                        # 清理进程
+                        await self.cleanup_task(task_id)
                         
-                        # 检查任务当前状态
-                        if self._db:
-                            stmt = select(Task).where(Task.task_id == task_id)
-                            result = await self._db.execute(stmt)
-                            task = result.scalar_one_or_none()
+                        # 更新任务状态为已取消
+                        if self._db and self._queue_manager:
+                            await self._queue_manager.cancel_task(task_id, self._db)
                             
-                            # 只处理状态为 RUNNING 的任务
-                            if not task or task.status != TaskStatus.RUNNING:
-                                self.logger.debug(f"跳过非运行状态的任务: {task_id}, 当前状态: {task.status if task else 'Unknown'}")
-                                continue
-                        
-                        # 终止进程
-                        if process.is_alive():
-                            self.logger.debug(f"停止进程: {task_id}")
-                            process.terminate()
-                            process.join(timeout=5)
-                            if process.is_alive():
-                                self.logger.warning(f"进程未响应，强制终止: {task_id}")
-                                process.kill()
-                                process.join()
-                        
-                        # 更新任务状态为 CANCELLED
-                        if self._db:
-                            await self._update_task_status(
-                                self._db,
-                                task_id,
-                                TaskStatus.CANCELLED,
-                                "程序退出，任务已取消",
-                                datetime.now()
-                            )
-                        
-                        # 清理进程记录
-                        del self._processes[task_id]
-                        if task_id in self._status:
-                            del self._status[task_id]
-                            
-                        self.logger.info(f"任务已取消并清理: {task_id}")
                     except Exception as e:
                         self.logger.error(f"清理任务 {task_id} 时发生错误: {str(e)}")
                         self.logger.debug("错误详情:", exc_info=True)
+                        continue
                 
                 self.logger.info(f"成功清理 {len(running_tasks)} 个进程")
                 
@@ -406,16 +466,6 @@ class ProcessManager:
                 self.logger.error(f"清理进程时发生错误: {str(e)}")
                 self.logger.debug("错误详情:", exc_info=True)
                 raise
-
-    async def check_all_tasks(self):
-        """定期检查所有任务的状态"""
-        try:
-            task_ids = list(self._processes.keys())
-            for task_id in task_ids:
-                await self.check_task_status(task_id)
-        except Exception as e:
-            self.logger.error(f"检查任务状态时发生错误: {str(e)}")
-            self.logger.debug("错误详情:", exc_info=True)
 
 
 # 全局进程管理器实例
