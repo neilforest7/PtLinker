@@ -58,13 +58,14 @@ const ChartView: React.FC = () => {
     const [selectedSites, setSelectedSites] = useState<string[]>([]);
     const [siteOptions, setSiteOptions] = useState<{ label: string; value: string; }[]>([]);
     const [overviewChart, setOverviewChart] = useState<Chart | null>(null);
+    const [blockChart, setBlockChart] = useState<Chart | null>(null);
 
     const loadSiteConfigs = async () => {
         try {
             // 获取所有站点配置
             const configs = await siteConfigApi.getAllCrawlerConfigs();
             
-            // 获取统计数据中实际存在的站点
+            // 获取���计数据中实际存在的站点
             const existingSites = new Set(
                 statistics?.metrics.daily_results.map(result => result.site_id) || []
             );
@@ -190,7 +191,7 @@ const ChartView: React.FC = () => {
             container: 'statisticsChart',
             autoFit: true,
         });
-        console.log("filteredData", filteredData);
+        // console.log("filteredData", filteredData);
         perStatLineChart.data(filteredData);
 
         // 使用 Auto 自动配置图表 #00ff00
@@ -227,7 +228,7 @@ const ChartView: React.FC = () => {
     useEffect(() => {
         if (!statistics || !statistics.metrics.daily_results.length) return;
         
-        // 按日期分组并汇总数据
+        // 按日期分组并汇总
         const dailyTotals = statistics.metrics.daily_results.reduce((acc, curr) => {
             const date = curr.date;
             if (!acc[date]) {
@@ -275,8 +276,8 @@ const ChartView: React.FC = () => {
             acc[date].seeding_count_increment += curr.seeding_count_increment || 0;
             return acc;
         }, {} as Record<string, any>);
-        console.log('dailyTotals dates:', Object.keys(dailyTotals));
-        console.log('dailyIncrements dates:', Object.keys(dailyIncrements));
+        // console.log('dailyTotals dates:', Object.keys(dailyTotals));
+        // console.log('dailyIncrements dates:', Object.keys(dailyIncrements));
         // 转换为数组并按日期排序
         const filteredData = Object.values(dailyTotals)
             .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
@@ -287,7 +288,7 @@ const ChartView: React.FC = () => {
                     return {
                         date: item.date,
                         site: '总计',
-                        // 计算今天的增量并保留一位小数
+                        // 计算天的增量并保留一位小数
                         upload: Number((item.upload - previousDay.upload).toFixed(1)),
                         download: Number((item.download - previousDay.download).toFixed(1)),
                         bonus: Number(item.bonus.toFixed(1)),
@@ -374,7 +375,7 @@ const ChartView: React.FC = () => {
         });
 
         // 设置数据
-        console.log(filteredData);
+        // console.log(filteredData);
         overallChangeLineChart.data(filteredData);
 
         overallChangeLineChart.line()
@@ -480,6 +481,168 @@ const ChartView: React.FC = () => {
         };
     }, [statistics, timeRange, metric]);
 
+    useEffect(() => {
+        if (!statistics || !statistics.metrics.checkins.length) return;
+
+        // 首先按日期和站点分组，合并同一天同一站点的签到结果
+        const dailyCheckins = statistics.metrics.checkins.reduce((acc, curr) => {
+            const key = `${curr.date}-${curr.site_id}`;
+            if (!acc[key]) {
+                acc[key] = {
+                    date: curr.date,
+                    site_id: curr.site_id,
+                    success: false,
+                    checkin_time: curr.checkin_time
+                };
+            }
+            // 只要有一次成功就算成功
+            if (curr.checkin_status === 'success') {
+                acc[key].success = true;
+                // 更新为最早的成功签到时间
+                if (new Date(curr.checkin_time) < new Date(acc[key].checkin_time)) {
+                    acc[key].checkin_time = curr.checkin_time;
+                }
+            }
+            return acc;
+        }, {} as Record<string, { date: string; site_id: string; success: boolean; checkin_time: string; }>);
+        console.log('dailyCheckins', dailyCheckins);
+        // 然后按日期汇总所有站点的签到情况
+        const dateCheckins = Object.values(dailyCheckins).reduce((acc, curr) => {
+            if (!acc[curr.date]) {
+                acc[curr.date] = {
+                    successSites: new Set<string>(),
+                    totalSites: new Set<string>(),
+                    earliestCheckinTime: curr.checkin_time
+                };
+            }
+            acc[curr.date].totalSites.add(curr.site_id);
+            if (curr.success) {
+                acc[curr.date].successSites.add(curr.site_id);
+                // 更新为最早的签到时间
+                if (new Date(curr.checkin_time) < new Date(acc[curr.date].earliestCheckinTime)) {
+                    acc[curr.date].earliestCheckinTime = curr.checkin_time;
+                }
+            }
+            return acc;
+        }, {} as Record<string, { 
+            successSites: Set<string>; 
+            totalSites: Set<string>; 
+            earliestCheckinTime: string; 
+        }>);
+        console.log('dateCheckins', dateCheckins);
+        // 转换为热力图数据
+        const blockData = (() => {
+            // 获取当前日期所在的周日
+            const today = new Date();
+            const lastSunday = new Date(today);
+            lastSunday.setDate(today.getDate() + (6 - today.getDay())); // 调整到本周日
+
+            // 获取52周前的周一
+            const startDate = new Date(lastSunday);
+            startDate.setDate(startDate.getDate() - (52 * 7)); // 往前推52周
+            
+            // 创建一个包含52周所有日期的数组
+            const allDates = [];
+            const currentDate = new Date(startDate);
+            
+            while (currentDate <= lastSunday) {
+                const dateStr = currentDate.toISOString().split('T')[0];
+                const dayData = dateCheckins[dateStr];
+                
+                // 计算成功率作为 value
+                const value = dayData ? 
+                    (dayData.totalSites.size > 0 ? dayData.successSites.size / dayData.totalSites.size : 0) : 0;
+                
+                allDates.push({
+                    date: dateStr,
+                    day: currentDate.getDay(),
+                    week: Math.floor((currentDate.getTime() - startDate.getTime()) / (7 * 24 * 60 * 60 * 1000)),
+                    value: value,  // 直接使用成功率作为 value
+                    successCount: dayData?.successSites.size || 0,
+                    totalSites: dayData?.totalSites.size || 0,
+                    failedCount: dayData ? (dayData.totalSites.size - dayData.successSites.size) : 0,
+                    checkinTime: dayData?.earliestCheckinTime || null
+                });
+                
+                currentDate.setDate(currentDate.getDate() + 1);
+            }
+            return allDates;
+        })();
+        console.log('blockData', blockData);
+        // 创建热力图
+        if (blockChart) {
+            blockChart.destroy();
+        }
+
+        const checkinBlockChart = new Chart({
+            container: 'blockChart',
+            autoFit: true,
+            height: 170,
+            // paddingLeft: 50,
+            // paddingRight: 50,
+        });
+
+        checkinBlockChart.data(blockData);
+
+        // let i = blockData.length;
+        checkinBlockChart
+            .cell()
+            .encode('x', 'week')
+            .encode('y', 'day')
+            .encode('color', 'value')
+            .style('inset', 0.5)
+            .scale('color', {
+                type: 'linear',
+                domain: [0, 1],
+                range: ['#ebedf0', '#338836']
+            })
+            .legend(false)
+            .axis('x', {
+                label: null,
+                line: null,
+                grid: null,
+            })
+            .axis('y', {
+                label: null,
+                line: null,
+                grid: null,
+            })
+            .tooltip({
+                items: [
+                    (d: any) => ({
+                        name: '日期',
+                        value: new Date(d.date).toLocaleDateString()
+                    }),
+                    (d: any) => ({
+                        name: '签到状态',
+                        value: d.value === 1 ? '全部成功' : (d.value === 0 ? '未签到' : '部分成功')
+                    }),
+                    (d: any) => ({
+                        name: '成功/总数',
+                        value: d.checkinTime ? `${d.successCount}/${d.totalSites}` : '无签到记录'
+                    }),
+                    (d: any) => ({
+                        name: '签到时间',
+                        value: d.checkinTime ? new Date(d.checkinTime).toLocaleTimeString() : '-'
+                    }),
+                    (d: any) => ({
+                        name: '失败站点',
+                        value: d.failedCount
+                    })
+                ]
+            })
+            .animate('enter', { type: 'fadeIn' });
+
+        checkinBlockChart.render();
+        setBlockChart(checkinBlockChart);
+
+        return () => {
+            if (blockChart) {
+                blockChart.destroy();
+            }
+        };
+    }, [statistics, selectedSites]);
+
     if (loading) {
         return <Spin size="large" />;
     }
@@ -491,6 +654,7 @@ const ChartView: React.FC = () => {
     return (
         <div className={styles.chartContainer}>
             <div id="overviewChart" className={styles.chartContent} />
+            <div id="blockChart" className={styles.chartContent} />
             <div className={styles.chartControls}>
                 <Space size="middle">
                     <Radio.Group 

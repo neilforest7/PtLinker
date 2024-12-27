@@ -15,16 +15,18 @@ interface TaskCardProps {
 const TaskCard: React.FC<TaskCardProps> = ({ task, onTaskUpdate }) => {
     const getStatusColor = (status: string) => {
         switch (status) {
+            case 'pending':
+                return 'orange';
+            case 'queued':
+                return 'blue';
+            case 'ready':
+                return '';
             case 'success':
                 return 'success';
             case 'failed':
                 return 'error';
             case 'running':
                 return 'processing';
-            case 'ready':
-                return '';
-            case 'pending':
-                return 'orange';
             case 'cancelled':
                 return 'pink';
             default:
@@ -34,16 +36,18 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onTaskUpdate }) => {
 
     const getStatusText = (status: string) => {
         switch (status) {
+            case 'pending':
+                return '等待队列';
+            case 'queued':
+                return '队列中';
+            case 'ready':
+                return '可以开始';
             case 'success':
                 return '成功';
             case 'failed':
                 return '失败';
             case 'running':
                 return '运行中';
-            case 'ready':
-                return '待命';
-            case 'pending':
-                return '等待中';
             case 'cancelled':
                 return '已取消';
             default:
@@ -162,7 +166,8 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onTaskUpdate }) => {
                     );
                 }
                 break;
-                
+            
+            case 'queued':
             case 'ready':
             case 'pending':
                 if (task.created_at) {
@@ -316,7 +321,7 @@ const Tasks: React.FC = () => {
                     success: 0,
                     percentage: 0,
                     failed: result.data.totol_count - result.data.started_count,
-                    startTime: new Date().toLocaleString()
+                    startTime: new Date().toISOString()
                 });
                 loadTasks();
             } else {

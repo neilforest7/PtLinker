@@ -14,7 +14,6 @@ import { siteConfigApi } from '../../api/siteConfig';
 import { StatisticsResponse } from '../../types/api';
 import styles from './Statistics.module.css';
 import ChartView from './ChartView';
-import BlockView from './BlockView';
 
 type ViewMode = 'grid' | 'list' | 'chart';
 
@@ -116,7 +115,7 @@ const Statistics: React.FC = () => {
             title: '更新时间',
             dataIndex: 'date',
             key: 'date',
-            render: (date: string) => new Date(date).toLocaleString(),
+            render: (date: string) => new Date(date).toLocaleDateString(),
             sorter: (a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime(),
         },
     ];
@@ -189,7 +188,7 @@ const Statistics: React.FC = () => {
                             </Col>
                         </Row>
                         <div className={styles.updateTime}>
-                            更新于: {new Date(stats.daily_results.date).toLocaleString()}
+                            更新于: {new Date(stats.daily_results.date).toLocaleDateString()}
                         </div>
                     </Card>
                 </Col>

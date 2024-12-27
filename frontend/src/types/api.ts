@@ -125,7 +125,7 @@ export interface CrawlerCredentialResponse {
 export interface TaskResponse {
     task_id: string;
     site_id: string;
-    status: 'ready' | 'pending' | 'running' | 'success' | 'failed' | 'cancelled';
+    status: 'ready' | 'pending' | 'queued' | 'running' | 'success' | 'failed' | 'cancelled';
     created_at: string;
     updated_at: string;
     completed_at?: string;
@@ -205,6 +205,13 @@ export interface StatisticsHistoryResponse {
             seeding_count_increment: number | null;
             task_id: string;
             reference_task_id: string;
+        }>;
+        checkins: Array<{
+            date: string;
+            site_id: string;
+            checkin_status: string;
+            checkin_time: string;
+            task_id: string;
         }>;
     };
     summary: {
