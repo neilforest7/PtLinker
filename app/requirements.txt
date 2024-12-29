@@ -1,40 +1,40 @@
+# Web Framework
+fastapi
+uvicorn
+
 # Core
 crawlee
 playwright
 pydantic
+pydantic-settings
 loguru
 python-dotenv
 
-# Storage
+# Database
 sqlalchemy
 aiosqlite
+alembic
 
 # Utils
 tenacity
 aiohttp
 pillow
+PyYAML
 
 # Captcha
 tesseract
 2captcha-python
+ddddocr
+
+# Web Scraping
+DrissionPage
+requests
+beautifulsoup4
+lxml
 
 # Testing
 pytest
 pytest-asyncio
 
-# DrissionPage
-DrissionPage
-python-dotenv
-loguru
-pydantic
-PyYAML
-
-# Ddddocr
-ddddocr
-twocaptcha-python
-
-# Requests
-requests
-beautifulsoup4
-lxml
-pillow
+# CORS
+fastapi-cors

@@ -15,3 +15,6 @@ app/storage/
 app/ptlinker.db
 app/ptlinker.db-shm
 app/ptlinker.db-wal
+# *.DS_Store
+.DS_Store
+app/venv

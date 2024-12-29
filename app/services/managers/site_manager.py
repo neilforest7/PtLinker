@@ -72,18 +72,18 @@ class SiteManager:
         # 检查是否有本地配置文件但数据库中没有的站点
         config_dir = await SettingManager.get_instance().get_setting("crawler_config_path")
         if config_dir and Path(config_dir).exists():
-            for site_dir in Path(config_dir).iterdir():
-                if site_dir.is_dir() or site_dir.name.startswith('_'):
+            for site_conf in Path(config_dir).iterdir():
+                if site_conf.is_dir() or site_conf.name.startswith('_'):
                     continue
                     
-                site_id = site_dir.name.replace(".json", "")
+                site_id = site_conf.stem
                 if site_id not in site_setups:
                     # 从本地加载配置
                     self.logger.info(f"从本地加载配置: {site_id}")
                     local_setup = await self._load_local_site_setup(site_id)
                     if local_setup and local_setup.is_valid():
                         site_setups[site_id] = local_setup
-                        self.logger.info(f"从本地加载配置成功: {site_id}")
+                        self.logger.info(f"从本地加载 {site_id} 配置到site_setups成功")
                         
                         # 保存到数据库
                         try:
@@ -356,12 +356,19 @@ class SiteManager:
     async def load_local_site_setups(self) -> Dict[str, SiteSetup]:
         """从本地JSON文件加载所有站点配置"""
         try:
-            site_ids = list(self._sites.keys())
             site_setups = {}
-            for site_id in site_ids:
-                site_setup = await self._load_local_site_setup(site_id)
-                if site_setup:
-                    site_setups[site_id] = site_setup
+            config_dir = await SettingManager.get_instance().get_setting("crawler_config_path")
+            
+            if config_dir and Path(config_dir).exists():
+                for config_file in Path(config_dir).iterdir():
+                    if config_file.is_dir() or config_file.name.startswith('_'):
+                        continue
+                        
+                    site_id = config_file.stem
+                    site_setup = await self._load_local_site_setup(site_id)
+                    if site_setup and site_setup.is_valid():
+                        site_setups[site_id] = site_setup
+                        
             return site_setups
         except Exception as e:
             self.logger.error(f"从本地加载站点配置失败: {str(e)}")
@@ -377,6 +384,7 @@ class SiteManager:
             Optional[SiteSetup]: 站点配置集合，如果未找到则返回None
         """
         try:
+            # 1. 获取配置目录
             config_dir = await SettingManager.get_instance().get_setting("crawler_config_path")
             self.logger.info(f"获取到crawler_config_path: {config_dir}")
             if not config_dir:
@@ -391,18 +399,18 @@ class SiteManager:
             if not os.path.exists(config_dir):
                 self.logger.warning(f"站点目录未找到: {config_dir}")
                 return None
-                
-            # 读取site_config.json
+            
+            # 2. 读取站点配置文件
             site_config_path = os.path.join(config_dir, f"{site_id}.json")
             if not os.path.exists(site_config_path):
                 self.logger.warning(f"{site_id}.json 未找到")
                 return None
-            else:
-                with open(site_config_path, 'r', encoding='utf-8') as f:
-                    site_config_data = json.load(f)
-                self.logger.info(f"成功加载站点配置文件: {site_config_path}")
-                
-            # 读取crawler_credential.json
+            
+            with open(site_config_path, 'r', encoding='utf-8') as f:
+                site_config_data = json.load(f)
+            self.logger.info(f"加载站点配置文件: {site_config_path}")
+
+            # 3. 读取凭证配置
             credential_dir = await SettingManager.get_instance().get_setting("crawler_credential_path")
             credential_path = os.path.join(credential_dir, "credentials.json")
             credential_data = {}
@@ -424,6 +432,11 @@ class SiteManager:
             # 构造配置数据
             setup_data = {
                 "site_id": site_id,
+                "crawler": {
+                    "site_id": site_id,
+                    "is_logged_in": False,
+                    "total_tasks": 0
+                },
                 "site_config": {
                     "site_id": site_id,
                     "site_url": site_config_data.get("site_url", ""),
@@ -433,7 +446,11 @@ class SiteManager:
                 },
                 "crawler_config": {
                     "site_id": site_id,
-                    "enabled": True
+                    "enabled": True,
+                    "use_proxy": False,
+                    "fresh_login": False,
+                    "captcha_skip": False,
+                    "headless": True
                 },
                 "crawler_credential": {
                     "site_id": site_id,
@@ -441,14 +458,18 @@ class SiteManager:
                     "password": credential_data.get("password", ""),
                     "authorization": credential_data.get("authorization", ""),
                     "apikey": credential_data.get("apikey", ""),
-                    "enable_manual_cookies": True if credential_data.get("manual_cookies", "") else False,
+                    "enable_manual_cookies": bool(credential_data.get("manual_cookies")),
                     "manual_cookies": credential_data.get("manual_cookies", "")
                 }
             }
             
-            # 使用 model_validate 直接创建 SiteSetup 实例
+            # 5. 验证并创建 SiteSetup 实例
             site_setup = SiteSetup.model_validate(setup_data)
-            self.logger.debug(f"成功创建站点配置: {site_id}")
+            if not site_setup.site_config or not site_setup.site_config.site_url:
+                self.logger.error(f"站点 {site_id} 配置无效：缺少必要的站点URL")
+                return None
+            
+            self.logger.info(f"成功加载本地配置: {site_id}")
             return site_setup
             
         except Exception as e:
