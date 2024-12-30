@@ -1,4 +1,7 @@
 import os
+import platform
+import zipfile
+import requests
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -119,6 +122,19 @@ class SettingManager:
             # 6. 保存到实例并清空缓存
             self._settings = settings
             self._cache.clear()
+            
+            # 7. 检查并确保 Chrome 存在
+            chrome_path = await self.ensure_chrome_exists(db)
+            if not chrome_path:
+                self.logger.warning("Failed to ensure Chrome exists during initialization")
+            else:
+                self.logger.info(f"Chrome verified at: {os.path.abspath(chrome_path)}")
+                
+                            
+            # 设置DrissionPage的Chrome可执行文件路径
+            import DrissionPage
+            DrissionPage.ChromiumOptions().set_browser_path(os.path.abspath(chrome_path)).save()
+            self.logger.info(f"DrissionPage的Chrome可执行文件路径已设置为: {chrome_path}")
             
             self.logger.info(
                 "Settings initialized successfully "
@@ -266,6 +282,16 @@ class SettingManager:
         """获取是否启用签到"""
         return self._settings.enable_checkin if self._settings else True
 
+    @property
+    def captcha_api_key(self) -> Optional[str]:
+        """获取验证码API密钥"""
+        return self._settings.captcha_api_key if self._settings else None
+
+    @property
+    def captcha_default_method(self) -> str:
+        """获取验证码处理方法"""
+        return self._settings.captcha_default_method if self._settings else "api"
+
     async def reset_settings(self, db: AsyncSession) -> None:
         """重置所有设置到环境变量和默认值
         
@@ -274,6 +300,7 @@ class SettingManager:
         2. 从环境变量加载设置
         3. 使用模型定义的默认值
         4. 保存到数据库
+        5. 确保 Chrome 存在
         """
         try:
             self.logger.info("Starting settings reset process")
@@ -312,9 +339,145 @@ class SettingManager:
             self._settings = new_settings
             self._cache.clear()
             
+            # 7. 检查并确保 Chrome 存在
+            chrome_path = await self.ensure_chrome_exists(db)
+            if not chrome_path:
+                self.logger.warning("Failed to ensure Chrome exists during settings reset")
+            else:
+                self.logger.info(f"Chrome verified at: {chrome_path}")
+            
+            # 设置DrissionPage的Chrome可执行文件路径
+            import DrissionPage
+            DrissionPage.ChromiumOptions().set_browser_path(os.path.abspath(chrome_path)).save()
+            self.logger.info(f"DrissionPage的Chrome可执行文件路径已设置为: {chrome_path}")
+            
             self.logger.info("Settings have been reset successfully")
             
         except Exception as e:
             await db.rollback()
             self.logger.error(f"Failed to reset settings: {str(e)}", exc_info=True)
             raise
+
+    async def ensure_chrome_exists(self, db: AsyncSession) -> Optional[str]:
+        """确保 Chrome 存在，如果不存在则下载便携版"""
+        try:
+            # 先检查数据库中配置的路径
+            chrome_path = await self.get_setting('chrome_path')
+            if chrome_path and Path(chrome_path).exists():
+                return chrome_path
+
+            # 确定下载目录
+            storage_path = await self.get_setting('storage_path')
+            chrome_dir = Path(storage_path) / 'chrome'
+            chrome_dir.mkdir(parents=True, exist_ok=True)
+
+            # 根据操作系统选择下载配置
+            system = platform.system().lower()
+            if system == 'windows':
+                platform_path = 'Win_x64'
+                chrome_exe = chrome_dir / 'chrome-win' / 'chrome.exe'
+                chrome_app = chrome_exe
+                zip_name = 'chrome-win.zip'
+            elif system == 'darwin':
+                arch = platform.machine()
+                if arch == 'arm64':
+                    platform_path = 'Mac_Arm64'
+                else:
+                    platform_path = 'Mac'
+                chrome_app = chrome_dir / 'chrome-mac' / 'Chromium.app'
+                chrome_exe = chrome_app / 'Contents' / 'MacOS' / 'Chromium'
+                zip_name = 'chrome-mac.zip'
+            elif system == 'linux':
+                platform_path = 'Linux_x64'
+                chrome_exe = chrome_dir / 'chrome-linux' / 'chrome'
+                chrome_app = chrome_exe
+                zip_name = 'chrome-linux.zip'
+            else:
+                raise NotImplementedError(f"Unsupported system: {system}")
+
+            zip_path = chrome_dir / zip_name
+
+            if not chrome_app.exists():
+                # 检查是否已有压缩包
+                need_download = True
+                if zip_path.exists() and zip_path.stat().st_size > 0:
+                    try:
+                        # 验证现有zip文件完整性
+                        with zipfile.ZipFile(zip_path, 'r') as zf:
+                            if zf.testzip() is None:
+                                self.logger.info(f"Found existing Chrome package at {zip_path}")
+                                need_download = False
+                            else:
+                                self.logger.warning("Existing Chrome package is corrupted, will download again")
+                                zip_path.unlink()
+                    except zipfile.BadZipFile:
+                        self.logger.warning("Existing Chrome package is invalid, will download again")
+                        zip_path.unlink()
+
+                if need_download:
+                    # 获取最新版本号
+                    version_url = f"https://storage.googleapis.com/chromium-browser-snapshots/{platform_path}/LAST_CHANGE"
+                    self.logger.info(f"Getting latest Chrome version from {version_url}")
+                    response = requests.get(version_url)
+                    if not response.ok:
+                        raise Exception(f"Failed to get latest version: {response.status_code}")
+                    latest_version = response.text.strip()
+                    
+                    # 构建下载URL
+                    download_url = f"https://storage.googleapis.com/chromium-browser-snapshots/{platform_path}/{latest_version}/{zip_name}"
+                    self.logger.info(f"Downloading Chrome version {latest_version} from {download_url}")
+                    
+                    # 下载Chrome
+                    response = requests.get(download_url, stream=True)
+                    if not response.ok:
+                        raise Exception(f"Download failed with status code: {response.status_code}")
+
+                    # 获取文件大小
+                    total_size = int(response.headers.get('content-length', 0))
+
+                    # 下载文件并显示进度
+                    block_size = 1024 * 1024  # 1MB
+                    downloaded_size = 0
+
+                    with open(zip_path, 'wb') as f:
+                        for chunk in response.iter_content(chunk_size=block_size):
+                            if chunk:
+                                f.write(chunk)
+                                downloaded_size += len(chunk)
+                                progress = (downloaded_size / total_size) * 100
+                                self.logger.debug(f"Download progress: {progress:.1f}%")
+
+                # 解压Chrome
+                self.logger.info("Extracting Chrome...")
+                try:
+                    with zipfile.ZipFile(zip_path, 'r') as zf:
+                        zf.extractall(chrome_dir)
+                except zipfile.BadZipFile as e:
+                    raise Exception(f"Failed to extract Chrome package: {str(e)}")
+
+                # 设置执行权限
+                if system in ['linux', 'darwin']:
+                    if system == 'darwin':
+                        # Mac 平台设置应用程序包的权限
+                        os.system(f'xattr -rd com.apple.quarantine "{chrome_app}"')
+                        # 递归设置执行权限
+                        os.system(f'chmod -R +x "{chrome_app}"')
+                    else:
+                        # Linux 只需要设置可执行文件权限
+                        chrome_exe.chmod(0o755)
+
+                # 验证应用是否存在
+                if not chrome_app.exists():
+                    raise Exception(f"Chrome application not found at {chrome_app}")
+
+            # 更新数据库中的 Chrome 路径
+            chrome_path = str(chrome_exe)
+            await self.set_setting(db, 'chrome_path', chrome_path)
+            self.logger.info(f"Chrome path set to: {chrome_path}")
+
+            
+            return chrome_path
+
+        except Exception as e:
+            self.logger.error(f"Failed to ensure Chrome exists: {str(e)}")
+            return None
