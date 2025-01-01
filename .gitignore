@@ -18,3 +18,4 @@ app/ptlinker.db-wal
 # *.DS_Store
 .DS_Store
 app/venv
+app/ptlinker.db-journal
