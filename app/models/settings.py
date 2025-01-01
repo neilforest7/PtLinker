@@ -32,6 +32,7 @@ class Settings(Base):
     captcha_max_retries = Column(Integer, default=10, comment="验证码最大重试次数")
     captcha_poll_interval = Column(Float, default=3.0, comment="验证码轮询间隔")
     captcha_timeout = Column(Integer, default=60, comment="验证码超时时间")
+    captcha_storage_path = Column(String(200), default="storage/captcha", comment="验证码存储路径")
     
     # 浏览器配置
     browser_viewport_width = Column(Integer, default=1920, comment="浏览器视窗宽度")
@@ -57,7 +58,6 @@ class Settings(Base):
     
     # 存储配置
     storage_path = Column(String(200), default="storage", comment="存储路径")
-    captcha_storage_path = Column(String(200), default="storage/captcha", comment="验证码存储路径")
     
     # 签到配置
     enable_checkin = Column(Boolean, default=True, nullable=False, comment="是否启用签到")

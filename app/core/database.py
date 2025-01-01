@@ -9,17 +9,6 @@ from sqlalchemy.pool import AsyncAdaptedQueuePool
 _logger = get_logger(__name__, "database")
 
 # 创建带连接池的异步引擎
-from core.config import database_settings
-from core.logger import get_logger
-from fastapi import Request
-from sqlalchemy.ext.asyncio import (AsyncSession, async_sessionmaker,
-                                    create_async_engine)
-from sqlalchemy.orm import DeclarativeBase
-from sqlalchemy.pool import AsyncAdaptedQueuePool
-
-_logger = get_logger(__name__, "database")
-
-# 创建带连接池的异步引擎
 engine = create_async_engine(
     database_settings.DATABASE_URL,
     poolclass=AsyncAdaptedQueuePool,
@@ -28,6 +17,11 @@ engine = create_async_engine(
     pool_timeout=database_settings.DB_POOL_TIMEOUT,
     pool_recycle=database_settings.DB_POOL_RECYCLE,
     echo=database_settings.DB_ECHO,
+    pool_pre_ping=True,
+    connect_args={
+        "timeout": 30,
+        "check_same_thread": False
+    }
 )
 
 # 创建会话工厂

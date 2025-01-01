@@ -1,11 +1,8 @@
 import base64
-import io
-import os
 from typing import Optional
-
-from core.logger import get_logger, setup_logger
+from services.managers.setting_manager import SettingManager
+from core.logger import get_logger
 from twocaptcha import TwoCaptcha
-
 from ..base_handler import BaseCaptchaHandler
 
 
@@ -14,20 +11,34 @@ class APIHandler(BaseCaptchaHandler):
     
     def __init__(self, storage_dir: str):
         super().__init__(storage_dir)
-        # setup_logger()
         self.logger = get_logger(name=__name__, site_id="api_captcha")
+        self.settings_manager = SettingManager.get_instance()
         
-        # 初始化2captcha客户端
-        api_key = os.getenv('CAPTCHA_API_KEY')
-        if not api_key:
-            raise ValueError("未设置CAPTCHA_API_KEY环境变量")
+        # 初始化配置会在第一次使用时进行
+        self.solver = None
+        self.timeout = None
+        self.polling_interval = None
+        self.max_retries = None
+        
+    async def _init_config(self):
+        """初始化2captcha配置"""
+        try:
+            # 从 SettingManager 获取配置
+            api_key = await self.settings_manager.get_setting('captcha_api_key')
+            if not api_key:
+                raise ValueError("未配置CAPTCHA_API_KEY")
             
-        self.solver = TwoCaptcha(api_key)
-        
-        # 配置参数
-        self.timeout = int(os.getenv('CAPTCHA_TIMEOUT', '120'))
-        self.polling_interval = float(os.getenv('CAPTCHA_POLL_INTERVAL', '5.0'))
-        self.max_retries = int(os.getenv('CAPTCHA_MAX_RETRIES', '3'))
+            self.timeout = await self.settings_manager.get_setting('captcha_timeout') or 120
+            self.polling_interval = await self.settings_manager.get_setting('captcha_poll_interval') or 5.0
+            self.max_retries = await self.settings_manager.get_setting('captcha_max_retries') or 3
+            
+            # 初始化2captcha客户端
+            self.solver = TwoCaptcha(api_key)
+            self.logger.debug("2captcha客户端初始化成功")
+            
+        except Exception as e:
+            self.logger.error(f"初始化2captcha配置失败: {str(e)}")
+            raise
     
     async def handle(self, image_data: bytes, site_id: str) -> Optional[str]:
         """处理验证码
@@ -40,6 +51,10 @@ class APIHandler(BaseCaptchaHandler):
             Optional[str]: 识别出的验证码文本，失败返回None
         """
         try:
+            # 确保配置已初始化
+            if not self.solver:
+                await self._init_config()
+            
             # 确保图片格式正确
             image_data = self._convert_to_png(image_data)
             
@@ -61,7 +76,6 @@ class APIHandler(BaseCaptchaHandler):
             self.logger.debug("发送验证码识别请求到2captcha")
             result = self.solver.normal(
                 image_base64,
-                # **params,
                 timeout=self.timeout,
                 pollingInterval=self.polling_interval
             )

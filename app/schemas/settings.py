@@ -23,6 +23,7 @@ class SettingsBase(BaseModel):
     captcha_max_retries: int = Field(default=10, description="验证码最大重试次数")
     captcha_poll_interval: float = Field(default=3.0, description="验证码轮询间隔")
     captcha_timeout: int = Field(default=60, description="验证码超时时间")
+    captcha_storage_path: str = Field(default="storage/captcha", description="验证码存储路径")
     
     # 浏览器配置
     browser_viewport_width: int = Field(default=1920, description="浏览器视窗宽度")
@@ -92,6 +93,7 @@ class SettingsUpdate(BaseModel):
     captcha_max_retries: Optional[int] = None
     captcha_poll_interval: Optional[float] = None
     captcha_timeout: Optional[int] = None
+    captcha_storage_path: Optional[str] = None
     browser_viewport_width: Optional[int] = None
     browser_viewport_height: Optional[int] = None
     chrome_path: Optional[str] = None

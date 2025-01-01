@@ -4,7 +4,8 @@ from typing import Optional, Union
 
 import requests
 from DrissionPage.items import ChromiumElement
-from core.logger import get_logger, setup_logger
+from core.logger import get_logger
+from services.managers.setting_manager import SettingManager
 
 from .handlers.api_handler import APIHandler
 from .handlers.ocr_handler import OCRHandler
@@ -12,18 +13,32 @@ from .handlers.ocr_handler import OCRHandler
 
 class CaptchaService:
     def __init__(self):
-        # setup_logger()
         self.logger = get_logger(name=__name__, site_id="Captcha")
+        self.settings_manager = SettingManager.get_instance()
         
-        # 初始化处理器
-        storage_dir = os.getenv('CAPTCHA_STORAGE_PATH', 'storage/captcha')
-        self.api_handler = APIHandler(storage_dir)
-        self.ocr_handler = OCRHandler(storage_dir)
+        # 初始化配置会在第一次使用时进行
+        self.storage_dir = None
+        self.default_method = None
+        self.api_handler = None
+        self.ocr_handler = None
         
-        # 获取默认处理方式
-        self.default_method = os.getenv('CAPTCHA_DEFAULT_METHOD', 'api')
-        self.logger.info(f"使用验证码处理方式: {self.default_method}")
-        
+    async def _init_config(self):
+        """初始化配置"""
+        try:
+            # 从 SettingManager 获取配置
+            self.storage_dir = await self.settings_manager.get_setting('captcha_storage_path') or 'storage/captcha'
+            self.default_method = await self.settings_manager.get_setting('captcha_default_method') or 'api'
+            
+            # 初始化处理器
+            self.api_handler = APIHandler(self.storage_dir)
+            self.ocr_handler = OCRHandler(self.storage_dir)
+            
+            self.logger.info(f"使用验证码处理方式: {self.default_method}")
+            
+        except Exception as e:
+            self.logger.error(f"初始化验证码服务配置失败: {str(e)}")
+            raise
+            
     async def handle_captcha(self, input_data: Union[ChromiumElement, str, bytes], site_id: str) -> Optional[str]:
         """处理验证码
         
@@ -35,6 +50,10 @@ class CaptchaService:
             str: 识别出的验证码文本，失败返回None
         """
         try:
+            # 确保配置已初始化
+            if not self.api_handler:
+                await self._init_config()
+                
             # 获取验证码数据
             captcha_data = await self._get_captcha_data(input_data)
             if not captcha_data:

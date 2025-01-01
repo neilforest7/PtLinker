@@ -176,7 +176,7 @@ class ProcessManager:
                 except Exception as e:
                     self.logger.error(f"周期检查任务失败: {str(e)}")
                     self.logger.debug("错误详情:", exc_info=True)
-                await asyncio.sleep(5)  # 每5秒检查一次
+                await asyncio.sleep(15)  # 每5秒检查一次
                 
         # 启动定期检查任务
         asyncio.create_task(periodic_check())
