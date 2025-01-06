@@ -14,6 +14,7 @@ import { siteConfigApi } from '../../api/siteConfig';
 import { StatisticsResponse } from '../../types/api';
 import styles from './Statistics.module.css';
 import ChartView from './ChartView';
+import BlockView from './BlockView';
 
 type ViewMode = 'grid' | 'list' | 'chart';
 
@@ -27,6 +28,7 @@ const Statistics: React.FC = () => {
             setLoading(true);
             const data = await siteConfigApi.getLastSuccessStatistics();
             setStatistics(data);
+            console.log(data);
         } catch (error) {
             console.error('加载统计数据失败:', error);
         } finally {
@@ -74,42 +76,43 @@ const Statistics: React.FC = () => {
             title: '上传量',
             dataIndex: 'upload',
             key: 'upload',
-            render: (upload: number) => formatSize(upload),
-            sorter: (a: any, b: any) => a.upload - b.upload,
+            render: (upload: number | null) => formatSize(upload ?? 0),
+            sorter: (a: any, b: any) => (a.upload ?? 0) - (b.upload ?? 0),
         },
         {
             title: '下载量',
             dataIndex: 'download',
             key: 'download',
-            render: (download: number) => formatSize(download),
-            sorter: (a: any, b: any) => a.download - b.download,
+            render: (download: number | null) => formatSize(download ?? 0),
+            sorter: (a: any, b: any) => (a.download ?? 0) - (b.download ?? 0),
         },
         {
             title: '魔力值',
             dataIndex: 'bonus',
             key: 'bonus',
-            render: (bonus: number) => bonus.toFixed(2),
-            sorter: (a: any, b: any) => a.bonus - b.bonus,
+            render: (bonus: number | null) => (bonus ?? 0).toFixed(2),
+            sorter: (a: any, b: any) => (a.bonus ?? 0) - (b.bonus ?? 0),
         },
         {
             title: '分享率',
             dataIndex: 'ratio',
             key: 'ratio',
-            render: (ratio: number) => ratio.toFixed(3),
-            sorter: (a: any, b: any) => a.ratio - b.ratio,
+            render: (ratio: number | null) => (ratio ?? 0).toFixed(3),
+            sorter: (a: any, b: any) => (a.ratio ?? 0) - (b.ratio ?? 0),
         },
         {
             title: '做种数',
             dataIndex: 'seeding_count',
             key: 'seeding_count',
-            sorter: (a: any, b: any) => a.seeding_count - b.seeding_count,
+            render: (count: number | null) => count ?? 0,
+            sorter: (a: any, b: any) => (a.seeding_count ?? 0) - (b.seeding_count ?? 0),
         },
         {
             title: '做种体积',
             dataIndex: 'seeding_size',
             key: 'seeding_size',
-            render: (size: number) => formatSize(size),
-            sorter: (a: any, b: any) => a.seeding_size - b.seeding_size,
+            render: (size: number | null) => formatSize(size ?? 0),
+            sorter: (a: any, b: any) => (a.seeding_size ?? 0) - (b.seeding_size ?? 0),
         },
         {
             title: '更新时间',
@@ -141,7 +144,7 @@ const Statistics: React.FC = () => {
                             <Col span={12}>
                                 <Statistic
                                     title="上传量"
-                                    value={formatSize(stats.daily_results.upload)}
+                                    value={formatSize(stats.daily_results.upload ?? 0)}
                                     prefix={<UploadOutlined />}
                                     className={styles.statisticValue}
                                 />
@@ -149,7 +152,7 @@ const Statistics: React.FC = () => {
                             <Col span={12}>
                                 <Statistic
                                     title="下载量"
-                                    value={formatSize(stats.daily_results.download)}
+                                    value={formatSize(stats.daily_results.download ?? 0)}
                                     prefix={<DownloadOutlined />}
                                     className={styles.statisticValue}
                                 />
@@ -157,7 +160,7 @@ const Statistics: React.FC = () => {
                             <Col span={12}>
                                 <Statistic
                                     title="魔力值"
-                                    value={stats.daily_results.bonus.toFixed(2)}
+                                    value={(stats.daily_results.bonus ?? 0).toFixed(2)}
                                     prefix={<GiftOutlined />}
                                     className={styles.statisticValue}
                                 />
@@ -165,15 +168,16 @@ const Statistics: React.FC = () => {
                             <Col span={12}>
                                 <Statistic
                                     title="分享率"
-                                    value={stats.daily_results.ratio.toFixed(3)}
+                                    value={stats.daily_results.ratio ?? 0}
                                     prefix={<PercentageOutlined />}
                                     className={styles.statisticValue}
+                                    formatter={(value) => (value as number).toFixed(3)}
                                 />
                             </Col>
                             <Col span={12}>
                                 <Statistic
                                     title="做种数"
-                                    value={stats.daily_results.seeding_count}
+                                    value={stats.daily_results.seeding_count ?? 0}
                                     prefix={<CloudUploadOutlined />}
                                     className={styles.statisticValue}
                                 />
@@ -181,7 +185,7 @@ const Statistics: React.FC = () => {
                             <Col span={12}>
                                 <Statistic
                                     title="做种体积"
-                                    value={formatSize(stats.daily_results.seeding_size)}
+                                    value={formatSize(stats.daily_results.seeding_size ?? 0)}
                                     prefix={<CloudUploadOutlined />}
                                     className={styles.statisticValue}
                                 />
@@ -236,13 +240,21 @@ const Statistics: React.FC = () => {
                         />
                     </Card>
                 </Col>
-                <Col span={6}>
+                {/* <Col span={6}>
                     <Card className={styles.summaryCard}>
                         <Statistic
                             title="总魔力值"
                             value={totals.bonus.toFixed(2)}
                             prefix={<GiftOutlined />}
                         />
+                    </Card>
+                </Col> */}
+                <Col span={6}>
+                    <Card className={styles.summaryCard}>
+                        <Statistic
+                            title="签到记录"
+                        />
+                        <BlockView/>
                     </Card>
                 </Col>
             </Row>

@@ -178,7 +178,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onTaskUpdate }) => {
                 break;
         }
 
-        if (task.status === 'ready') {
+        if (task.status === 'ready' || task.status === 'pending' || task.status === 'queued') {
             content.push(
                 <div key="cancel-button" className={styles.taskActions}>
                     <Popconfirm

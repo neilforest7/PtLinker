@@ -4,12 +4,10 @@ import { Chart } from '@antv/g2';
 import { siteConfigApi } from '../../api/siteConfig';
 import { StatisticsHistoryResponse } from '../../types/api';
 import styles from './Statistics.module.css';
-import { TimeRange, MetricType, ChartDataItem, metricLabels } from './ChartView';
 
 const BlockView: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [statistics, setStatistics] = useState<StatisticsHistoryResponse | null>(null);
-    const [metric, setMetric] = useState<MetricType>('upload');
     const [blockChart, setBlockChart] = useState<Chart | null>(null);
     const [selectedSites, setSelectedSites] = useState<string[]>([]);
     const [siteOptions, setSiteOptions] = useState<{ label: string; value: string; }[]>([]);
@@ -46,7 +44,18 @@ const BlockView: React.FC = () => {
     const loadStatistics = async () => {
         try {
             setLoading(true);
-            const data = await siteConfigApi.getStatisticsHistory();
+            const end = new Date();
+            end.setHours(23, 59, 59, 999);
+            const start = new Date(end);
+            start.setDate(end.getDate() - 30); // 改为30天前
+            start.setHours(0, 0, 0, 0);
+
+            const params = {
+                start_date: start.toISOString().split('T')[0],
+                end_date: end.toISOString().split('T')[0]
+            };
+
+            const data = await siteConfigApi.getStatisticsHistory(params);
             setStatistics(data);
         } catch (error) {
             console.error('加载统计数据失败:', error);
@@ -60,67 +69,126 @@ const BlockView: React.FC = () => {
     }, []);
 
     useEffect(() => {
-        if (!statistics || !statistics.metrics.daily_results.length || !selectedSites.length) return;
+        if (!statistics || !statistics.metrics.checkins.length) return;
 
-        // 过滤选中站点的数据
-        const siteData = statistics.metrics.daily_results.filter(
-            item => selectedSites.includes(item.site_id)
-        );
+        // 首先按日期和站点分组，合并同一天同一站点的签到结果
+        const dailyCheckins = statistics.metrics.checkins.reduce((acc, curr) => {
+            const key = `${curr.date}-${curr.site_id}`;
+            if (!acc[key]) {
+                acc[key] = {
+                    date: curr.date,
+                    site_id: curr.site_id,
+                    success: false,
+                    checkin_time: curr.checkin_time
+                };
+            }
+            // 只要有一次成功就算成功
+            if (curr.checkin_status === 'success') {
+                acc[key].success = true;
+                // 更新为最早的成功签到时间
+                if (new Date(curr.checkin_time) < new Date(acc[key].checkin_time)) {
+                    acc[key].checkin_time = curr.checkin_time;
+                }
+            }
+            return acc;
+        }, {} as Record<string, { date: string; site_id: string; success: boolean; checkin_time: string; }>);
 
-        // 准备热力图数据
-        const blockData = siteData.map(item => {
-            const date = new Date(item.date);
-            return {
-                date: item.date,
-                day: date.getDay(), // 0-6 表示周日到周六
-                week: Math.floor((date.getTime() - new Date(date.getFullYear(), 0, 1).getTime()) / (7 * 24 * 60 * 60 * 1000)),
-                value: item[metric] || 0
-            };
-        });
+        // 然后按日期汇总所有站点的签到情况
+        const dateCheckins = Object.values(dailyCheckins).reduce((acc, curr) => {
+            if (!acc[curr.date]) {
+                acc[curr.date] = {
+                    successSites: new Set<string>(),
+                    totalSites: new Set<string>(),
+                    earliestCheckinTime: curr.checkin_time
+                };
+            }
+            acc[curr.date].totalSites.add(curr.site_id);
+            if (curr.success) {
+                acc[curr.date].successSites.add(curr.site_id);
+                // 更新为最早的签到时间
+                if (new Date(curr.checkin_time) < new Date(acc[curr.date].earliestCheckinTime)) {
+                    acc[curr.date].earliestCheckinTime = curr.checkin_time;
+                }
+            }
+            return acc;
+        }, {} as Record<string, { 
+            successSites: Set<string>; 
+            totalSites: Set<string>; 
+            earliestCheckinTime: string; 
+        }>);
+
+        // 转换为热力图数据
+        const blockData = (() => {
+            // 获取当前日期
+            const today = new Date();
+            // 获取30天前的日期
+            const startDate = new Date(today);
+            startDate.setDate(today.getDate() - 30);
+            startDate.setHours(0, 0, 0, 0);
+            
+            // 创建一个包含30天所有日期的数组
+            const allDates = [];
+            const currentDate = new Date(startDate);
+            
+            while (currentDate <= today) {
+                const dateStr = currentDate.toISOString().split('T')[0];
+                const dayData = dateCheckins[dateStr];
+                
+                // 计算成功率作为 value
+                const value = dayData ? 
+                    (dayData.totalSites.size > 0 ? dayData.successSites.size / dayData.totalSites.size : 0) : 0;
+                
+                allDates.push({
+                    date: dateStr,
+                    day: currentDate.getDay(),
+                    week: Math.floor((currentDate.getTime() - startDate.getTime()) / (7 * 24 * 60 * 60 * 1000)),
+                    value: value,
+                    successCount: dayData?.successSites.size || 0,
+                    totalSites: dayData?.totalSites.size || 0,
+                    failedCount: dayData ? (dayData.totalSites.size - dayData.successSites.size) : 0,
+                    checkinTime: dayData?.earliestCheckinTime || null
+                });
+                
+                currentDate.setDate(currentDate.getDate() + 1);
+            }
+            return allDates;
+        })();
 
         // 创建热力图
         if (blockChart) {
             blockChart.destroy();
         }
 
-        const chart = new Chart({
+        const checkinBlockChart = new Chart({
             container: 'blockChart',
             autoFit: true,
-            height: 200,
-            paddingLeft: 50,
-            paddingRight: 50,
+            height: 170,
+            width: 140,
         });
 
-        chart.data(blockData);
+        checkinBlockChart.data(blockData);
 
-        chart.scale({
-            week: {
-                type: 'cat',
-            },
-            day: {
-                type: 'cat',
-            },
-            value: {
-                nice: true,
-            },
-        });
-
-        chart.axis(false);
-
-        chart.legend('value', {
-            position: 'bottom',
-        });
-
-        chart
-            .polygon()
-            .encode('position', ['week', 'day'])
+        checkinBlockChart
+            .cell()
+            .encode('x', 'week')
+            .encode('y', 'day')
             .encode('color', 'value')
-            .style('stroke', '#fff')
-            .style('strokeWidth', 1)
-            .style('lineWidth', 1)
+            .style('inset', 0.5)
             .scale('color', {
-                palette: 'green',
-                offset: (t) => t ** 2,
+                type: 'linear',
+                domain: [0, 1],
+                range: ['#ebedf0', '#338836']
+            })
+            .legend(false)
+            .axis('x', {
+                label: null,
+                line: null,
+                grid: null,
+            })
+            .axis('y', {
+                label: null,
+                line: null,
+                grid: null,
             })
             .tooltip({
                 items: [
@@ -129,21 +197,34 @@ const BlockView: React.FC = () => {
                         value: new Date(d.date).toLocaleDateString()
                     }),
                     (d: any) => ({
-                        name: metricLabels[metric],
-                        value: d.value.toFixed(2)
+                        name: '签到状态',
+                        value: d.value === 1 ? '全部成功' : (d.value === 0 ? '未签到' : '部分成功')
+                    }),
+                    (d: any) => ({
+                        name: '成功/总数',
+                        value: d.checkinTime ? `${d.successCount}/${d.totalSites}` : '无签到记录'
+                    }),
+                    (d: any) => ({
+                        name: '签到时间',
+                        value: d.checkinTime ? new Date(d.checkinTime).toLocaleTimeString() : '-'
+                    }),
+                    (d: any) => ({
+                        name: '失败站点',
+                        value: d.failedCount
                     })
                 ]
-            });
+            })
+            .animate('enter', { type: 'fadeIn' });
 
-        chart.render();
-        setBlockChart(chart);
+        checkinBlockChart.render();
+        setBlockChart(checkinBlockChart);
 
         return () => {
             if (blockChart) {
                 blockChart.destroy();
             }
         };
-    }, [statistics, metric, selectedSites]);
+    }, [statistics]);
 
     if (loading) {
         return <Spin size="large" />;
@@ -154,33 +235,7 @@ const BlockView: React.FC = () => {
     }
 
     return (
-        <div className={styles.chartContainer}>
-            <div className={styles.chartControls}>
-                <Space size="middle">
-                    <Select
-                        value={metric}
-                        onChange={setMetric}
-                        className={styles.metricSelect}
-                        options={Object.entries(metricLabels).map(([value, label]) => ({
-                            value,
-                            label
-                        }))}
-                    />
-                    <Select
-                        mode="multiple"
-                        allowClear
-                        placeholder="选择站点"
-                        value={selectedSites}
-                        onChange={setSelectedSites}
-                        options={siteOptions}
-                        className={styles.siteSelect}
-                        style={{ minWidth: '200px' }}
-                        maxTagCount={3}
-                    />
-                </Space>
-            </div>
-            <div id="blockChart" className={styles.chartContent} />
-        </div>
+        <div id="blockChart" className={styles.blockchartContent} />
     );
 };
 

@@ -93,6 +93,10 @@
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
 }
 
+.blockChartContent {
+    margin-top: 24px;
+}
+
 .chartControls {
     margin-top: 36px;
     display: flex;

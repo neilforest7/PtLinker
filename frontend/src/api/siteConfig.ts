@@ -3,6 +3,11 @@ import { SiteConfigResponse, CrawlerConfigResponse, SettingsResponse, CrawlerCre
 
 const BASE_URL = '/api/v1';
 
+interface StatisticsParams {
+    start_date?: string;
+    end_date?: string;
+}
+
 export const siteConfigApi = {
     // 获取站点配置
     getSiteConfig: async (siteId: string): Promise<SiteConfigResponse> => {
@@ -174,8 +179,8 @@ export const siteConfigApi = {
         return response.data;
     },
 
-    async getStatisticsHistory(): Promise<StatisticsHistoryResponse> {
-        const response = await axios.get('/api/v1/statistics');
+    getStatisticsHistory: async (params?: StatisticsParams) => {
+        const response = await axios.get(`${BASE_URL}/statistics`, { params });
         return response.data;
     },
 

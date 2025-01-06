@@ -4,6 +4,7 @@ import { Chart } from '@antv/g2';
 import { siteConfigApi } from '../../api/siteConfig';
 import { StatisticsHistoryResponse } from '../../types/api';
 import styles from './Statistics.module.css';
+import BlockView from './BlockView';
 
 export type TimeRange = '7' | '30' | '60' | '90' | '180' | 'all';
 export type MetricType = 'upload' | 'seeding_size' | 'seeding_count' | 'bonus' | 'download' | 'seeding_score' | 'bonus_per_hour';
@@ -31,13 +32,25 @@ export const metricLabels: Record<MetricType, string> = {
     seeding_score: '保种积分',
 };
 
-const formatValue = (value: number, type: MetricType) => {
+const formatValue = (value: number | null | undefined, type: MetricType) => {
+    if (value === null || value === undefined) {
+        switch (type) {
+            case 'upload':
+            case 'download':
+                return '0 GB';
+            case 'seeding_size':
+                return '0 TB';
+            default:
+                return '0';
+        }
+    }
+
     switch (type) {
         case 'upload':
         case 'download':
             return `${value.toFixed(1)} GB`;
         case 'seeding_size':
-            return `${(value / 1024).toFixed(2)} TB`;  // 转换为 TiB
+            return `${(value / 1024).toFixed(2)} TB`;  // 转换为 TB
         case 'seeding_count':
             return value.toString();
         case 'bonus':
@@ -58,14 +71,13 @@ const ChartView: React.FC = () => {
     const [selectedSites, setSelectedSites] = useState<string[]>([]);
     const [siteOptions, setSiteOptions] = useState<{ label: string; value: string; }[]>([]);
     const [overviewChart, setOverviewChart] = useState<Chart | null>(null);
-    const [blockChart, setBlockChart] = useState<Chart | null>(null);
 
     const loadSiteConfigs = async () => {
         try {
             // 获取所有站点配置
             const configs = await siteConfigApi.getAllCrawlerConfigs();
             
-            // 获取���计数据中实际存在的站点
+            // 获取统计数据中实际存在的站点
             const existingSites = new Set(
                 statistics?.metrics.daily_results.map(result => result.site_id) || []
             );
@@ -96,7 +108,26 @@ const ChartView: React.FC = () => {
     const loadStatistics = async () => {
         try {
             setLoading(true);
-            const data = await siteConfigApi.getStatisticsHistory();
+            // 计算时间范围
+            const end = new Date();
+            end.setHours(23, 59, 59, 999);
+            const start = new Date();
+            
+            if (timeRange !== 'all') {
+                const days = parseInt(timeRange);
+                start.setDate(end.getDate() - days + 1);
+            } else {
+                // 如果是 'all'，设置为365天前
+                start.setDate(end.getDate() - 365);
+            }
+            start.setHours(0, 0, 0, 0);
+
+            const params = {
+                start_date: start.toISOString().split('T')[0],
+                end_date: end.toISOString().split('T')[0]
+            };
+
+            const data = await siteConfigApi.getStatisticsHistory(params);
             setStatistics(data);
         } catch (error) {
             console.error('加载统计数据失败:', error);
@@ -105,9 +136,10 @@ const ChartView: React.FC = () => {
         }
     };
 
+    // 修改 useEffect，在 timeRange 变化时重新加载数据
     useEffect(() => {
         loadStatistics();
-    }, []);
+    }, [timeRange]); // 添加 timeRange 作为依赖
 
     const filterDataByTimeRange = (data: ChartDataItem[]) => {
         if (timeRange === 'all') return data;
@@ -308,22 +340,45 @@ const ChartView: React.FC = () => {
             });
             
         // 准备河流图数据，并确保站点顺序一致
-        const siteOrder = Array.from(new Set(statistics.metrics.daily_results.map(item => item.site_id)))
-            .sort((a, b) => a.localeCompare(b));  // 按站点ID字母顺序排序
+        const streamData = (() => {
+            // 获取所有日期
+            const allDates = Array.from(new Set(statistics.metrics.daily_results.map(item => item.date))).sort();
+            
+            // 获取所有站点并排序
+            const siteOrder = Array.from(new Set(statistics.metrics.daily_results.map(item => item.site_id)))
+                .sort((a, b) => a.localeCompare(b));
 
-        const streamData = statistics.metrics.daily_results
-            .map(item => ({
-                date: item.date,
-                site: item.site_id,
-                value: item[metric as keyof typeof item] || 0,
-                siteIndex: siteOrder.indexOf(item.site_id)  // 添加站点索引用于排序
-            }))
-            .sort((a, b) => {
+            // 为每个站点维护最后一次的有效数据
+            const lastValidData: Record<string, number> = {};
+            
+            // 生成完整的数据集
+            return allDates.flatMap(date => {
+                // 获取当天的所有数据
+                const dayData = statistics.metrics.daily_results.filter(item => item.date === date);
+                
+                return siteOrder.map((siteId, siteIndex) => {
+                    // 查找当天该站点的数据
+                    const siteData = dayData.find(item => item.site_id === siteId);
+                    
+                    if (siteData) {
+                        // 更新最后一次有效数据
+                        lastValidData[siteId] = siteData[metric as keyof typeof siteData] as number || 0;
+                    }
+                    
+                    return {
+                        date,
+                        site: siteId,
+                        value: lastValidData[siteId] || 0,
+                        siteIndex
+                    };
+                });
+            }).sort((a, b) => {
                 // 首先按日期排序，然后按站点顺序排序
                 const dateCompare = new Date(a.date).getTime() - new Date(b.date).getTime();
                 if (dateCompare !== 0) return dateCompare;
                 return a.siteIndex - b.siteIndex;
             });
+        })();
 
         // 创建河流图
         const streamChart = new Chart({
@@ -343,9 +398,6 @@ const ChartView: React.FC = () => {
             .style('shape', 'smooth')
             .scale('y', {nice: true})
             .interaction('elementSelect', true)
-            // .scale('color', {
-            //     range: siteOrder  // 确保颜色映射顺序一致
-            // })
             .tooltip({
                 shared: false,
                 items: [
@@ -390,6 +442,15 @@ const ChartView: React.FC = () => {
                 title: 'GB',
                 grid: true,
                 titleFill: '#EE6666',
+            })
+            .tooltip({
+                items: [
+                    (d: any) => ({
+                        name: '下载量',
+                        value: formatValue(d.download, 'download'),
+                        color: '#5470C6'
+                    })
+                ]
             });
 
 
@@ -401,7 +462,17 @@ const ChartView: React.FC = () => {
             .style('lineWidth', 2)
             .style('lineDash', [1, 3])
             .style('shape', 'smooth')
-        
+            .tooltip({
+                items: [
+                    (d: any) => ({
+                        name: '上传量',
+                        value: formatValue(d.upload, 'upload'),
+                        color: '#EE6666'
+                    })
+                ]
+            });
+
+
         overallChangeLineChart.area()
             .data({
                 transform: [
@@ -437,6 +508,15 @@ const ChartView: React.FC = () => {
                 title: 'bonus',
                 grid: true,
                 titleFill: '#91CC75',
+            })
+            .tooltip({
+                items: [
+                    (d: any) => ({
+                        name: '魔力值',
+                        value: formatValue(d.bonus, 'bonus'),
+                        color: '#91CC75'
+                    })
+                ]
             });
 
         overallChangeLineChart.line()
@@ -446,6 +526,15 @@ const ChartView: React.FC = () => {
             .scale('y', {nice: true, key: '2'})
             .style('lineWidth', 1.5)
             .style('lineDash', [6, 4])
+            .tooltip({
+                items: [
+                    (d: any) => ({
+                        name: '保种积分',
+                        value: formatValue(d.seeding_score, 'seeding_score'),
+                        color: '#FF9900'
+                    })
+                ]
+            });
 
         // 配置图例
         overallChangeLineChart.legend({
@@ -481,168 +570,6 @@ const ChartView: React.FC = () => {
         };
     }, [statistics, timeRange, metric]);
 
-    useEffect(() => {
-        if (!statistics || !statistics.metrics.checkins.length) return;
-
-        // 首先按日期和站点分组，合并同一天同一站点的签到结果
-        const dailyCheckins = statistics.metrics.checkins.reduce((acc, curr) => {
-            const key = `${curr.date}-${curr.site_id}`;
-            if (!acc[key]) {
-                acc[key] = {
-                    date: curr.date,
-                    site_id: curr.site_id,
-                    success: false,
-                    checkin_time: curr.checkin_time
-                };
-            }
-            // 只要有一次成功就算成功
-            if (curr.checkin_status === 'success') {
-                acc[key].success = true;
-                // 更新为最早的成功签到时间
-                if (new Date(curr.checkin_time) < new Date(acc[key].checkin_time)) {
-                    acc[key].checkin_time = curr.checkin_time;
-                }
-            }
-            return acc;
-        }, {} as Record<string, { date: string; site_id: string; success: boolean; checkin_time: string; }>);
-        console.log('dailyCheckins', dailyCheckins);
-        // 然后按日期汇总所有站点的签到情况
-        const dateCheckins = Object.values(dailyCheckins).reduce((acc, curr) => {
-            if (!acc[curr.date]) {
-                acc[curr.date] = {
-                    successSites: new Set<string>(),
-                    totalSites: new Set<string>(),
-                    earliestCheckinTime: curr.checkin_time
-                };
-            }
-            acc[curr.date].totalSites.add(curr.site_id);
-            if (curr.success) {
-                acc[curr.date].successSites.add(curr.site_id);
-                // 更新为最早的签到时间
-                if (new Date(curr.checkin_time) < new Date(acc[curr.date].earliestCheckinTime)) {
-                    acc[curr.date].earliestCheckinTime = curr.checkin_time;
-                }
-            }
-            return acc;
-        }, {} as Record<string, { 
-            successSites: Set<string>; 
-            totalSites: Set<string>; 
-            earliestCheckinTime: string; 
-        }>);
-        console.log('dateCheckins', dateCheckins);
-        // 转换为热力图数据
-        const blockData = (() => {
-            // 获取当前日期所在的周日
-            const today = new Date();
-            const lastSunday = new Date(today);
-            lastSunday.setDate(today.getDate() + (6 - today.getDay())); // 调整到本周日
-
-            // 获取52周前的周一
-            const startDate = new Date(lastSunday);
-            startDate.setDate(startDate.getDate() - (52 * 7)); // 往前推52周
-            
-            // 创建一个包含52周所有日期的数组
-            const allDates = [];
-            const currentDate = new Date(startDate);
-            
-            while (currentDate <= lastSunday) {
-                const dateStr = currentDate.toISOString().split('T')[0];
-                const dayData = dateCheckins[dateStr];
-                
-                // 计算成功率作为 value
-                const value = dayData ? 
-                    (dayData.totalSites.size > 0 ? dayData.successSites.size / dayData.totalSites.size : 0) : 0;
-                
-                allDates.push({
-                    date: dateStr,
-                    day: currentDate.getDay(),
-                    week: Math.floor((currentDate.getTime() - startDate.getTime()) / (7 * 24 * 60 * 60 * 1000)),
-                    value: value,  // 直接使用成功率作为 value
-                    successCount: dayData?.successSites.size || 0,
-                    totalSites: dayData?.totalSites.size || 0,
-                    failedCount: dayData ? (dayData.totalSites.size - dayData.successSites.size) : 0,
-                    checkinTime: dayData?.earliestCheckinTime || null
-                });
-                
-                currentDate.setDate(currentDate.getDate() + 1);
-            }
-            return allDates;
-        })();
-        console.log('blockData', blockData);
-        // 创建热力图
-        if (blockChart) {
-            blockChart.destroy();
-        }
-
-        const checkinBlockChart = new Chart({
-            container: 'blockChart',
-            autoFit: true,
-            height: 170,
-            // paddingLeft: 50,
-            // paddingRight: 50,
-        });
-
-        checkinBlockChart.data(blockData);
-
-        // let i = blockData.length;
-        checkinBlockChart
-            .cell()
-            .encode('x', 'week')
-            .encode('y', 'day')
-            .encode('color', 'value')
-            .style('inset', 0.5)
-            .scale('color', {
-                type: 'linear',
-                domain: [0, 1],
-                range: ['#ebedf0', '#338836']
-            })
-            .legend(false)
-            .axis('x', {
-                label: null,
-                line: null,
-                grid: null,
-            })
-            .axis('y', {
-                label: null,
-                line: null,
-                grid: null,
-            })
-            .tooltip({
-                items: [
-                    (d: any) => ({
-                        name: '日期',
-                        value: new Date(d.date).toLocaleDateString()
-                    }),
-                    (d: any) => ({
-                        name: '签到状态',
-                        value: d.value === 1 ? '全部成功' : (d.value === 0 ? '未签到' : '部分成功')
-                    }),
-                    (d: any) => ({
-                        name: '成功/总数',
-                        value: d.checkinTime ? `${d.successCount}/${d.totalSites}` : '无签到记录'
-                    }),
-                    (d: any) => ({
-                        name: '签到时间',
-                        value: d.checkinTime ? new Date(d.checkinTime).toLocaleTimeString() : '-'
-                    }),
-                    (d: any) => ({
-                        name: '失败站点',
-                        value: d.failedCount
-                    })
-                ]
-            })
-            .animate('enter', { type: 'fadeIn' });
-
-        checkinBlockChart.render();
-        setBlockChart(checkinBlockChart);
-
-        return () => {
-            if (blockChart) {
-                blockChart.destroy();
-            }
-        };
-    }, [statistics, selectedSites]);
-
     if (loading) {
         return <Spin size="large" />;
     }
@@ -653,23 +580,24 @@ const ChartView: React.FC = () => {
 
     return (
         <div className={styles.chartContainer}>
+            <Radio.Group 
+                value={timeRange} 
+                onChange={e => setTimeRange(e.target.value)}
+                buttonStyle="solid"
+                className={styles.timeRangeGroup}
+            >
+                <Radio.Button value="7">近7天</Radio.Button>
+                <Radio.Button value="30">近30天</Radio.Button>
+                <Radio.Button value="60">近60天</Radio.Button>
+                <Radio.Button value="90">近90天</Radio.Button>
+                <Radio.Button value="180">近180天</Radio.Button>
+                <Radio.Button value="all">所有</Radio.Button>
+            </Radio.Group>
             <div id="overviewChart" className={styles.chartContent} />
-            <div id="blockChart" className={styles.chartContent} />
+            <BlockView />
             <div className={styles.chartControls}>
                 <Space size="middle">
-                    <Radio.Group 
-                        value={timeRange} 
-                        onChange={e => setTimeRange(e.target.value)}
-                        buttonStyle="solid"
-                        className={styles.timeRangeGroup}
-                    >
-                        <Radio.Button value="7">近7天</Radio.Button>
-                        <Radio.Button value="30">近30天</Radio.Button>
-                        <Radio.Button value="60">近60天</Radio.Button>
-                        <Radio.Button value="90">近90天</Radio.Button>
-                        <Radio.Button value="180">近180天</Radio.Button>
-                        <Radio.Button value="all">所有</Radio.Button>
-                    </Radio.Group>
+
 
                     <Select
                         value={metric}
