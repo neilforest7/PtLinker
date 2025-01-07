@@ -4,9 +4,8 @@ from typing import List, Optional
 
 from core.database import get_db
 from core.logger import get_logger, setup_logger
-from fastapi import (APIRouter, BackgroundTasks, Depends, HTTPException, Query,
-                     status)
-from models.models import Task, TaskStatus
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
+from models.models import Crawler, CrawlerConfig, Task, TaskStatus
 from schemas.task import TaskCreate, TaskResponse, TaskUpdate
 from services.managers.process_manager import ProcessManager
 from services.managers.queue_manager import QueueManager
@@ -46,6 +45,15 @@ async def retry_failed_tasks(
         # 2. 对每个站点获取最近的任务
         for site_id in sites.keys():
             try:
+                # 检查站点配置是否启用
+                stmt = select(CrawlerConfig).where(CrawlerConfig.site_id == site_id)
+                result = await db.execute(stmt)
+                crawler_config = result.scalar_one_or_none()
+                
+                if not crawler_config or not crawler_config.enabled:
+                    logger.debug(f"站点 {site_id} 已禁用或未配置，跳过重试")
+                    continue
+                
                 # 先查询该站点最近的任务（不考虑状态）
                 stmt = (
                     select(Task)
@@ -58,6 +66,7 @@ async def retry_failed_tasks(
                 
                 # 如果找到最近的任务且状态为失败，则重试
                 if latest_task and (latest_task.status == TaskStatus.FAILED or latest_task.status == TaskStatus.CANCELLED):
+                    
                     logger.debug(f"站点 {site_id} 的最近任务 {latest_task.task_id} 状态为失败/取消，准备重试")
                     
                     # 生成新的任务ID

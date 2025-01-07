@@ -225,6 +225,12 @@ class ProcessManager:
                     self._queue_manager = queue_manager
                     self.logger.info("已获取queue_manager")
                 
+                # 检查当前运行的任务数量
+                running_count = len(self._running_sites)
+                if running_count >= self._max_concurrency:
+                    self.logger.debug(f"当前运行任务数 {running_count} 已达到最大并发数 {self._max_concurrency}")
+                    return []
+                
                 # 获取所有READY状态的任务
                 stmt = (
                     select(Task)
@@ -233,25 +239,23 @@ class ProcessManager:
                 )
                 result = await db.execute(stmt)
                 ready_tasks = result.scalars().all()
-                
+
                 if not ready_tasks:
                     self.logger.info("没有READY状态的任务需要启动")
                     return []
                 
                 self.logger.info(f"找到 {len(ready_tasks)} 个READY状态的任务")
                 started_tasks = []
-                
-                # 构建日志路径
-                log_path = str(Path(__file__).parent.parent.parent / 'logs' / 'tasks')
-                
-                # 尝试启动每个任务
-                for task in ready_tasks:
+                available_slots = self._max_concurrency - running_count
+
+                # 尝试启动任务，但不超过可用槽位数
+                for task in ready_tasks[:available_slots]:
                     try:
                         # 检查站点是否已有运行中的任务
                         if task.site_id in self._running_sites:
                             self.logger.warning(f"站点 {task.site_id} 已有运行中的任务，跳过任务 {task.task_id}")
                             continue
-                            
+
                         # 检查进程状态
                         if task.task_id in self._processes:
                             status = await self.check_task_status(task.task_id)
@@ -263,7 +267,7 @@ class ProcessManager:
                         process = CrawlerProcess(
                             site_id=task.site_id,
                             task_id=task.task_id,
-                            log_dir=log_path
+                            log_dir=str(Path(__file__).parent.parent.parent / 'logs' / 'tasks')
                         )
                         process.start()
                         self.logger.info(f"任务 {task.task_id} 启动 (PID: {process.pid})")
@@ -287,6 +291,9 @@ class ProcessManager:
                             }
                         )
                         
+                        # 从 ready_tasks 中移除任务
+                        await self._queue_manager.remove_ready_task(task.task_id, task.site_id)
+                        
                         # 记录运行中的任务
                         self._running_sites[task.site_id] = task.task_id
                         started_tasks.append(TaskResponse.model_validate(task))
@@ -294,7 +301,6 @@ class ProcessManager:
                         
                     except Exception as e:
                         self.logger.error(f"启动任务 {task.task_id} 失败: {str(e)}")
-                        self.logger.debug("错误详情:", exc_info=True)
                         # 如果启动失败，确保清理任何可能创建的进程记录
                         if task.task_id in self._processes:
                             await self.cleanup_task(task.task_id)
@@ -302,7 +308,7 @@ class ProcessManager:
                 
                 self.logger.info(f"成功启动 {len(started_tasks)}/{len(ready_tasks)} 个任务")
                 return started_tasks
-                
+
             except Exception as e:
                 error_msg = str(e)
                 error_details = {

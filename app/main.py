@@ -6,7 +6,7 @@ from api.v1 import crawler_configs, credentials, queue
 from api.v1 import settings as settings_api
 from api.v1 import site_configs, statistics, tasks
 from core.database import (cleanup_db, db_session_middleware, get_db,
-                            get_init_db, init_db)
+                           get_init_db, init_db)
 from core.logger import get_logger, setup_logger
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
