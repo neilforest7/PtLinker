@@ -2,9 +2,9 @@ import React, { useEffect, useState } from 'react';
 import { Spin, Empty } from 'antd';
 import CalendarHeatmap from 'react-calendar-heatmap';
 import 'react-calendar-heatmap/dist/styles.css';
-import { siteConfigApi } from '../../api/siteConfig';
-import { StatisticsHistoryResponse } from '../../types/api';
-import { toUTC8DateString, parseUTC8Date, formatDate } from '../../utils/dateUtils';
+import { siteConfigApi } from '../../../api/siteConfig';
+import { StatisticsHistoryResponse } from '../../../types/api';
+import { toUTC8DateString, parseUTC8Date, formatDate } from '../../../utils/dateUtils';
 import styles from './Statistics.module.css';
 
 interface HeatmapValue {
