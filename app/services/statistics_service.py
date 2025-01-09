@@ -149,9 +149,10 @@ class StatisticsService:
     ) -> List[DailyIncrement]:
         """获取每日数据增量统计"""
         try:
-            # 获取每日最后结果
+            # 获取包含前一天的数据，以便计算第一天的增量
+            extended_start_date = start_date - timedelta(days=1)
             daily_results = await self._get_daily_results(
-                db, start_date, end_date, site_id, CalculationType.LAST
+                db, extended_start_date, end_date, site_id, CalculationType.LAST
             )
             
             # 按站点分组
@@ -172,18 +173,20 @@ class StatisticsService:
                     prev: DailyResult = results[i-1]
                     curr: DailyResult = results[i]
                     
-                    increments.append(DailyIncrement(
-                        date=prev.date,
-                        site_id=site_id,
-                        upload_increment=curr.upload - prev.upload if curr.upload and prev.upload else None,
-                        download_increment=curr.download - prev.download if curr.download and prev.download else None,
-                        bonus_increment=curr.bonus - prev.bonus if curr.bonus and prev.bonus else None,
-                        seeding_score_increment=curr.seeding_score - prev.seeding_score if curr.seeding_score and prev.seeding_score else None,
-                        seeding_size_increment=curr.seeding_size - prev.seeding_size if curr.seeding_size and prev.seeding_size else None,
-                        seeding_count_increment=curr.seeding_count - prev.seeding_count if curr.seeding_count and prev.seeding_count else None,
-                        task_id=prev.task_id,
-                        reference_task_id=curr.task_id
-                    ))
+                    # 只返回请求的日期范围内的增量
+                    if curr.date >= start_date and curr.date <= end_date:
+                        increments.append(DailyIncrement(
+                            date=curr.date,  # 使用当前日期
+                            site_id=site_id,
+                            upload_increment=curr.upload - prev.upload if curr.upload and prev.upload else None,
+                            download_increment=curr.download - prev.download if curr.download and prev.download else None,
+                            bonus_increment=curr.bonus - prev.bonus if curr.bonus and prev.bonus else None,
+                            seeding_score_increment=curr.seeding_score - prev.seeding_score if curr.seeding_score and prev.seeding_score else None,
+                            seeding_size_increment=curr.seeding_size - prev.seeding_size if curr.seeding_size and prev.seeding_size else None,
+                            seeding_count_increment=curr.seeding_count - prev.seeding_count if curr.seeding_count and prev.seeding_count else None,
+                            task_id=prev.task_id,
+                            reference_task_id=curr.task_id
+                        ))
             
             return increments
             
