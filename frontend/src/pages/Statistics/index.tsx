@@ -14,7 +14,6 @@ import { siteConfigApi } from '../../api/siteConfig';
 import { StatisticsResponse } from '../../types/api';
 import styles from './Statistics.module.css';
 import ChartView from './ChartView';
-import BlockView from './BlockView';
 
 type ViewMode = 'grid' | 'list' | 'chart';
 
@@ -53,6 +52,11 @@ const Statistics: React.FC = () => {
         return `${size.toFixed(2)} GB`;
     };
 
+    const formatSizeToTB = (size: number) => {
+        if (size === 0) return '0 TB';
+        return `${(size / 1024).toFixed(2)} TB`;
+    };
+
     // 计算总计数据
     const totals = Object.values(statistics).reduce((acc, site) => {
         const { daily_results } = site;
@@ -60,9 +64,10 @@ const Statistics: React.FC = () => {
             upload: acc.upload + daily_results.upload,
             download: acc.download + daily_results.download,
             seeding_count: acc.seeding_count + daily_results.seeding_count,
+            seeding_size: acc.seeding_size + daily_results.seeding_size,
             bonus: acc.bonus + daily_results.bonus
         };
-    }, { upload: 0, download: 0, seeding_count: 0, bonus: 0 });
+    }, { upload: 0, download: 0, seeding_count: 0, seeding_size: 0, bonus: 0 });
 
     // 表格列定义
     const columns = [
@@ -217,7 +222,7 @@ const Statistics: React.FC = () => {
                     <Card className={styles.summaryCard}>
                         <Statistic
                             title="总上传量"
-                            value={formatSize(totals.upload)}
+                            value={formatSizeToTB(totals.upload)}
                             prefix={<UploadOutlined />}
                         />
                     </Card>
@@ -226,7 +231,7 @@ const Statistics: React.FC = () => {
                     <Card className={styles.summaryCard}>
                         <Statistic
                             title="总下载量"
-                            value={formatSize(totals.download)}
+                            value={formatSizeToTB(totals.download)}
                             prefix={<DownloadOutlined />}
                         />
                     </Card>
@@ -240,21 +245,13 @@ const Statistics: React.FC = () => {
                         />
                     </Card>
                 </Col>
-                {/* <Col span={6}>
-                    <Card className={styles.summaryCard}>
-                        <Statistic
-                            title="总魔力值"
-                            value={totals.bonus.toFixed(2)}
-                            prefix={<GiftOutlined />}
-                        />
-                    </Card>
-                </Col> */}
                 <Col span={6}>
                     <Card className={styles.summaryCard}>
                         <Statistic
-                            title="签到记录"
+                            title="总做种体积"
+                            value={formatSizeToTB(totals.seeding_size ?? 0)}
+                            prefix={<GiftOutlined />}
                         />
-                        <BlockView/>
                     </Card>
                 </Col>
             </Row>

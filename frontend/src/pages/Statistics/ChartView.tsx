@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { Spin, Empty, Radio, Space, Select } from 'antd';
+import { Spin, Empty, Radio, Space, Select, Segmented, Button, Divider } from 'antd';
 import { Chart } from '@antv/g2';
 import { siteConfigApi } from '../../api/siteConfig';
 import { StatisticsHistoryResponse } from '../../types/api';
+import { toUTC8DateString, parseUTC8Date, formatDate } from '../../utils/dateUtils';
 import styles from './Statistics.module.css';
 import BlockView from './BlockView';
+import { ReloadOutlined } from '@ant-design/icons';
 
 export type TimeRange = '7' | '30' | '60' | '90' | '180' | 'all';
 export type MetricType = 'upload' | 'seeding_size' | 'seeding_count' | 'bonus' | 'download' | 'seeding_score' | 'bonus_per_hour';
@@ -108,23 +110,19 @@ const ChartView: React.FC = () => {
     const loadStatistics = async () => {
         try {
             setLoading(true);
-            // 计算时间范围
             const end = new Date();
-            end.setHours(23, 59, 59, 999);
             const start = new Date();
             
             if (timeRange !== 'all') {
                 const days = parseInt(timeRange);
                 start.setDate(end.getDate() - days + 1);
             } else {
-                // 如果是 'all'，设置为365天前
                 start.setDate(end.getDate() - 365);
             }
-            start.setHours(0, 0, 0, 0);
 
             const params = {
-                start_date: start.toISOString().split('T')[0],
-                end_date: end.toISOString().split('T')[0]
+                start_date: toUTC8DateString(start),
+                end_date: toUTC8DateString(end)
             };
 
             const data = await siteConfigApi.getStatisticsHistory(params);
@@ -146,14 +144,11 @@ const ChartView: React.FC = () => {
 
         const days = parseInt(timeRange);
         const end = new Date();
-        end.setHours(23, 59, 59, 999);
         const start = new Date();
         start.setDate(end.getDate() - days + 1);
-        start.setHours(0, 0, 0, 0);
 
-        // 直接过滤时间范围内的数据
         return data.filter(item => {
-            const itemDate = new Date(item.date + 'T00:00:00');
+            const itemDate = parseUTC8Date(item.date);
             return itemDate >= start && itemDate <= end;
         });
     };
@@ -163,7 +158,7 @@ const ChartView: React.FC = () => {
 
         // 处理数据
         const processedData = statistics.metrics.daily_results.reduce((acc, curr) => {
-            const date = curr.date;
+            const date = curr.date;  // 这里的 date 已经是 UTC+8 的日期字符串
             if (!acc[date]) {
                 acc[date] = {
                     date,
@@ -210,23 +205,22 @@ const ChartView: React.FC = () => {
 
         const filteredData = filterDataByTimeRange(chartData);
 
-        // // 计算时间范围
-        // const start = new Date(filteredData[0].date);
-        // const end = new Date(filteredData[filteredData.length - 1].date);
-
-        // 创建图表
+        // ------------------------------------------
+        // 每日分站点、数据类型概览图
+        // 总量数据: 魔力值、保种积分、上传、下载、做种体积、做种数量、时魔、保种积分
+        // 被站点选项控制，被时间范围控制
+        // ------------------------------------------
         if (perStatChart) {
             perStatChart.destroy();
         }
-
         const perStatLineChart = new Chart({
             container: 'statisticsChart',
             autoFit: true,
         });
-        // console.log("filteredData", filteredData);
         perStatLineChart.data(filteredData);
+        setPerStatChart(perStatLineChart);
 
-        // 使用 Auto 自动配置图表 #00ff00
+        // 使用 Auto 自动配置图表
         perStatLineChart.line()
             .encode('x', 'date')
             .encode('y', metric)
@@ -245,126 +239,44 @@ const ChartView: React.FC = () => {
                 shared: true,
                 showCrosshairs: true,
             })
-
+        perStatLineChart.axis('x', {
+            label: {
+                formatter: (val: string) => formatDate(parseUTC8Date(val))
+            }
+        });
         perStatLineChart.render();
 
-        setPerStatChart(perStatLineChart);
-
-        return () => {
-            if (perStatChart) {
-                perStatChart.destroy();
-            }
-        };
-    }, [statistics, timeRange, metric, selectedSites]);
-
-    useEffect(() => {
-        if (!statistics || !statistics.metrics.daily_results.length) return;
-        
-        // 按日期分组并汇总
-        const dailyTotals = statistics.metrics.daily_results.reduce((acc, curr) => {
-            const date = curr.date;
-            if (!acc[date]) {
-                acc[date] = {
-                    date,
-                    site: '总计',
-                    upload: 0,
-                    download: 0,
-                    bonus: 0,
-                    bonus_per_hour: 0,
-                    seeding_score: 0,
-                    seeding_size: 0,
-                    seeding_count: 0
-                };
-            }
-            acc[date].upload += curr.upload || 0;
-            acc[date].download += curr.download || 0;
-            acc[date].bonus += curr.bonus || 0;
-            acc[date].bonus_per_hour += curr.bonus_per_hour || 0;
-            acc[date].seeding_score += curr.seeding_score || 0;
-            acc[date].seeding_size += curr.seeding_size || 0;
-            acc[date].seeding_count += curr.seeding_count || 0;
-            return acc;
-        }, {} as Record<string, any>);
-
-
-        const dailyIncrements = statistics.metrics.daily_increments.reduce((acc, curr) => {
-            const date = curr.date;
-            if (!acc[date]) {
-                acc[date] = {
-                    date,
-                    upload_increment: 0,
-                    download_increment: 0,
-                    bonus_increment: 0,
-                    seeding_score_increment: 0,
-                    seeding_size_increment: 0,
-                    seeding_count_increment: 0
-                };
-            }
-            acc[date].upload_increment += curr.upload_increment || 0;
-            acc[date].download_increment += curr.download_increment || 0;
-            acc[date].bonus_increment += curr.bonus_increment || 0;
-            acc[date].seeding_score_increment += curr.seeding_score_increment || 0;
-            acc[date].seeding_size_increment += curr.seeding_size_increment || 0;
-            acc[date].seeding_count_increment += curr.seeding_count_increment || 0;
-            return acc;
-        }, {} as Record<string, any>);
-        // console.log('dailyTotals dates:', Object.keys(dailyTotals));
-        // console.log('dailyIncrements dates:', Object.keys(dailyIncrements));
-        // 转换为数组并按日期排序
-        const filteredData = Object.values(dailyTotals)
-            .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-            .map((item, index, array) => {
-                // 如果是最后一天（今天），需要计算增量
-                if (index === array.length - 1 && !dailyIncrements[item.date]) {
-                    const previousDay = array[index - 1];
-                    return {
-                        date: item.date,
-                        site: '总计',
-                        // 计算天的增量并保留一位小数
-                        upload: Number((item.upload - previousDay.upload).toFixed(1)),
-                        download: Number((item.download - previousDay.download).toFixed(1)),
-                        bonus: Number(item.bonus.toFixed(1)),
-                        seeding_score: Number(item.seeding_score.toFixed(1))
-                    };
-                }
-                
-                // 其他天使用 dailyIncrements 中的数据
-                return {
-                    date: item.date,
-                    site: '总计',
-                    upload: Number((dailyIncrements[item.date]?.upload_increment || 0).toFixed(1)),
-                    download: Number((dailyIncrements[item.date]?.download_increment || 0).toFixed(1)),
-                    bonus: Number(item.bonus.toFixed(1)),
-                    seeding_score: Number(item.seeding_score.toFixed(1))
-                };
-            });
-            
+        // ------------------------------------------
+        // 每日重要数据河流图
+        // 总量数据: 魔力值、保种积分、上传、下载、做种体积、做种数量、时魔、保种积分
+        // 被站点选项控制，被时间范围控制
+        // ------------------------------------------
         // 准备河流图数据，并确保站点顺序一致
         const streamData = (() => {
             // 获取所有日期
             const allDates = Array.from(new Set(statistics.metrics.daily_results.map(item => item.date))).sort();
-            
+
             // 获取所有站点并排序
             const siteOrder = Array.from(new Set(statistics.metrics.daily_results.map(item => item.site_id)))
                 .sort((a, b) => a.localeCompare(b));
 
             // 为每个站点维护最后一次的有效数据
             const lastValidData: Record<string, number> = {};
-            
+
             // 生成完整的数据集
             return allDates.flatMap(date => {
                 // 获取当天的所有数据
                 const dayData = statistics.metrics.daily_results.filter(item => item.date === date);
-                
+
                 return siteOrder.map((siteId, siteIndex) => {
                     // 查找当天该站点的数据
                     const siteData = dayData.find(item => item.site_id === siteId);
-                    
+
                     if (siteData) {
                         // 更新最后一次有效数据
                         lastValidData[siteId] = siteData[metric as keyof typeof siteData] as number || 0;
                     }
-                    
+
                     return {
                         date,
                         site: siteId,
@@ -396,7 +308,7 @@ const ChartView: React.FC = () => {
             .encode('y', 'value')
             .encode('color', 'site')
             .style('shape', 'smooth')
-            .scale('y', {nice: true})
+            .scale('y', { nice: true })
             .interaction('elementSelect', true)
             .tooltip({
                 shared: false,
@@ -416,6 +328,108 @@ const ChartView: React.FC = () => {
 
         streamChart.render();
 
+    }, [statistics, timeRange, metric, selectedSites]);
+
+    useEffect(() => {
+        // ------------------------------------------
+        // 每日重要数据概览图
+        // 增量数据: 上传、下载
+        // 总量数据: 魔力值、保种积分
+        // 不被站点选项控制，被时间范围控制
+        // ------------------------------------------
+        if (!statistics || !statistics.metrics.daily_results.length) return;
+        
+        // 按日期分组并汇总
+        const dailyTotals = statistics.metrics.daily_results.reduce((acc, curr) => {
+            const date = curr.date;  // 这里的 date 已经是 UTC+8 的日期字符串
+            if (!acc[date]) {
+                acc[date] = {
+                    date,
+                    site: '总计',
+                    upload: 0,
+                    download: 0,
+                    bonus: 0,
+                    bonus_per_hour: 0,
+                    seeding_score: 0,
+                    seeding_size: 0,
+                    seeding_count: 0
+                };
+            }
+            acc[date].upload += curr.upload || 0;
+            acc[date].download += curr.download || 0;
+            acc[date].bonus += curr.bonus || 0;
+            acc[date].bonus_per_hour += curr.bonus_per_hour || 0;
+            acc[date].seeding_score += curr.seeding_score || 0;
+            acc[date].seeding_size += curr.seeding_size || 0;
+            acc[date].seeding_count += curr.seeding_count || 0;
+            return acc;
+        }, {} as Record<string, any>);
+
+        const dailyIncrements = statistics.metrics.daily_increments.reduce((acc, curr) => {
+            const date = curr.date;
+            if (!acc[date]) {
+                acc[date] = {
+                    date,
+                    upload_increment: 0,
+                    download_increment: 0,
+                    bonus_increment: 0,
+                    seeding_score_increment: 0,
+                    seeding_size_increment: 0,
+                    seeding_count_increment: 0
+                };
+            }
+            acc[date].upload_increment += curr.upload_increment || 0;
+            acc[date].download_increment += curr.download_increment || 0;
+            acc[date].bonus_increment += curr.bonus_increment || 0;
+            acc[date].seeding_score_increment += curr.seeding_score_increment || 0;
+            acc[date].seeding_size_increment += curr.seeding_size_increment || 0;
+            acc[date].seeding_count_increment += curr.seeding_count_increment || 0;
+            return acc;
+        }, {} as Record<string, any>);
+
+        // 生成日期范围内的所有日期
+        const startDate = new Date(statistics.time_range.start);
+        const endDate = new Date(statistics.time_range.end);
+        const allDates: string[] = [];
+        const currentDate = new Date(startDate);
+
+        while (currentDate <= endDate) {
+            allDates.push(toUTC8DateString(currentDate));
+            currentDate.setDate(currentDate.getDate() + 1);
+        }
+
+        // 记录上一个有效的总量数据
+        let lastValidBonus = 0;
+        let lastValidSeedingScore = 0;
+
+        // 转换为数组并处理每一天的数据
+        const filteredData = allDates
+            .sort((a, b) => new Date(a).getTime() - new Date(b).getTime())
+            .map(date => {
+                const dayTotal = dailyTotals[date];
+                const increment = dailyIncrements[date] || {
+                    upload_increment: 0,
+                    download_increment: 0,
+                    bonus_increment: 0,
+                    seeding_score_increment: 0
+                };
+
+                // 如果有当天的数据，更新最后的有效值
+                if (dayTotal) {
+                    lastValidBonus = dayTotal.bonus;
+                    lastValidSeedingScore = dayTotal.seeding_score;
+                }
+
+                return {
+                    date,
+                    site: '总计',
+                    upload: increment.upload_increment,
+                    download: increment.download_increment,
+                    bonus: lastValidBonus,  // 使用最后的有效值
+                    seeding_score: lastValidSeedingScore  // 使用最后的有效值
+                };
+            });
+
         // 创建概览图表
         if (overviewChart) {
             overviewChart.destroy();
@@ -430,6 +444,7 @@ const ChartView: React.FC = () => {
         // console.log(filteredData);
         overallChangeLineChart.data(filteredData);
 
+        // 下载量线条
         overallChangeLineChart.line()
             .encode('x', 'date')
             .encode('y', 'download')
@@ -441,19 +456,19 @@ const ChartView: React.FC = () => {
             .axis('y', {
                 title: 'GB',
                 grid: true,
-                titleFill: '#EE6666',
+                titleFill: '#5470C6',
             })
             .tooltip({
                 items: [
                     (d: any) => ({
-                        name: '下载量',
+                        name: '当日下载量',
                         value: formatValue(d.download, 'download'),
                         color: '#5470C6'
                     })
                 ]
             });
 
-
+        // 上传量线条
         overallChangeLineChart.line()
             .encode('x', 'date')
             .encode('y', 'upload')
@@ -465,14 +480,14 @@ const ChartView: React.FC = () => {
             .tooltip({
                 items: [
                     (d: any) => ({
-                        name: '上传量',
+                        name: '当日上传量',
                         value: formatValue(d.upload, 'upload'),
                         color: '#EE6666'
                     })
                 ]
             });
 
-
+        // 上传下载量区域图
         overallChangeLineChart.area()
             .data({
                 transform: [
@@ -484,7 +499,7 @@ const ChartView: React.FC = () => {
                     },
                 ],
             })
-            .transform([{ type: 'diffY'}]) // Diff the 2 area shape.
+            .transform([{ type: 'diffY'}])
             .encode('x', 'date')
             .encode('y', 'upload')
             .encode('color', 'type')
@@ -493,19 +508,20 @@ const ChartView: React.FC = () => {
             .style('shape', 'smooth')
             .style('strokeWidth', 2)
             .tooltip(false)
-            .legend(false)
+            .legend(false);
 
+        // 魔力值线条
         overallChangeLineChart.line()
             .encode('x', 'date')
             .encode('y', 'bonus')
             .encode('color', '#91CC75')
-            .scale('y', {nice: true, key: '2' })
+            .scale('y', {nice: true, key: '2'})
             .style('lineWidth', 1.5)
             .style('lineDash', [6, 4])
             // .style('shape', 'smooth')
             .axis('y', {
                 position: 'right',
-                title: 'bonus',
+                title: '魔力值',
                 grid: true,
                 titleFill: '#91CC75',
             })
@@ -519,6 +535,7 @@ const ChartView: React.FC = () => {
                 ]
             });
 
+        // 保种积分线条
         overallChangeLineChart.line()
             .encode('x', 'date')
             .encode('y', 'seeding_score')
@@ -547,14 +564,14 @@ const ChartView: React.FC = () => {
             shared: true,
             crosshairs: {
                 type: 'x',
-            },
-            items: [
-                (d: any) => ({
-                    name: d.site,
-                    value: formatValue(d[metric], metric),
-                    color: d.color
-                })
-            ],
+            }
+        });
+
+        // 配置 X 轴日期格式
+        overallChangeLineChart.axis('x', {
+            label: {
+                formatter: (val: string) => formatDate(parseUTC8Date(val))
+            }
         });
 
         overallChangeLineChart.render();
@@ -563,9 +580,6 @@ const ChartView: React.FC = () => {
         return () => {
             if (overviewChart) {
                 overviewChart.destroy();
-            }
-            if (streamChart) {
-                streamChart.destroy();
             }
         };
     }, [statistics, timeRange, metric]);
@@ -596,29 +610,66 @@ const ChartView: React.FC = () => {
             <div id="overviewChart" className={styles.chartContent} />
             <BlockView />
             <div className={styles.chartControls}>
-                <Space size="middle">
+                <Segmented
+                    value={metric}
+                    onChange={value => setMetric(value as MetricType)}
+                    options={Object.entries(metricLabels).map(([value, label]) => ({
+                        value,
+                        label
+                    }))}
+                    className={styles.metricSelect}
+                />
 
-
-                    <Select
-                        value={metric}
-                        onChange={setMetric}
-                        className={styles.metricSelect}
-                        options={Object.entries(metricLabels).map(([value, label]) => ({
-                            value,
-                            label
-                        }))}
-                    />
-
+                <Space className={styles.siteSelectContainer}>
                     <Select
                         mode="multiple"
                         allowClear
-                        placeholder="选择站点（默认显示总计）"
+                        placeholder="选择要对比的站点"
                         value={selectedSites}
                         onChange={setSelectedSites}
-                        options={siteOptions}
+                        maxTagCount={6}
+                        // maxTagTextLength={3}
                         className={styles.siteSelect}
-                        style={{ minWidth: '200px' }}
-                        maxTagCount={10}
+                        optionLabelProp="label"
+                        options={siteOptions.map(site => ({
+                            value: site.value,
+                            label: site.label,
+                            optionRender: (option: any) => (
+                                <Space>
+                                    {/* {site.icon && (
+                                        <img 
+                                            src={site.icon} 
+                                            alt={site.label} 
+                                            style={{ width: 16, height: 16 }}
+                                        />
+                                    )} */}
+                                    <span>{site.label}</span>
+
+                                </Space>
+                            ),
+                        }))}
+                        dropdownRender={(menu) => (
+                            <>
+                                <Space style={{ padding: '0 8px 4px' }}>
+                                    <Button
+                                        type="text"
+                                        icon={<ReloadOutlined />}
+                                        size="small"
+                                        onClick={() => setSelectedSites(siteOptions.map(s => s.value))}>
+                                        全选
+                                    </Button>
+                                    <Button
+                                        type="text"
+                                        icon={<ReloadOutlined />}
+                                        size="small"
+                                        onClick={() => setSelectedSites([])}>
+                                        只显示统计
+                                    </Button>
+                                </Space>
+                                <Divider style={{ margin: '0' }} />
+                                {menu}
+                            </>
+                        )}
                     />
                 </Space>
             </div>

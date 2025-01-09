@@ -1,58 +1,38 @@
 import React, { useEffect, useState } from 'react';
-import { Spin, Empty, Radio, Space, Select } from 'antd';
-import { Chart } from '@antv/g2';
+import { Spin, Empty } from 'antd';
+import CalendarHeatmap from 'react-calendar-heatmap';
+import 'react-calendar-heatmap/dist/styles.css';
 import { siteConfigApi } from '../../api/siteConfig';
 import { StatisticsHistoryResponse } from '../../types/api';
+import { toUTC8DateString, parseUTC8Date, formatDate } from '../../utils/dateUtils';
 import styles from './Statistics.module.css';
+
+interface HeatmapValue {
+    date: Date;
+    count: number;
+    details?: {
+        success: number;
+        total: number;
+        successRate: number;
+        failedSites: string[];
+    }
+}
 
 const BlockView: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [statistics, setStatistics] = useState<StatisticsHistoryResponse | null>(null);
-    const [blockChart, setBlockChart] = useState<Chart | null>(null);
-    const [selectedSites, setSelectedSites] = useState<string[]>([]);
-    const [siteOptions, setSiteOptions] = useState<{ label: string; value: string; }[]>([]);
-
-    const loadSiteConfigs = async () => {
-        try {
-            const configs = await siteConfigApi.getAllCrawlerConfigs();
-            const existingSites = new Set(
-                statistics?.metrics.daily_results.map(result => result.site_id) || []
-            );
-
-            const options = configs
-                .filter(config => existingSites.has(config.site_id))
-                .map(config => ({
-                    label: config.site_id,
-                    value: config.site_id
-                }));
-
-            setSiteOptions(options);
-            if (options.length > 0) {
-                setSelectedSites([options[0].value]); // 默认选择第一个站点
-            }
-        } catch (error) {
-            console.error('加载站点配置失败:', error);
-        }
-    };
-
-    useEffect(() => {
-        if (statistics) {
-            loadSiteConfigs();
-        }
-    }, [statistics]);
+    const [heatmapData, setHeatmapData] = useState<HeatmapValue[]>([]);
 
     const loadStatistics = async () => {
         try {
             setLoading(true);
             const end = new Date();
-            end.setHours(23, 59, 59, 999);
             const start = new Date(end);
-            start.setDate(end.getDate() - 30); // 改为30天前
-            start.setHours(0, 0, 0, 0);
+            start.setDate(end.getDate() - 200);
 
             const params = {
-                start_date: start.toISOString().split('T')[0],
-                end_date: end.toISOString().split('T')[0]
+                start_date: toUTC8DateString(start),
+                end_date: toUTC8DateString(end)
             };
 
             const data = await siteConfigApi.getStatisticsHistory(params);
@@ -71,159 +51,69 @@ const BlockView: React.FC = () => {
     useEffect(() => {
         if (!statistics || !statistics.metrics.checkins.length) return;
 
-        // 首先按日期和站点分组，合并同一天同一站点的签到结果
+        // 按日期分组，计算每日签到成功率和失败站点
         const dailyCheckins = statistics.metrics.checkins.reduce((acc, curr) => {
-            const key = `${curr.date}-${curr.site_id}`;
-            if (!acc[key]) {
-                acc[key] = {
-                    date: curr.date,
-                    site_id: curr.site_id,
-                    success: false,
-                    checkin_time: curr.checkin_time
+            const dateKey = curr.date;
+            if (!acc[dateKey]) {
+                acc[dateKey] = {
+                    success: 0,
+                    total: 0,
+                    failedSites: [] as string[]
                 };
             }
-            // 只要有一次成功就算成功
+            acc[dateKey].total++;
             if (curr.checkin_status === 'success') {
-                acc[key].success = true;
-                // 更新为最早的成功签到时间
-                if (new Date(curr.checkin_time) < new Date(acc[key].checkin_time)) {
-                    acc[key].checkin_time = curr.checkin_time;
-                }
-            }
-            return acc;
-        }, {} as Record<string, { date: string; site_id: string; success: boolean; checkin_time: string; }>);
-
-        // 然后按日期汇总所有站点的签到情况
-        const dateCheckins = Object.values(dailyCheckins).reduce((acc, curr) => {
-            if (!acc[curr.date]) {
-                acc[curr.date] = {
-                    successSites: new Set<string>(),
-                    totalSites: new Set<string>(),
-                    earliestCheckinTime: curr.checkin_time
-                };
-            }
-            acc[curr.date].totalSites.add(curr.site_id);
-            if (curr.success) {
-                acc[curr.date].successSites.add(curr.site_id);
-                // 更新为最早的签到时间
-                if (new Date(curr.checkin_time) < new Date(acc[curr.date].earliestCheckinTime)) {
-                    acc[curr.date].earliestCheckinTime = curr.checkin_time;
-                }
+                acc[dateKey].success++;
+            } else {
+                acc[dateKey].failedSites.push(curr.site_id);
             }
             return acc;
         }, {} as Record<string, { 
-            successSites: Set<string>; 
-            totalSites: Set<string>; 
-            earliestCheckinTime: string; 
+            success: number; 
+            total: number; 
+            failedSites: string[];
         }>);
 
         // 转换为热力图数据
-        const blockData = (() => {
-            // 获取当前日期
-            const today = new Date();
-            // 获取30天前的日期
-            const startDate = new Date(today);
-            startDate.setDate(today.getDate() - 30);
-            startDate.setHours(0, 0, 0, 0);
-            
-            // 创建一个包含30天所有日期的数组
-            const allDates = [];
-            const currentDate = new Date(startDate);
-            
-            while (currentDate <= today) {
-                const dateStr = currentDate.toISOString().split('T')[0];
-                const dayData = dateCheckins[dateStr];
-                
-                // 计算成功率作为 value
-                const value = dayData ? 
-                    (dayData.totalSites.size > 0 ? dayData.successSites.size / dayData.totalSites.size : 0) : 0;
-                
-                allDates.push({
-                    date: dateStr,
-                    day: currentDate.getDay(),
-                    week: Math.floor((currentDate.getTime() - startDate.getTime()) / (7 * 24 * 60 * 60 * 1000)),
-                    value: value,
-                    successCount: dayData?.successSites.size || 0,
-                    totalSites: dayData?.totalSites.size || 0,
-                    failedCount: dayData ? (dayData.totalSites.size - dayData.successSites.size) : 0,
-                    checkinTime: dayData?.earliestCheckinTime || null
-                });
-                
-                currentDate.setDate(currentDate.getDate() + 1);
-            }
-            return allDates;
-        })();
+        const today = new Date();
+        const startDate = new Date(today);
+        startDate.setDate(today.getDate() - 200);
 
-        // 创建热力图
-        if (blockChart) {
-            blockChart.destroy();
+        const heatmapValues: HeatmapValue[] = [];
+        const currentDate = new Date(startDate);
+
+        while (currentDate <= today) {
+            const dateStr = toUTC8DateString(currentDate);
+            const dayData = dailyCheckins[dateStr];
+
+            // 计算成功率并转换为0-4的等级
+            let count = 0;
+            let details = undefined;
+
+            if (dayData) {
+                const successRate = dayData.success / dayData.total;
+                if (successRate === 1) count = 4;
+                else if (successRate >= 0.75) count = 3;
+                else if (successRate >= 0.5) count = 2;
+                else if (successRate > 0) count = 1;
+
+                details = {
+                    success: dayData.success,
+                    total: dayData.total,
+                    successRate: successRate * 100,
+                    failedSites: dayData.failedSites
+                };
+            }
+
+            heatmapValues.push({
+                date: parseUTC8Date(dateStr),
+                count,
+                details
+            });
+            currentDate.setDate(currentDate.getDate() + 1);
         }
 
-        const checkinBlockChart = new Chart({
-            container: 'blockChart',
-            autoFit: true,
-            height: 170,
-            width: 140,
-        });
-
-        checkinBlockChart.data(blockData);
-
-        checkinBlockChart
-            .cell()
-            .encode('x', 'week')
-            .encode('y', 'day')
-            .encode('color', 'value')
-            .style('inset', 0.5)
-            .scale('color', {
-                type: 'linear',
-                domain: [0, 1],
-                range: ['#ebedf0', '#338836']
-            })
-            .legend(false)
-            .axis('x', {
-                label: null,
-                line: null,
-                grid: null,
-            })
-            .axis('y', {
-                label: null,
-                line: null,
-                grid: null,
-            })
-            .tooltip({
-                items: [
-                    (d: any) => ({
-                        name: '日期',
-                        value: new Date(d.date).toLocaleDateString()
-                    }),
-                    (d: any) => ({
-                        name: '签到状态',
-                        value: d.value === 1 ? '全部成功' : (d.value === 0 ? '未签到' : '部分成功')
-                    }),
-                    (d: any) => ({
-                        name: '成功/总数',
-                        value: d.checkinTime ? `${d.successCount}/${d.totalSites}` : '无签到记录'
-                    }),
-                    (d: any) => ({
-                        name: '签到时间',
-                        value: d.checkinTime ? new Date(d.checkinTime).toLocaleTimeString() : '-'
-                    }),
-                    (d: any) => ({
-                        name: '失败站点',
-                        value: d.failedCount
-                    })
-                ]
-            })
-            .animate('enter', { type: 'fadeIn' });
-
-        checkinBlockChart.render();
-        setBlockChart(checkinBlockChart);
-
-        return () => {
-            if (blockChart) {
-                blockChart.destroy();
-            }
-        };
+        setHeatmapData(heatmapValues);
     }, [statistics]);
 
     if (loading) {
@@ -235,7 +125,34 @@ const BlockView: React.FC = () => {
     }
 
     return (
-        <div id="blockChart" className={styles.blockchartContent} />
+        <div className={styles.blockchartContent}>
+            <CalendarHeatmap
+                startDate={parseUTC8Date(toUTC8DateString(new Date(Date.now() - 200 * 24 * 60 * 60 * 1000)))}
+                endDate={parseUTC8Date(toUTC8DateString(new Date()))}
+                values={heatmapData}
+                classForValue={(value) => {
+                    if (!value || value.count === 0) {
+                        return 'color-empty';
+                    }
+                    return `color-github-${value.count}`;
+                }}
+                titleForValue={(value: any) => {
+                    if (!value) return '无数据';
+                    if (!value.details) {
+                        return `${formatDate(value.date)}\n无签到数据`;
+                    }
+                    const { details } = value;
+                    let tooltip = `${formatDate(value.date)}\n签到情况: ${details.success}/${details.total}`;
+                    if (details.failedSites.length > 0) {
+                        tooltip += `\n签到失败站点: ${details.failedSites.join(', ')}`;
+                    }
+                    return tooltip;
+                }}
+                horizontal={true}
+                gutterSize={2}
+                
+            />
+        </div>
     );
 };
 
