@@ -23,47 +23,52 @@ const StreamChart: React.FC<StreamChartProps> = ({
     useEffect(() => {
         if (!statistics || !statistics.metrics.daily_results.length) return;
 
-        // 准备河流图数据，并确保站点顺序一致
-        const streamData = (() => {
-            // 获取所有日期
-            const allDates = Array.from(new Set(statistics.metrics.daily_results.map(item => item.date))).sort();
+        // 生成日期范围内的所有日期
+        const startDate = new Date(statistics.time_range.start);
+        const endDate = new Date(statistics.time_range.end);
+        const allDates: string[] = [];
+        const currentDate = new Date(startDate);
 
-            // 获取所有站点并排序
-            const siteOrder = Array.from(new Set(statistics.metrics.daily_results.map(item => item.site_id)))
-                .sort((a, b) => a.localeCompare(b))
-                .filter(site => selectedSites.length === 0 || selectedSites.includes(site));
+        while (currentDate <= endDate) {
+            allDates.push(toUTC8DateString(currentDate));
+            currentDate.setDate(currentDate.getDate() + 1);
+        }
 
-            // 为每个站点维护最后一次的有效数据
-            const lastValidData: Record<string, number> = {};
+        // 获取所有站点并排序
+        const siteOrder = Array.from(new Set(statistics.metrics.daily_results.map(item => item.site_id)))
+            .sort((a, b) => a.localeCompare(b))
+            .filter(site => selectedSites.length === 0 || selectedSites.includes(site));
 
-            // 生成完整的数据集
-            return allDates.flatMap(date => {
-                // 获取当天的所有数据
-                const dayData = statistics.metrics.daily_results.filter(item => item.date === date);
+        // 为每个站点维护最后一次的有效数据
+        const lastValidData: Record<string, number> = {};
 
-                return siteOrder.map((siteId, siteIndex) => {
-                    // 查找当天该站点的数据
-                    const siteData = dayData.find(item => item.site_id === siteId);
+        // 生成完整的数据集
+        const streamData = allDates.flatMap(date => {
+            // 获取当天的所有数据
+            const dayData = statistics.metrics.daily_results.filter(item => item.date === date);
 
-                    if (siteData) {
-                        // 更新最后一次有效数据
-                        lastValidData[siteId] = siteData[metric as keyof typeof siteData] as number || 0;
-                    }
+            return siteOrder.map((siteId, siteIndex) => {
+                // 查找当天该站点的数据
+                const siteData = dayData.find(item => item.site_id === siteId);
 
-                    return {
-                        date,
-                        site: siteId,
-                        value: lastValidData[siteId] || 0,
-                        siteIndex
-                    };
-                });
-            }).sort((a, b) => {
-                // 首先按日期排序，然后按站点顺序排序
-                const dateCompare = new Date(a.date).getTime() - new Date(b.date).getTime();
-                if (dateCompare !== 0) return dateCompare;
-                return a.siteIndex - b.siteIndex;
+                if (siteData && siteData[metric as keyof typeof siteData] !== undefined) {
+                    // 更新最后一次有效数据
+                    lastValidData[siteId] = siteData[metric as keyof typeof siteData] as number || 0;
+                }
+
+                return {
+                    date,
+                    site: siteId,
+                    value: lastValidData[siteId] || 0,
+                    siteIndex
+                };
             });
-        })();
+        }).sort((a, b) => {
+            // 首先按日期排序，然后按站点顺序排序
+            const dateCompare = new Date(a.date).getTime() - new Date(b.date).getTime();
+            if (dateCompare !== 0) return dateCompare;
+            return a.siteIndex - b.siteIndex;
+        });
 
         // 清理旧图表
         if (chart) {

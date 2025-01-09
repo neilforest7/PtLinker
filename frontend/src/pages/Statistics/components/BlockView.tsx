@@ -5,7 +5,7 @@ import 'react-calendar-heatmap/dist/styles.css';
 import { siteConfigApi } from '../../../api/siteConfig';
 import { StatisticsHistoryResponse } from '../../../types/api';
 import { toUTC8DateString, parseUTC8Date, formatDate } from '../../../utils/dateUtils';
-import styles from './Statistics.module.css';
+import styles from '../Statistics.module.css';
 
 interface HeatmapValue {
     date: Date;

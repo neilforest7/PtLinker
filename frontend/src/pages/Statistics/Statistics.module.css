@@ -100,37 +100,40 @@
 .chartControls {
     margin-top: 36px;
     display: flex;
-    justify-content: center;
-    align-items: center;
-    flex-wrap: wrap;
+    flex-direction: column;
     gap: 16px;
+    width: 100%;
 }
 
 /* 图表控件样式 */
 .timeRangeGroup {
-    /* margin: 12px; */
-    min-width: 120px;
+    width: 100%;
+}
+
+.timeRangeGroup :global(.ant-segmented-item) {
+    /* text-align: center; */
 }
 
 .metricSelect {
-    /* margin-right: 16px; */
-    min-width: 120px;
+    width: 100%;
 }
 
 .metricSelect :global(.ant-segmented-item) {
-    min-width: 100px;
     text-align: center;
 }
 
-.siteSelectContainer {
+/* .siteSelectContainer {
+    width: 100%;
     display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 16px;
-}
+    justify-content: center;
+} */
 
 .siteSelect {
-    min-width: 500px;
+    width: 100%;
+    /* max-width: 800px; */
+    display: flex;
+    justify-content: center;
+    align-items: center;
 }
 
 /* 下拉选项的样式 */

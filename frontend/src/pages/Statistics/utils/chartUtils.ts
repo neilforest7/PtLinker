@@ -1,4 +1,4 @@
-export type TimeRange = '7' | '30' | '60' | '90' | '180' | 'all';
+export type TimeRange = '7' | '14' | '30' | '60' | '90' | '180' | 'all';
 export type MetricType = 'upload' | 'seeding_size' | 'seeding_count' | 'bonus' | 'download' | 'seeding_score' | 'bonus_per_hour';
 
 export interface ChartDataItem {

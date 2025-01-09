@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Spin, Empty, Radio, Space, Select, Segmented, Button, Divider } from 'antd';
+import { Spin, Empty, Space, Select, Segmented, Button, Divider, Row } from 'antd';
 import { siteConfigApi } from '../../api/siteConfig';
 import { StatisticsHistoryResponse } from '../../types/api';
 import { toUTC8DateString } from '../../utils/dateUtils';
@@ -10,6 +10,16 @@ import OverviewChart from './components/OverviewChart';
 import StreamChart from './components/StreamChart';
 import StatisticsLineChart from './components/StatisticsLineChart';
 import BlockView from './components/BlockView';
+
+const timeRangeOptions = [
+    { value: '7', label: '近7天' },
+    { value: '14', label: '近14天' },
+    { value: '30', label: '近30天' },
+    { value: '60', label: '近60天' },
+    { value: '90', label: '近90天' },
+    { value: '180', label: '近180天' },
+    { value: 'all', label: '所有' },
+];
 
 const ChartView: React.FC = () => {
     const [loading, setLoading] = useState(true);
@@ -94,46 +104,34 @@ const ChartView: React.FC = () => {
 
     return (
         <div className={styles.chartContainer}>
-            <Radio.Group 
-                value={timeRange} 
-                onChange={e => setTimeRange(e.target.value)}
-                buttonStyle="solid"
-                className={styles.timeRangeGroup}
-            >
-                <Radio.Button value="7">近7天</Radio.Button>
-                <Radio.Button value="30">近30天</Radio.Button>
-                <Radio.Button value="60">近60天</Radio.Button>
-                <Radio.Button value="90">近90天</Radio.Button>
-                <Radio.Button value="180">近180天</Radio.Button>
-                <Radio.Button value="all">所有</Radio.Button>
-            </Radio.Group>
-
-            <OverviewChart 
-                statistics={statistics} 
-                timeRange={timeRange} 
-            />
-
             <BlockView />
 
             <div className={styles.chartControls}>
-                <Segmented
-                    value={metric}
-                    onChange={value => setMetric(value as MetricType)}
-                    options={Object.entries(metricLabels).map(([value, label]) => ({
-                        value,
-                        label
-                    }))}
-                    className={styles.metricSelect}
-                />
+                    <Segmented
+                        value={timeRange}
+                        onChange={value => setTimeRange(value as TimeRange)}
+                        options={timeRangeOptions}
+                        className={styles.timeRangeGroup}
+                        block={true}
+                    />
+                    <Segmented
+                        value={metric}
+                        onChange={value => setMetric(value as MetricType)}
+                        options={Object.entries(metricLabels).map(([value, label]) => ({
+                            value,
+                            label
+                        }))}
+                        className={styles.metricSelect}
+                        block={true}
+                    />
 
-                <Space className={styles.siteSelectContainer}>
                     <Select
                         mode="multiple"
                         allowClear
                         placeholder="选择要对比的站点"
                         value={selectedSites}
                         onChange={setSelectedSites}
-                        maxTagCount={6}
+                        maxTagCount={10}
                         className={styles.siteSelect}
                         optionLabelProp="label"
                         options={siteOptions.map(site => ({
@@ -168,8 +166,12 @@ const ChartView: React.FC = () => {
                             </>
                         )}
                     />
-                </Space>
             </div>
+
+            <OverviewChart 
+                statistics={statistics} 
+                timeRange={timeRange} 
+            />
 
             <StreamChart 
                 statistics={statistics}

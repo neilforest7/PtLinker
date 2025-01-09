@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Chart } from '@antv/g2';
 import { StatisticsHistoryResponse } from '../../../types/api';
 import { TimeRange, MetricType, formatValue, filterDataByTimeRange } from '../utils/chartUtils';
-import { parseUTC8Date, formatDate } from '../../../utils/dateUtils';
+import { toUTC8DateString, parseUTC8Date, formatDate } from '../../../utils/dateUtils';
 import styles from '../Statistics.module.css';
 
 interface StatisticsLineChartProps {
@@ -23,52 +23,67 @@ const StatisticsLineChart: React.FC<StatisticsLineChartProps> = ({
     useEffect(() => {
         if (!statistics || !statistics.metrics.daily_results.length) return;
 
-        // 处理数据
-        const processedData = statistics.metrics.daily_results.reduce((acc, curr) => {
-            const date = curr.date;
-            if (!acc[date]) {
-                acc[date] = {
-                    date,
-                    sites: {}
-                };
-            }
-            acc[date].sites[curr.site_id] = {
-                upload: curr.upload,
-                download: curr.download,
-                bonus: curr.bonus,
-                bonus_per_hour: curr.bonus_per_hour,
-                seeding_score: curr.seeding_score,
-                seeding_size: curr.seeding_size,
-                seeding_count: curr.seeding_count,
-            };
-            return acc;
-        }, {} as Record<string, any>);
+        // 生成日期范围内的所有日期
+        const startDate = new Date(statistics.time_range.start);
+        const endDate = new Date(statistics.time_range.end);
+        const allDates: string[] = [];
+        const currentDate = new Date(startDate);
 
-        let chartData = Object.values(processedData).map(day => {
-            const siteData = Object.entries(day.sites).map(([siteId, data]: [string, any]) => ({
-                date: day.date,
-                site: siteId,
-                [metric]: data[metric]
-            }));
-            return siteData;
-        }).flat();
+        while (currentDate <= endDate) {
+            allDates.push(toUTC8DateString(currentDate));
+            currentDate.setDate(currentDate.getDate() + 1);
+        }
 
-        // 如果没有选择站点，计算所有站点的总和
+        // 获取所有站点并排序
+        const siteOrder = Array.from(new Set(statistics.metrics.daily_results.map(item => item.site_id)))
+            .sort((a, b) => a.localeCompare(b))
+            .filter(site => selectedSites.length === 0 || selectedSites.includes(site));
+
+        // 为每个站点维护最后一次的有效数据
+        const lastValidData: Record<string, number> = {};
+
+        // 如果没有选择站点，添加"总计"到站点列表
         if (selectedSites.length === 0) {
-            chartData = Object.values(processedData).map(day => {
-                const totalValue = Object.values(day.sites).reduce((sum: number, data: any) => {
-                    return sum + data[metric];
+            siteOrder.push('总计');
+        }
+
+        // 生成完整的数据集
+        const chartData = allDates.flatMap(date => {
+            // 获取当天的所有数据
+            const dayData = statistics.metrics.daily_results.filter(item => item.date === date);
+
+            // 如果是"总计"模式，计算总和
+            if (selectedSites.length === 0) {
+                const totalValue = dayData.reduce((sum, item) => {
+                    return sum + (item[metric as keyof typeof item] as number || 0);
                 }, 0);
-                return {
-                    date: day.date,
+
+                if (totalValue !== 0) {
+                    lastValidData['总计'] = totalValue;
+                }
+
+                return [{
+                    date,
                     site: '总计',
-                    [metric]: totalValue
+                    [metric]: lastValidData['总计'] || 0
+                }];
+            }
+
+            // 否则处理每个选中的站点
+            return siteOrder.map(siteId => {
+                const siteData = dayData.find(item => item.site_id === siteId);
+
+                if (siteData && siteData[metric as keyof typeof siteData] !== undefined) {
+                    lastValidData[siteId] = siteData[metric as keyof typeof siteData] as number || 0;
+                }
+
+                return {
+                    date,
+                    site: siteId,
+                    [metric]: lastValidData[siteId] || 0
                 };
             });
-        } else {
-            // 只保留选中的站点数据
-            chartData = chartData.filter(item => selectedSites.includes(item.site));
-        }
+        });
 
         const filteredData = filterDataByTimeRange(chartData, timeRange);
 
