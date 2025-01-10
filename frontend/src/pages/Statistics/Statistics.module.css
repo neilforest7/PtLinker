@@ -1,3 +1,4 @@
+/* ================ 基础布局 ================ */
 .statisticsContainer {
     padding: 16px;
 }
@@ -5,31 +6,34 @@
 .viewControl {
     margin-bottom: 16px;
     display: flex;
-    justify-content: flex-start;
+    justify-content: center;
 }
 
+/* ================ 概览卡片样式 ================ */
 .summaryRow {
     margin-bottom: 16px;
 }
 
 .summaryCard {
     height: 100%;
-    /* display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    overflow: hidden; */
 }
 
+.statisticValue :global(.ant-statistic-content) {
+    font-size: 12px !important;
+}
+
+.statisticValue :global(.ant-statistic-title) {
+    font-size: 10px !important;
+}
+
+/* ================ 站点卡片样式 ================ */
 .siteCards {
-    /* margin: 8px; */
     padding: 8px;
 }
 
 .siteCard {
     height: 100%;
     transition: all 0.3s;
-    /* margin: 28px; */
-    /* margin-bottom: 8px; */
 }
 
 .siteCard:hover {
@@ -48,16 +52,8 @@
     text-align: right;
 }
 
-.statisticValue :global(.ant-statistic-content) {
-    font-size: 12px !important;
-}
-
-.statisticValue :global(.ant-statistic-title) {
-    font-size: 10px !important;
-}
-
+/* ================ 站点表格样式 ================ */
 .siteTable {
-    /* background: white; */
     border-radius: 8px;
 }
 
@@ -66,7 +62,7 @@
     font-weight: 600;
 }
 
-.siteTable :global(.ant-table-tbody > tr ) {
+.siteTable :global(.ant-table-tbody > tr) {
     padding: 12px 16px;
 }
 
@@ -74,105 +70,64 @@
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.06);
 }
 
-/* 图表相关样式 */
+/* ================ 图表容器样式 ================ */
 .chartContainer {
-    background: #fafafa;
-    padding: 24px;
+    /* background: #fafafa; */
+    /* padding: 24px; */
     border-radius: 8px;
-    /* box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06); */
+    position: relative;
+    /* max-width: 1600px;
+    margin: 0 auto;
+    padding: 0 24px; */
 }
 
 .chartContent {
     width: 100%;
-    /* height: 500px; */
-    /* min-height: 500px; */
     background: #fff;
-    border-radius: 4px;
+    border-radius: 8px;
     margin-top: 24px;
     padding: 24px;
-    border-radius: 8px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
 }
 
-.blockChartContent {
+.chartsGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 800px), 1fr));
+    gap: 24px;
     margin-top: 24px;
 }
 
-.chartControls {
-    margin-top: 36px;
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-    width: 100%;
-}
-
-/* 图表控件样式 */
-.timeRangeGroup {
-    width: 100%;
-}
-
-.metricSelect {
-    width: 100%;
-}
-
-.siteSelect {
-    width: 100%;
-    /* max-width: 800px; */
-    display: flex;
-    justify-content: center;
-    align-items: center;
-}
-
-/* 下拉选项的样式 */
-.siteSelect :global(.ant-select-selection-item) {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-}
-
-/* 热力图容器样式 */
+/* ================ 热力图样式 ================ */
 .blockchartContent {
     margin: 20px 0;
-    padding: 16px;
     background: #fff;
     border-radius: 8px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
 }
 
-/* 热力图响应式调整 */
+/* 热力图容器 */
 :global(.react-calendar-heatmap) {
     height: auto;
     width: 100%;
-    /* margin: 24px 0; */
     padding: 24px;
-    /* background-color: #faddfa; */
 }
 
 /* 热力图颜色定义 */
 :global(.react-calendar-heatmap) {
-    .color-empty { 
-        fill: #ebedf0;
-    }
-    .color-github-1 { 
-        fill: #9be9a8;
-    }
-    .color-github-2 { 
-        fill: #40c463;
-    }
-    .color-github-3 { 
-        fill: #30a14e;
-    }
-    .color-github-4 { 
-        fill: #216e39;
-    }
+    .color-empty { fill: #ebedf0; }
+    .color-github-1 { fill: #9be9a8; }
+    .color-github-2 { fill: #40c463; }
+    .color-github-3 { fill: #30a14e; }
+    .color-github-4 { fill: #216e39; }
 }
 
+/* 热力图缩放 */
 :global(.react-calendar-heatmap .react-calendar-heatmap-all-weeks) {
     scale: 0.98;
     transform-origin: center center;
 }
 
-/* 为所有方块添加圆角 */
+/* 热力图方块样式 */
 :global(.react-calendar-heatmap rect) {
     transition: all 0.2s ease;
     stroke: rgba(0, 0, 0, 0.05);
@@ -180,16 +135,14 @@
     stroke-opacity: 0.5;
     rx: 2;
     ry: 2;
-    /* transform: translateY(-1px); */
-    /* padding: 2px; */
 }
-/* 调整所有文本大小 */
+
+/* 热力图文本样式 */
 :global(.react-calendar-heatmap text) {
     font-size: 8px;
     fill: #767676;
 }
 
-/* 调整月份标签大小 */
 :global(.react-calendar-heatmap .react-calendar-heatmap-month-label) {
     font-size: 5px;
     font-style: italic;
@@ -198,21 +151,115 @@
     transform: translateY(-2px);
 }
 
-/* 调整星期标签大小 */
 :global(.react-calendar-heatmap .react-calendar-heatmap-weekday-label) {
     font-size: 6px;
     fill: #767676;
 }
 
-/* 方块悬停效果 */
+/* 热力图交互效果 */
 :global(.react-calendar-heatmap rect:hover) {
-    /* stroke: #555; */
     stroke-width: 1px;
     stroke-opacity: 0.5;
     transform: scale(1.02);
     transition: all 0.2s ease;
     transform-origin: left center;
-    /* fill: #35fdb4; */
+}
+
+/* ================ 浮动控制按钮 ================ */
+.controlButtonGroup {
+    position: fixed;
+    right: 24px;
+    bottom: 244px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.timeControl,
+.metricControl,
+.siteControl {
+    /* position: fixed; */
+    /* right: 24px; */
+    /* display: flex; */
+    /* align-items: center;
+    justify-content: space-between; */
+    margin-bottom: 16px;
+    /* gap: 66px; */
+}
+
+.timeControl :global(.ant-float-btn),
+.metricControl :global(.ant-float-btn),
+.siteControl :global(.ant-float-btn) {
+    position: static !important;
+}
+
+/* 控制面板基础样式 */
+.controlPanel {
+    position: absolute;
+    right: 100%;
+    /* top: 50%; */
+    transform: translateY(-50%);
+    /* background: #dfd; */
+    backdrop-filter: blur(8px);
+    padding: 16px;
+    border-radius: 8px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+    animation: slideIn 0.4s ease;
+    margin-right: 26px;
+    white-space: nowrap;
+}
+
+/* 控制面板动画 */
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translate(-20px, -50%);
+    }
+    to {
+        opacity: 1;
+        transform: translate(0, -50%);
+    }
+}
+
+/* 分段控制器样式 */
+.segmentedControl {
+    width: 100% !important;
+    min-width: 680px !important;
+}
+
+.segmentedControl :global(.ant-segmented-item) {
+    min-width: 40px;
+    text-align: center;
+    padding: 4px 8px;
+    font-size: 13px;
+}
+
+/* 站点选择控制器样式 */
+.siteControls {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 680px;
+}
+
+.siteButtons {
+    display: flex;
+    gap: 8px;
+}
+
+.siteSelect {
+    width: 100% !important;
+    min-width: 680px !important;
+}
+
+.siteSelect :global(.ant-select-selector) {
+    padding: 4px 8px !important;
+}
+
+.siteSelect :global(.ant-select-selection-item) {
+    padding: 2px 6px !important;
+    font-size: 12px !important;
 }
 
 

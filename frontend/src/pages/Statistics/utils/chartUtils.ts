@@ -1,3 +1,5 @@
+import { StatisticsHistoryResponse } from "../../../types/api";
+
 export type TimeRange = '7' | '14' | '30' | '60' | '90' | '180' | 'all';
 export type MetricType = 'upload' | 'seeding_size' | 'seeding_count' | 'bonus' | 'download' | 'seeding_score' | 'bonus_per_hour';
 
@@ -68,3 +70,17 @@ export const filterDataByTimeRange = (data: ChartDataItem[], timeRange: TimeRang
         return itemDate >= start && itemDate <= end;
     });
 }; 
+
+// 缓存接口定义
+export interface CacheEntry {
+    data: StatisticsHistoryResponse;
+    timestamp: number;
+    startDate: string;
+    endDate: string;
+}
+
+export interface CacheMap {
+    [key: string]: CacheEntry;
+}
+
+export const CACHE_EXPIRY_TIME = 5 * 60 * 1000; // 缓存有效期：5分钟

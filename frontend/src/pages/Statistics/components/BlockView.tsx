@@ -156,4 +156,4 @@ const BlockView: React.FC = () => {
     );
 };
 
-export default BlockView; 
+export default React.memo(BlockView); 

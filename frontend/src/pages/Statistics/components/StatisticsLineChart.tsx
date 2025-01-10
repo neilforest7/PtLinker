@@ -4,8 +4,6 @@ import { StatisticsHistoryResponse } from '../../../types/api';
 import { TimeRange, MetricType, formatValue, filterDataByTimeRange } from '../utils/chartUtils';
 import { toUTC8DateString, parseUTC8Date, formatDate } from '../../../utils/dateUtils';
 import styles from '../Statistics.module.css';
-import { Auto } from '@antv/g2-extension-ava';
-import { Label } from '@antv/g2/lib/shape/label/label';
 
 interface StatisticsLineChartProps {
     statistics: StatisticsHistoryResponse;
@@ -159,9 +157,14 @@ const StatisticsLineChart: React.FC<StatisticsLineChartProps> = ({
 
 
         statisticsChart.axis('x', {
+            title: null,
             label: {
                 formatter: (val: string) => formatDate(parseUTC8Date(val))
             }
+        });
+
+        statisticsChart.axis('y', {
+            title: null
         });
 
         statisticsChart.render();
@@ -179,4 +182,11 @@ const StatisticsLineChart: React.FC<StatisticsLineChartProps> = ({
     );
 };
 
-export default StatisticsLineChart; 
+export default React.memo(StatisticsLineChart, (prevProps, nextProps) => {
+    // 只有当相关的 props 改变时才重新渲染
+    return (
+        prevProps.timeRange === nextProps.timeRange &&
+        prevProps.metric === nextProps.metric &&
+        prevProps.selectedSites === nextProps.selectedSites
+    );
+}); 

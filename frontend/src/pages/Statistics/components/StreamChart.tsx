@@ -132,9 +132,14 @@ const StreamChart: React.FC<StreamChartProps> = ({
         })
         // 配置 X 轴日期格式
         streamChart.axis('x', {
+            title: null,
             label: {
                 formatter: (val: string) => formatDate(parseUTC8Date(val))
             }
+        });
+
+        streamChart.axis('y', {
+            title: null
         });
 
         streamChart.render();
@@ -152,4 +157,11 @@ const StreamChart: React.FC<StreamChartProps> = ({
     );
 };
 
-export default StreamChart; 
+export default React.memo(StreamChart, (prevProps, nextProps) => {
+    // 只有当相关的 props 改变时才重新渲染
+    return (
+        prevProps.timeRange === nextProps.timeRange &&
+        prevProps.metric === nextProps.metric &&
+        prevProps.selectedSites === nextProps.selectedSites
+    );
+}); 

@@ -270,4 +270,4 @@ const OverviewChart: React.FC<OverviewChartProps> = ({ statistics, timeRange }) 
     );
 };
 
-export default OverviewChart; 
+export default React.memo(OverviewChart); 

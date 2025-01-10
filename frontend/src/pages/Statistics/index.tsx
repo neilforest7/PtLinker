@@ -14,6 +14,7 @@ import { siteConfigApi } from '../../api/siteConfig';
 import { StatisticsResponse } from '../../types/api';
 import styles from './Statistics.module.css';
 import ChartView from './ChartView';
+import BlockView from './components/BlockView';
 
 type ViewMode = 'grid' | 'list' | 'chart';
 
@@ -255,6 +256,7 @@ const Statistics: React.FC = () => {
                     </Card>
                 </Col>
             </Row>
+            <BlockView />
             <div className={styles.viewControl}>
                 <Segmented
                     options={[
@@ -276,6 +278,7 @@ const Statistics: React.FC = () => {
                     ]}
                     value={viewMode}
                     onChange={(value) => setViewMode(value as ViewMode)}
+                    size="large"
                 />
             </div>
             {viewMode === 'grid' && renderGridView()}
