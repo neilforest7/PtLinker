@@ -4,6 +4,8 @@ import { StatisticsHistoryResponse } from '../../../types/api';
 import { TimeRange, MetricType, formatValue, filterDataByTimeRange } from '../utils/chartUtils';
 import { toUTC8DateString, parseUTC8Date, formatDate } from '../../../utils/dateUtils';
 import styles from '../Statistics.module.css';
+import { Auto } from '@antv/g2-extension-ava';
+import { Label } from '@antv/g2/lib/shape/label/label';
 
 interface StatisticsLineChartProps {
     statistics: StatisticsHistoryResponse;
@@ -96,11 +98,15 @@ const StatisticsLineChart: React.FC<StatisticsLineChartProps> = ({
         const statisticsChart = new Chart({
             container: 'statisticsChart',
             autoFit: true,
+            // height: 800,
+            // paddingLeft: 16,
+            // paddingRight: 16,
+            // paddingTop: 16,
+            // paddingBottom: 16,
         });
 
         statisticsChart.data(filteredData);
 
-        // 使用 Auto 自动配置图表
         statisticsChart.line()
             .encode('x', 'date')
             .encode('y', metric)
@@ -108,17 +114,49 @@ const StatisticsLineChart: React.FC<StatisticsLineChartProps> = ({
             .encode('shape', 'smooth')
             .scale('x', {nice: true})
             .scale("y", {nice: true, min: 0,})
-            .tooltip({
-                items: [
-                    (d: any) => ({
-                        name: d.site,
-                        value: formatValue(d[metric], metric),
-                        color: d.color
-                    })
-                ],
-                shared: true,
-                showCrosshairs: true,
-            });
+            .style('lineWidth', 1.5)
+            .label({
+                text: 'site',
+                position: 'right', // `area` type positon used here.
+                selector: 'last',
+                transform: [{ type: 'overlapDodgeY' }, { type: 'exceedAdjust' }],
+                fontSize: 8,
+            })
+            .tooltip({ series: false, shared: false, disableNative: true, items: [
+                (d: any) => ({
+                    name: d.site,
+                    value: formatValue(d[metric as keyof typeof d], metric as MetricType),
+                    color: d.color
+                })
+            ] })
+            .animate('enter', { type: 'pathIn', duration: 1000 })
+            .animate('exit', { type: 'fadeOut', duration: 200 })
+            .state('inactive', { opacity: 0.1 })
+            .legend('color', {
+                state: { inactive: { labelOpacity: 0.1, markerOpacity: 0.1 } },
+                itemLabelFill: (d: any) => d.color,
+                layout: 'flex',
+                cols: 8,
+                colPadding: 12,
+                itemSpacing: 2,
+            })
+        statisticsChart.interaction('legendHighlight', true);
+        statisticsChart.interaction('legendFilter', false);
+        statisticsChart.interaction('elementSelect', true);
+        // statisticsChart.emit('element:highlight', {
+        //     data: { data: { site: '总计' } },
+        // });
+
+        // statisticsChart.emit('element:unhighlight', {});
+        // statisticsChart.on('element:highlight', (event) => {
+        //     const { data, nativeEvent } = event;
+        //     if (nativeEvent) console.log('element:highlight', data);
+        // });
+        // statisticsChart.on('element:unhighlight', (event) => {
+        //     const { nativeEvent } = event;
+        //     if (nativeEvent) console.log('reset');
+        // });
+
 
         statisticsChart.axis('x', {
             label: {

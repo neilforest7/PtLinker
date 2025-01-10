@@ -87,13 +87,22 @@ const StreamChart: React.FC<StreamChartProps> = ({
             .area()
             .transform({ type: 'stackY' })
             .transform({ type: 'symmetryY' })
+            .transform({ type: 'stackEnter', groupBy: 'color', duration: 1000 })
             .encode('x', 'date')
             .encode('y', 'value')
             .encode('color', 'site')
             .style('shape', 'smooth')
             .scale('y', { nice: true })
-            .interaction('elementSelect', true)
+            .animate('enter', { type: 'growInX', duration: 500 })
+            .label({
+                text: 'site',
+                position: 'area', // `area` type positon used here.
+                selector: 'first',
+                transform: [{ type: 'overlapHide' }],
+                fontSize: 8,
+            })
             .tooltip({
+                position: 'right',
                 shared: false,
                 items: [
                     (d: any) => ({
@@ -102,13 +111,25 @@ const StreamChart: React.FC<StreamChartProps> = ({
                         color: d.color
                     })
                 ]
-            });
+            })
+            .state('inactive', { opacity: 0.2 })
+            .state('selected', { fill: 'blue' })
+            .state('unselected', { opacity: 0.3 })
+            .legend('color', {
+                state: { inactive: { labelOpacity: 0.2, markerOpacity: 0.2 } },
+                itemLabelFill: (d: any) => d.color,
+                layout: 'flex',
+                cols: 8,
+                colPadding: 12,
+                itemSpacing: 2,
+            })
 
-        streamChart.legend({
-            position: 'top',
-            flipPage: false
-        });
-
+        streamChart.interaction('legendHighlight', true);
+        streamChart.interaction('legendFilter', false);
+        streamChart.interaction('elementSelectByColor', {
+            single: true,
+            multiple: false,
+        })
         // 配置 X 轴日期格式
         streamChart.axis('x', {
             label: {

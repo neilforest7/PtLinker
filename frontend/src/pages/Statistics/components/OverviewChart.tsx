@@ -134,6 +134,7 @@ const OverviewChart: React.FC<OverviewChartProps> = ({ statistics, timeRange }) 
                 grid: true,
                 titleFill: '#5470C6',
             })
+            .animate('enter', { type: 'pathIn', duration: 1200 })
             .tooltip({
                 items: [
                     (d: any) => ({
@@ -153,6 +154,7 @@ const OverviewChart: React.FC<OverviewChartProps> = ({ statistics, timeRange }) 
             .style('lineWidth', 2)
             .style('lineDash', [1, 3])
             .style('shape', 'smooth')
+            .animate('enter', { type: 'pathIn', duration: 1000 })
             .tooltip({
                 items: [
                     (d: any) => ({
@@ -162,7 +164,7 @@ const OverviewChart: React.FC<OverviewChartProps> = ({ statistics, timeRange }) 
                     })
                 ]
             });
-
+            
         // 上传下载量区域图
         overallChangeLineChart.area()
             .data({
@@ -200,6 +202,7 @@ const OverviewChart: React.FC<OverviewChartProps> = ({ statistics, timeRange }) 
                 grid: true,
                 titleFill: '#91CC75',
             })
+            .animate('enter', { duration: 500 })
             .tooltip({
                 items: [
                     (d: any) => ({
@@ -208,7 +211,9 @@ const OverviewChart: React.FC<OverviewChartProps> = ({ statistics, timeRange }) 
                         color: '#91CC75'
                     })
                 ]
-            });
+            })
+            .style('connect', true)
+            .style('connectStroke', '#aaa');
 
         // 保种积分线条
         overallChangeLineChart.line()
@@ -218,6 +223,7 @@ const OverviewChart: React.FC<OverviewChartProps> = ({ statistics, timeRange }) 
             .scale('y', {nice: true, key: '2'})
             .style('lineWidth', 1.5)
             .style('lineDash', [6, 4])
+            .animate('enter', {duration: 500})
             .tooltip({
                 items: [
                     (d: any) => ({
