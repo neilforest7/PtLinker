@@ -5,8 +5,7 @@ from core.logger import get_logger
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from schemas.siteconfig import (SiteConfigCreate, SiteConfigResponse,
                                 SiteConfigUpdate)
-from schemas.sitesetup import SiteSetup
-from schemas.sitesetup import BaseResponse
+from schemas.sitesetup import BaseResponse, SiteSetup
 from services.managers.site_manager import SiteManager
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -76,39 +75,68 @@ async def get_site_config(
 
 @router.post("", response_model=SiteConfigResponse, summary="创建新的站点配置")
 async def create_site_config(
-    new_site_config: SiteConfigCreate,
+    site_id: str,
+    site_url: str,
+    enable_crawler: Optional[bool] = Query(True, description="是否启用爬虫"),
+    save_to_local: Optional[bool] = Query(True, description="是否同时保存到本地文件"),
     db: AsyncSession = Depends(get_db)
 ) -> SiteConfigResponse:
-    """创建新的站点配置"""
+    """从模板创建新的站点配置"""
     try:
         site_manager = SiteManager.get_instance()
-        # 确保站点管理器已初始化
         if not site_manager._initialized:
-            logger.debug("站点管理器未初始化，正在初始化...")
             await site_manager.initialize(db)
             
         # 检查站点ID是否已存在
-        existing_setup = await site_manager.get_site_setup(new_site_config.site_id)
+        existing_setup = await site_manager.get_site_setup(site_id)
         if existing_setup and existing_setup.site_config:
-            logger.warning(f"站点配置已存在: {new_site_config.site_id}")
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=f"站点配置 {new_site_config.site_id} 已存在"
+                detail=f"站点配置 {site_id} 已存在"
             )
             
-        # 使用update_site_setup更新配置
+        # 从模板创建配置
+        new_config, crawler_config, crawler_credential = await site_manager.create_from_template(
+            site_id, 
+            site_url,
+            enable_crawler
+        )
+        if not new_config:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="从模板创建配置失败"
+            )
+            
+        # 使用update_site_setup保存配置
         if not await site_manager.update_site_setup(
             db,
-            site_id=new_site_config.site_id,
-            new_site_config=new_site_config
+            site_id=site_id,
+            new_site_config=new_config,
+            new_crawler_config=crawler_config,  # 添加爬虫配置
+            new_crawler_credential=crawler_credential  # 添加爬虫凭证
         ):
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"保存站点配置失败"
+                detail="保存站点配置失败"
             )
             
-        logger.info(f"成功创建站点配置: {new_site_config.site_id}")
-        return SiteConfigResponse.model_validate(new_site_config)
+        # 如果需要，保存到本地文件
+        if save_to_local:
+            site_setup = await site_manager.get_site_setup(site_id)
+            if not site_setup:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="保存本地配置失败：无法获取站点配置"
+                )
+                
+            if not await site_manager._save_to_local_file(site_setup):
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="保存本地配置文件失败"
+                )
+            
+        logger.info(f"成功创建站点配置: {site_id}")
+        return SiteConfigResponse.model_validate(new_config)
         
     except HTTPException:
         raise
@@ -124,9 +152,17 @@ async def create_site_config(
 async def update_site_config(
     site_id: str,
     site_config: SiteConfigUpdate,
+    save_to_local: bool = Query(False, description="是否同时保存到本地文件"),
     db: AsyncSession = Depends(get_db)
 ) -> SiteConfigResponse:
-    """更新站点配置"""
+    """更新站点配置
+    
+    Args:
+        site_id: 站点ID
+        site_config: 更新的配置
+        save_to_local: 是否同时保存到本地文件
+        db: 数据库会话
+    """
     try:
         site_manager = SiteManager.get_instance()
         # 确保站点管理器已初始化
@@ -156,6 +192,25 @@ async def update_site_config(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"保存站点配置失败"
             )
+            
+        # 如果需要，保存到本地文件
+        if save_to_local:
+            # 获取更新后的完整站点配置
+            site_setup = await site_manager.get_site_setup(site_id)
+            if not site_setup:
+                logger.error(f"无法获取更新后的站点配置: {site_id}")
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"保存本地配置失败：无法获取站点配置"
+                )
+                
+            # 保存到本地文件
+            if not await site_manager._save_to_local_file(site_setup):
+                logger.error(f"保存本地配置文件失败: {site_id}")
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"保存本地配置文件失败"
+                )
             
         logger.info(f"成功更新站点配置: {site_id}")
         return SiteConfigResponse.model_validate(updated_config)

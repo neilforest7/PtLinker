@@ -642,3 +642,163 @@ class SiteManager:
             self.logger.debug(f"错误详情: ", exc_info=True)
             await db.rollback()
             return False
+
+    async def _save_to_local_file(self, site_setup: SiteSetup) -> bool:
+        """将站点配置保存为本地JSON文件
+        
+        Args:
+            site_setup: 站点配置
+            
+        Returns:
+            bool: 是否成功
+        """
+        try:
+            if not site_setup.site_config:
+                self.logger.error(f"站点 {site_setup.site_id} 缺少必要的站点配置")
+                return False
+            
+            # 1. 获取配置目录
+            config_dir = await SettingManager.get_instance().get_setting("crawler_config_path")
+            if not config_dir:
+                self.logger.error("crawler_config_path 未找到")
+                config_dir = os.path.join(os.path.dirname(__file__), "../..", "sites", "implementations")
+            
+            # 确保目录存在
+            os.makedirs(config_dir, exist_ok=True)
+            
+            # 2. 构造要保存的配置数据
+            site_config = site_setup.site_config
+            config_data = {
+                "site_id": site_setup.site_id,
+                "site_url": site_config.site_url
+            }
+            
+            # 3. 添加登录配置
+            if site_config.login_config:
+                config_data["login_config"] = site_config.login_config.model_dump(
+                    exclude_none=True,  # 排除None值
+                    exclude_unset=True  # 排除未设置的值
+                )
+            
+            # 4. 添加数据提取规则
+            if site_config.extract_rules and site_config.extract_rules.rules:
+                config_data["extract_rules"] = [
+                    rule.model_dump(exclude_none=True, exclude_unset=True)
+                    for rule in site_config.extract_rules.rules
+                ]
+            
+            # 5. 添加签到配置
+            if site_config.checkin_config:
+                config_data["checkin_config"] = site_config.checkin_config.model_dump(
+                    exclude_none=True,
+                    exclude_unset=True
+                )
+            
+            # 6. 保存到文件
+            file_path = os.path.join(config_dir, f"{site_setup.site_id}.json")
+            with open(file_path, 'w', encoding='utf-8') as f:
+                json.dump(config_data, f, ensure_ascii=False, indent=4)
+            
+            self.logger.info(f"成功保存站点配置到本地文件: {file_path}")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"保存站点配置到本地文件失败: {site_setup.site_id}: {str(e)}")
+            return False
+
+    async def _load_template_config(self) -> Optional[dict]:
+        """加载NexusPHP模板配置"""
+        try:
+            config_dir = await SettingManager.get_instance().get_setting("crawler_config_path")
+            if not config_dir:
+                config_dir = os.path.join(os.path.dirname(__file__), "../..", "sites", "implementations")
+            
+            template_path = os.path.join(config_dir, "_template_nexusphp.json")
+            if not os.path.exists(template_path):
+                self.logger.error("模板配置文件不存在")
+                return None
+            
+            with open(template_path, 'r', encoding='utf-8') as f:
+                template = json.load(f)
+            
+            return template
+        except Exception as e:
+            self.logger.error(f"加载模板配置失败: {str(e)}")
+            return None
+
+    async def create_from_template(
+        self, 
+        site_id: str, 
+        site_url: str,
+        enable_crawler: bool = True
+    ) -> tuple[Optional[SiteConfigBase], Optional[CrawlerConfigBase], Optional[CrawlerCredentialBase]]:
+        """从模板创建站点配置
+        
+        Args:
+            site_id: 站点ID
+            site_url: 站点URL
+            enable_crawler: 是否启用爬虫
+            
+        Returns:
+            tuple: (站点配置, 爬虫配置, 爬虫凭证)
+        """
+        try:
+            # 加载模板配置
+            template = await self._load_template_config()
+            if not template:
+                return None, None, None
+            
+            # 创建站点配置
+            template['site_id'] = site_id
+            template['site_url'] = site_url
+            
+            # 确保extract_rules是正确的结构
+            if 'extract_rules' in template and isinstance(template['extract_rules'], list):
+                template['extract_rules'] = {
+                    'rules': template['extract_rules']
+                }
+            
+            site_config = SiteConfigBase.model_validate(template)
+            
+            # 创建默认的爬虫配置
+            crawler_config = CrawlerConfigBase(
+                site_id=site_id,
+                enabled=enable_crawler,  # 默认启用
+                use_proxy=False,        # 默认不使用代理
+                fresh_login=False,      # 默认不强制登录
+                captcha_skip=False,     # 默认不跳过验证码
+                headless=True          # 默认无头模式
+            )
+            
+            # 读取凭证配置
+            credential_dir = await SettingManager.get_instance().get_setting("crawler_credential_path")
+            credential_path = os.path.join(credential_dir, "credentials.json")
+            credential_data = {}
+            if os.path.exists(credential_path):
+                with open(credential_path, 'r', encoding='utf-8') as f:
+                    all_credentials = json.load(f)
+                    # 优先使用全局凭证
+                    if "global" in all_credentials and all_credentials["global"].get("enabled", True):
+                        credential_data = all_credentials["global"]
+                        self.logger.info(f"{site_id} 使用全局凭证")
+                    else:
+                        self.logger.warning(f"未找到可用的全局凭证")
+            else:
+                self.logger.warning(f"Credentials file not found: {credential_path}")
+            
+            # 创建爬虫凭证
+            crawler_credential = CrawlerCredentialBase(
+                site_id=site_id,
+                username=credential_data.get("username", ""),
+                password=credential_data.get("password", ""),
+                authorization=credential_data.get("authorization", ""),
+                apikey=credential_data.get("apikey", ""),
+                enable_manual_cookies=bool(credential_data.get("manual_cookies")),
+                manual_cookies=credential_data.get("manual_cookies", "")
+            )
+            
+            return site_config, crawler_config, crawler_credential
+            
+        except Exception as e:
+            self.logger.error(f"从模板创建配置失败: {str(e)}")
+            return None, None, None
