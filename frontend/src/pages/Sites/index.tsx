@@ -29,6 +29,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import styles from './Sites.module.css';
 import SiteSettingsModal from '../../components/SiteSettingsModal';
+import AddSiteModal from '../../components/AddSiteModal';
 import { siteConfigApi } from '../../api/siteConfig';
 
 const { Text, Link } = Typography;
@@ -167,6 +168,7 @@ const Sites: React.FC = () => {
     const [selectedSite, setSelectedSite] = useState<SiteData | undefined>();
     const [settingsVisible, setSettingsVisible] = useState(false);
     const [originalValues, setOriginalValues] = useState<any>(null);
+    const [addSiteVisible, setAddSiteVisible] = useState(false);
 
     const sensors = useSensors(
         useSensor(PointerSensor),
@@ -427,7 +429,12 @@ const Sites: React.FC = () => {
             <div className={styles.sitesContainer}>
                 <div className={styles.header}>
                     <Space>
-                        <Button type="primary">添加站点</Button>
+                        <Button 
+                            type="primary"
+                            onClick={() => setAddSiteVisible(true)}
+                        >
+                            添加站点
+                        </Button>
                         <Popconfirm
                             placement='bottomLeft'
                             title="确认开始爬取"
@@ -503,6 +510,12 @@ const Sites: React.FC = () => {
                     site={selectedSite}
                     onClose={() => setSettingsVisible(false)}
                     onSave={handleSettingsSave}
+                />
+
+                <AddSiteModal
+                    visible={addSiteVisible}
+                    onClose={() => setAddSiteVisible(false)}
+                    onSuccess={loadSitesData}
                 />
             </div>
         </Spin>

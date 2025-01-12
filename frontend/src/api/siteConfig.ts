@@ -188,4 +188,17 @@ export const siteConfigApi = {
         const response = await axios.delete(`${BASE_URL}/tasks/${taskId}`);
         return response.data;
     },
+
+    // 创建站点配置
+    createSiteConfig: async (
+        siteId: string,
+        siteUrl: string,
+        enableCrawler: boolean = true,
+        saveToLocal: boolean = true
+    ): Promise<SiteConfigResponse> => {
+        const response = await axios.post(
+            `${BASE_URL}/site-configs?site_id=${siteId}&site_url=${siteUrl}&enable_crawler=${enableCrawler}&save_to_local=${saveToLocal}`
+        );
+        return response.data;
+    }
 }; 
