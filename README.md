@@ -110,7 +110,6 @@ PtLinker
 
 ### 支持站点
 目前支持的PT站点包括:
-- HDAtoms
 - HDHome 
 - Ourbits
 - U2
@@ -118,6 +117,12 @@ PtLinker
 - Haidan
 - HDFans
 - UBITS
+- Kylin
+- Btschool
+- Hdatmos
+- Zmpt
+- Nicept
+- Ptcafe
 - 等多个主流PT站点
 
 ## 部署说明

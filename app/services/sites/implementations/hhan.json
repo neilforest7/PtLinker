@@ -1,6 +1,6 @@
 {
-    "site_id": "hdatoms",
-    "site_url": "https://hdatoms.club",
+    "site_id": "hhan",
+    "site_url": "https://hhanclub.top",
     "login_config": {
         "login_url": "/login.php",
         "form_selector": "@action=takelogin.php",
@@ -20,6 +20,20 @@
             "submit": {
                 "name": "submit",
                 "selector": "@type=submit"
+            }
+        },
+        "captcha": {
+            "type": "custom",
+            "element": {
+                "name": "captcha",
+                "selector": "@alt=CAPTCHA",
+                "type": "src"
+            },
+            "input": {
+                "name": "imagestring",
+                "selector": "@name=imagestring",
+                "type": "text",
+                "required": true
             }
         },
         "success_check": {
@@ -62,58 +76,63 @@
         {
             "name": "user_class",
             "selector": "@text()=等级",
+            "type": "attribute",
             "location": "next-child",
             "second_selector": "@@tag()=img@@alt@@src",
-            "type": "attribute",
             "attribute": "alt"
         },
         {
             "name": "join_time",
             "selector": "@text()=加入日期",
+            "type": "text",
             "location": "next",
-            "second_selector": "",
-            "type": "text"
+            "second_selector": ""
         },
         {
             "name": "last_active",
             "selector": "@text()=最近动向",
+            "type": "text",
             "location": "next",
-            "second_selector": "",
-            "type": "text"
+            "second_selector": ""
         },
         {
             "name": "upload",
             "selector": "@text()=上传量",
+            "type": "text",
             "location": "parent",
-            "second_selector": "",
-            "type": "text"
+            "second_selector": ""
         },
         {
             "name": "download",
             "selector": "@text()=下载量",
+            "type": "text",
             "location": "parent",
-            "second_selector": "",
-            "type": "text"
+            "second_selector": ""
         },
         {
             "name": "ratio",
             "selector": "@text()=分享率",
+            "type": "text",
             "location": "next",
-            "second_selector": "@tag()=font",
-            "type": "text"
+            "second_selector": "@tag()=font"
         },
         {
             "name": "bonus",
             "selector": "@text()=魔力值",
+            "type": "text",
             "location": "next",
-            "second_selector": "",
-            "type": "text"
+            "second_selector": ""
         },
         {
             "name": "seeding_score",
             "selector": "@text()=做种积分",
+            "type": "text",
             "location": "next",
-            "second_selector": "",
+            "second_selector": ""
+        },
+        {
+            "name": "hr_count",
+            "selector": "@href^myhr.php",
             "type": "text"
         },
         {
@@ -121,8 +140,8 @@
             "selector": "@text()^你当前每小时能获取",
             "type": "text",
             "need_pre_action": true,
-            "pre_action_type": "goto",
-            "page_url": "/mybonus.php"
+            "page_url": "/mybonus.php",
+            "pre_action_type": "goto"
         }
     ],
     "checkin_config": {
