@@ -46,12 +46,17 @@ class DailyResult(BaseModel):
     date: date
     site_id: str
     username: Optional[str]
+    user_class: Optional[str]
+    uid: Optional[str]
+    join_time: Optional[datetime]
+    last_active: Optional[datetime]
     upload: Optional[float]
     download: Optional[float]
     ratio: Optional[float]
     bonus: Optional[float]
-    bonus_per_hour: Optional[float]
     seeding_score: Optional[float]
+    hr_count: Optional[int]
+    bonus_per_hour: Optional[float]
     seeding_size: Optional[float]
     seeding_count: Optional[int]
     task_id: str
@@ -96,9 +101,31 @@ class StatisticsMetadata(BaseModel):
 
 class LastSuccessTaskResult(BaseModel):
     """最后一次成功任务的结果数据"""
-    daily_results: Dict[str, Any]  # 每日结果数据
-    daily_increments: Dict[str, Any]  # 每日增量数据
-    last_success_time: datetime  # 最后成功时间
+    daily_results: Dict[str, Any] = Field(..., description="每日结果数据，包含用户完整信息")
+    daily_increments: Dict[str, Any] = Field(..., description="每日增量数据")
+    last_success_time: datetime = Field(..., description="最后成功时间")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "daily_results": {
+                    "username": "example_user",
+                    "user_class": "VIP",
+                    "uid": "12345",
+                    "join_time": "2024-01-01T00:00:00",
+                    "last_active": "2024-01-20T10:00:00",
+                    "upload": 1024.5,
+                    "download": 512.3,
+                    "ratio": 2.0,
+                    "bonus": 1000.0,
+                    "seeding_score": 100.0,
+                    "hr_count": 5,
+                    "bonus_per_hour": 1.5,
+                    "seeding_size": 2048.0,
+                    "seeding_count": 50
+                }
+            }
+        }
 
 
 class LastSuccessTasksResponse(BaseModel):

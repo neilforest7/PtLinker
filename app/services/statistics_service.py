@@ -112,6 +112,8 @@ class StatisticsService:
             
             # 按日期和站点分组，获取每天的最后一条记录
             daily_results = {}
+            task: Task
+            result: Result
             for task, result in rows:
                 key = (task.site_id, task.created_at.date())
                 if key not in daily_results or task.created_at > daily_results[key][0].created_at:
@@ -123,12 +125,17 @@ class StatisticsService:
                     date=task.created_at.date(),
                     site_id=task.site_id,
                     username=result.username,
+                    user_class=result.user_class,
+                    uid=result.uid,
+                    join_time=result.join_time,
+                    last_active=result.last_active,
                     upload=result.upload,
                     download=result.download,
                     ratio=result.ratio,
                     bonus=result.bonus,
-                    bonus_per_hour=result.bonus_per_hour,
                     seeding_score=result.seeding_score,
+                    hr_count=result.hr_count,
+                    bonus_per_hour=result.bonus_per_hour,
                     seeding_size=result.seeding_size,
                     seeding_count=result.seeding_count,
                     task_id=task.task_id
