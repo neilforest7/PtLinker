@@ -51,12 +51,13 @@
         },
         {
             "name": "seeding_list",
-            "selector": "@href^javascript: getusertorrentlistajax",
-            "index": 2
+            "selector": "@text()$当前做种",
+            "need_pre_action": true,
+            "pre_action_type": "click"
         },
         {
             "name": "seeding_list_container",
-            "selector": "#ka1",
+            "selector": "@class$rounded-md p-5",
             "type": "text",
             "need_pre_action": true
         },
@@ -75,57 +76,54 @@
         },
         {
             "name": "user_class",
-            "selector": "@text()=等级",
-            "type": "attribute",
-            "location": "next-child",
-            "second_selector": "@@tag()=img@@alt@@src",
-            "attribute": "alt"
+            "selector": "@@tag()=b@@class=User_Name",
+            "type": "text"
         },
         {
             "name": "join_time",
-            "selector": "@text()=加入日期",
+            "selector": "@text()^加入日期：",
             "type": "text",
             "location": "next",
             "second_selector": ""
         },
         {
             "name": "last_active",
-            "selector": "@text()=最近动向",
+            "selector": "@text()^最近动向：",
             "type": "text",
             "location": "next",
             "second_selector": ""
         },
         {
             "name": "upload",
-            "selector": "@text()=上传量",
+            "selector": "@text()^上传量",
             "type": "text",
-            "location": "parent",
+            "location": "next",
             "second_selector": ""
         },
         {
             "name": "download",
-            "selector": "@text()=下载量",
+            "selector": "@text()^下载量",
             "type": "text",
-            "location": "parent",
+            "location": "next",
             "second_selector": ""
         },
         {
             "name": "ratio",
-            "selector": "@text()=分享率",
+            "selector": "@text()^分享率",
             "type": "text",
-            "location": "next",
+            "location": "next-child",
             "second_selector": "@tag()=font"
         },
         {
             "name": "bonus",
-            "selector": "@text()=魔力值",
+            "selector": "@src$icon-bean.svg",
             "type": "text",
             "location": "next",
             "second_selector": ""
         },
         {
             "name": "seeding_score",
-            "selector": "@text()=做种积分",
+            "selector": "@text()^做种积分",
             "type": "text",
             "location": "next",
             "second_selector": ""
