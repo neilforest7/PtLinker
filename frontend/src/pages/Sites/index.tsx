@@ -30,6 +30,7 @@ import { CSS } from '@dnd-kit/utilities';
 import styles from './Sites.module.css';
 import SiteSettingsModal from '../../components/SiteSettingsModal';
 import AddSiteModal from '../../components/AddSiteModal';
+import SiteStatisticsModal from '../../components/SiteStatisticsModal';
 import { siteConfigApi } from '../../api/siteConfig';
 
 const { Text, Link } = Typography;
@@ -50,9 +51,15 @@ interface SortableSiteCardProps {
     site: SiteData;
     onSettingsClick: (site: SiteData) => void;
     onUpdateClick: (site: SiteData) => void;
+    onStatisticsClick: (site: SiteData) => void;
 }
 
-const SortableSiteCard: React.FC<SortableSiteCardProps> = ({ site, onSettingsClick, onUpdateClick }) => {
+const SortableSiteCard: React.FC<SortableSiteCardProps> = ({ 
+    site, 
+    onSettingsClick, 
+    onUpdateClick,
+    onStatisticsClick 
+}) => {
     const {
         attributes,
         listeners,
@@ -93,7 +100,14 @@ const SortableSiteCard: React.FC<SortableSiteCardProps> = ({ site, onSettingsCli
                         <SyncOutlined title="更新" />
                     </Popconfirm>,
                     <ExperimentOutlined key="test" title="测试" />,
-                    <BarChartOutlined key="stats" title="数据" />,
+                    <BarChartOutlined 
+                        key="stats" 
+                        title="数据"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            onStatisticsClick(site);
+                        }}
+                    />,
                     <SettingOutlined 
                         key="setting" 
                         title="设置"
@@ -169,6 +183,7 @@ const Sites: React.FC = () => {
     const [settingsVisible, setSettingsVisible] = useState(false);
     const [originalValues, setOriginalValues] = useState<any>(null);
     const [addSiteVisible, setAddSiteVisible] = useState(false);
+    const [statisticsVisible, setStatisticsVisible] = useState(false);
 
     const sensors = useSensors(
         useSensor(PointerSensor),
@@ -420,6 +435,11 @@ const Sites: React.FC = () => {
         }
     };
 
+    const handleStatisticsClick = (site: SiteData) => {
+        setSelectedSite(site);
+        setStatisticsVisible(true);
+    };
+
     useEffect(() => {
         loadSitesData();
     }, []);
@@ -499,6 +519,7 @@ const Sites: React.FC = () => {
                                     site={site}
                                     onSettingsClick={handleSettingsClick}
                                     onUpdateClick={handleUpdateClick}
+                                    onStatisticsClick={handleStatisticsClick}
                                 />
                             ))}
                         </div>
@@ -516,6 +537,12 @@ const Sites: React.FC = () => {
                     visible={addSiteVisible}
                     onClose={() => setAddSiteVisible(false)}
                     onSuccess={loadSitesData}
+                />
+
+                <SiteStatisticsModal
+                    visible={statisticsVisible}
+                    site={selectedSite}
+                    onClose={() => setStatisticsVisible(false)}
                 />
             </div>
         </Spin>

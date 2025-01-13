@@ -4,8 +4,12 @@ import { SiteConfigResponse, CrawlerConfigResponse, SettingsResponse, CrawlerCre
 const BASE_URL = '/api/v1';
 
 interface StatisticsParams {
+    site_id?: string;
     start_date?: string;
     end_date?: string;
+    metrics?: string[];
+    time_unit?: string;
+    calculation?: string;
 }
 
 export const siteConfigApi = {

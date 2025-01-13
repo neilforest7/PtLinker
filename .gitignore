@@ -19,3 +19,5 @@ app/ptlinker.db-wal
 .DS_Store
 app/venv
 app/ptlinker.db-journal
+storage
+temp

@@ -11,12 +11,20 @@ import {
     LineChartOutlined
 } from '@ant-design/icons';
 import { siteConfigApi } from '../../api/siteConfig';
-import { StatisticsResponse } from '../../types/api';
+import { StatisticsResponse, SiteStatistics } from '../../types/api';
 import styles from './Statistics.module.css';
 import ChartView from './ChartView';
 import BlockView from './components/BlockView';
 
 type ViewMode = 'grid' | 'list' | 'chart';
+
+interface TotalStats {
+    upload: number;
+    download: number;
+    seeding_count: number;
+    seeding_size: number;
+    bonus: number;
+}
 
 const Statistics: React.FC = () => {
     const [loading, setLoading] = useState(true);
@@ -59,14 +67,14 @@ const Statistics: React.FC = () => {
     };
 
     // 计算总计数据
-    const totals = Object.values(statistics).reduce((acc, site) => {
+    const totals = Object.values(statistics).reduce<TotalStats>((acc, site: SiteStatistics) => {
         const { daily_results } = site;
         return {
-            upload: acc.upload + daily_results.upload,
-            download: acc.download + daily_results.download,
-            seeding_count: acc.seeding_count + daily_results.seeding_count,
-            seeding_size: acc.seeding_size + daily_results.seeding_size,
-            bonus: acc.bonus + daily_results.bonus
+            upload: acc.upload + (daily_results.upload || 0),
+            download: acc.download + (daily_results.download || 0),
+            seeding_count: acc.seeding_count + (daily_results.seeding_count || 0),
+            seeding_size: acc.seeding_size + (daily_results.seeding_size || 0),
+            bonus: acc.bonus + (daily_results.bonus || 0)
         };
     }, { upload: 0, download: 0, seeding_count: 0, seeding_size: 0, bonus: 0 });
 
@@ -130,7 +138,7 @@ const Statistics: React.FC = () => {
     ];
 
     // 转换数据为表格格式
-    const tableData = Object.entries(statistics).map(([siteId, stats]) => ({
+    const tableData = Object.entries(statistics).map(([siteId, stats]: [string, SiteStatistics]) => ({
         key: siteId,
         siteId,
         ...stats.daily_results,
@@ -138,7 +146,7 @@ const Statistics: React.FC = () => {
 
     const renderGridView = () => (
         <Row>
-            {Object.entries(statistics).map(([siteId, stats]) => (
+            {Object.entries(statistics).map(([siteId, stats]: [string, SiteStatistics]) => (
                 <Col xs={24} sm={12} lg={8} xl={6} key={siteId} className={styles.siteCards}>
                     <Card 
                         title={`${siteId} (${stats.daily_results.username})`} 
@@ -223,7 +231,7 @@ const Statistics: React.FC = () => {
                     <Card className={styles.summaryCard}>
                         <Statistic
                             title="总上传量"
-                            value={formatSizeToTB(totals.upload)}
+                            value={formatSizeToTB(totals?.upload || 0)}
                             prefix={<UploadOutlined />}
                         />
                     </Card>
@@ -232,7 +240,7 @@ const Statistics: React.FC = () => {
                     <Card className={styles.summaryCard}>
                         <Statistic
                             title="总下载量"
-                            value={formatSizeToTB(totals.download)}
+                            value={formatSizeToTB(totals?.download || 0)}
                             prefix={<DownloadOutlined />}
                         />
                     </Card>
@@ -241,7 +249,7 @@ const Statistics: React.FC = () => {
                     <Card className={styles.summaryCard}>
                         <Statistic
                             title="总做种数"
-                            value={totals.seeding_count}
+                            value={totals?.seeding_count || 0}
                             prefix={<CloudUploadOutlined />}
                         />
                     </Card>
@@ -250,7 +258,7 @@ const Statistics: React.FC = () => {
                     <Card className={styles.summaryCard}>
                         <Statistic
                             title="总做种体积"
-                            value={formatSizeToTB(totals.seeding_size ?? 0)}
+                            value={formatSizeToTB(totals?.seeding_size || 0)}
                             prefix={<GiftOutlined />}
                         />
                     </Card>

@@ -1,0 +1,106 @@
+.descriptionsContainer {
+    padding-right: 12px;
+}
+
+.descriptionsContainer :global(.ant-descriptions) {
+    background: #fff;
+}
+
+.chartsContainer {
+    padding: 0px;
+    /* display: flex;
+    flex-direction: column;
+    height: 100%; */
+    /* padding-left: 12px; */
+}
+
+.blockViewContainer {
+    /* height: auto; */
+    /* display: flex;
+    align-items: center;
+    justify-content: center; */
+    width: 90%;
+    padding: 0px;
+    /* margin: 8px 0;
+    background: #fff;
+    border-radius: 8px;
+    padding: 16px; */
+}
+
+.chartContainer {
+    height: auto;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    /* margin: 8px 0;
+    background: #fff;
+    border-radius: 8px;
+    padding: 16px; */
+}
+
+.blockchartContent {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    /* padding: 16px; */
+    /* position: relative; */
+}
+
+.blockchartContent :global(.react-calendar-heatmap) {
+    /* width: 100%;
+    height: 100%; */
+}
+
+/* 调整热力图的缩放和位置 */
+.blockchartContent :global(.react-calendar-heatmap-all-weeks) {
+    /* transform: scale(0.95); */
+    display: flex;
+    /* flex-direction: column; */
+    justify-content: center;
+    align-items: center;
+    transform-origin: center center;
+}
+
+/* 调整热力图的颜色 */
+.blockchartContent :global(.react-calendar-heatmap) {
+    .color-empty { fill: #ebedf0; }
+    .color-github-1 { fill: #ffcdd2; }  /* 失败-浅红色 */
+    .color-github-2 { fill: #ef9a9a; }  /* 失败-中红色 */
+    .color-github-3 { fill: #b2ebf2; }  /* 成功-浅绿色 */
+    .color-github-4 { fill: #80deea; }  /* 成功-深绿色 */
+}
+
+/* 热力图方块样式 */
+.blockchartContent :global(.react-calendar-heatmap rect) {
+    rx: 2;
+    ry: 2;
+    stroke: #fff;
+    stroke-width: 1;
+    transition: all 0.2s ease;
+}
+
+/* 热力图文本样式 */
+.blockchartContent :global(.react-calendar-heatmap text) {
+    /* font-size: 8px;
+    fill: #767676; */
+}
+
+.blockchartContent :global(.react-calendar-heatmap .react-calendar-heatmap-month-label) {
+    /* font-size: 8px;
+    fill: #767676; */
+}
+
+.blockchartContent :global(.react-calendar-heatmap .react-calendar-heatmap-weekday-label) {
+    /* font-size: 7px;
+    fill: #767676; */
+}
+
+/* 热力图悬停效果 */
+.blockchartContent :global(.react-calendar-heatmap rect:hover) {
+    /* stroke-width: 2;
+    transform: scale(1.1);
+    transform-origin: center center;
+    z-index: 1; */
+} 

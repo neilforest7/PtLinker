@@ -142,10 +142,12 @@ export interface DailyResult {
     date: string;
     site_id: string;
     username: string;
+    user_class: string;
     upload: number;
     download: number;
     ratio: number;
     bonus: number;
+    bonus_per_hour: number | null;
     seeding_score: number | null;
     seeding_size: number;
     seeding_count: number;
@@ -156,10 +158,11 @@ export interface DailyIncrement {
     date: string;
     site_id: string;
     upload_increment: number;
+    download_increment: number;
     bonus_increment: number;
     seeding_score_increment: number | null;
-    seeding_size_increment: number;
-    seeding_count_increment: number;
+    seeding_size_increment: number | null;
+    seeding_count_increment: number | null;
     task_id: string;
     reference_task_id: string;
 }
@@ -174,45 +177,23 @@ export interface StatisticsResponse {
     [site_id: string]: SiteStatistics;
 }
 
+export interface CheckinRecord {
+    date: string;
+    site_id: string;
+    checkin_status: string;
+    checkin_time: string;
+    task_id: string;
+}
+
 export interface StatisticsHistoryResponse {
     time_range: {
         start: string;
         end: string;
     };
     metrics: {
-        daily_results: Array<{
-            date: string;
-            site_id: string;
-            username: string;
-            upload: number;
-            download: number;
-            ratio: number;
-            bonus: number;
-            bonus_per_hour: number | null;
-            seeding_score: number | null;
-            seeding_size: number;
-            seeding_count: number;
-            task_id: string;
-        }>;
-        daily_increments: Array<{
-            date: string;
-            site_id: string;
-            upload_increment: number;
-            download_increment: number;
-            bonus_increment: number;
-            seeding_score_increment: number | null;
-            seeding_size_increment: number | null;
-            seeding_count_increment: number | null;
-            task_id: string;
-            reference_task_id: string;
-        }>;
-        checkins: Array<{
-            date: string;
-            site_id: string;
-            checkin_status: string;
-            checkin_time: string;
-            task_id: string;
-        }>;
+        daily_results: DailyResult[];
+        daily_increments: DailyIncrement[];
+        checkins: CheckinRecord[];
     };
     summary: {
         total_sites: number;
@@ -223,9 +204,13 @@ export interface StatisticsHistoryResponse {
     metadata: {
         generated_at: string;
         applied_filters: {
-            site_id: string[];
+            site_id?: string[];
             time_unit: string;
             calculation: string;
+            metrics?: string[];
+            include_fields?: string[];
+            exclude_fields?: string[];
+            group_by?: string[];
         };
     };
 }
