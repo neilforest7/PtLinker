@@ -126,7 +126,7 @@ const StreamChart: React.FC<StreamChartProps> = ({
 
         streamChart.interaction('legendHighlight', true);
         streamChart.interaction('legendFilter', false);
-        streamChart.interaction('elementSelectByColor', {
+        streamChart.interaction('elementSelect', {
             single: true,
             multiple: false,
         })
