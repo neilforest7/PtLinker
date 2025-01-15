@@ -1,14 +1,36 @@
+import json
+import re
 import time
 from urllib.parse import urljoin
-from loguru import logger
+
 from DrissionPage import Chromium, ChromiumOptions
+from loguru import logger
 
 
+def parse_cookies(cookies_str: str, domain: str) -> list:
+    """解析cookies字符串为列表格式"""
+    try:
+        cookies_data = []
+        for line in cookies_str.split(';'):
+            if '=' in line:
+                name, value = line.strip().split('=', 1)
+            cookies_data.append({'name': name.strip(), 'value': value.strip()})
+        
+        # 确保每个cookie都有domain字段
+        for cookie in cookies_data:
+            if 'domain' not in cookie:
+                cookie['domain'] = domain
+        
+        return cookies_data
+    except Exception as e:
+        logger.error(f"解析cookies失败: {str(e)}")
+        return []
+    
 def run_playground(command):
     try:
         options = ChromiumOptions()
             
-        options.headless(False).auto_port()
+        options.headless(True).auto_port()
         # 设置User-Agent
         options.set_argument('--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36 Edg/129.0.0.0')
 
@@ -47,16 +69,14 @@ def run_playground(command):
         # print(url)
         # print(tab.mode)
         # # tab.change_mode("s")
-        tab = browser.latest_tab
-        url = "https://www.hddolby.com/details.php?id=156404"
-        tab.get(url)
+
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-            'X-CSRF-Token': 'your-csrf-token',
+            # 'X-CSRF-Token': 'your-csrf-token',
+            # 'Host': 'hhanclub.top',
+            'cookie': 'c_secure_ssl=eWVhaA%3D%3D; c_secure_uid=NTc1Mjk%3D; c_secure_pass=e444fb5e48aa5db1485a4f78dbe231a7; c_secure_tracker_ssl=eWVhaA%3D%3D; c_secure_login=bm9wZQ%3D%3D'
         }
-        cookies = ""
-        tab.set.cookies(cookies)
-        tab.get(url)
+        # tab.get(url)
         # tab.listen.start('getusertorrentlistajax')
         # result = tab.get(url)
         # print(result)
@@ -65,7 +85,40 @@ def run_playground(command):
         # # for packet in tab.listen.steps(3,timeout=20):
         # #     print("running================")
         # #     print(packet)
+        tab = browser.latest_tab
+        manual_cookies="domain=hdfans.org; c_secure_ssl=eWVhaA%3D%3D; c_secure_uid=NTc1Mjk%3D; c_secure_pass=e444fb5e48aa5db1485a4f78dbe231a7; c_secure_tracker_ssl=eWVhaA%3D%3D; c_secure_login=bm9wZQ%3D%3D",
+        # domain = "hhanclub.top"
+        # cookies_list = parse_cookies(manual_cookies, domain)
+        # tab.set.cookies(cookies_list)
+        tab.set.cookies(manual_cookies)
+        # tab.set.headers(headers)
+        url = "https://hdfans.org/getusertorrentlistajax.php?userid=57529&type=seeding&page=1"
+        tab.change_mode("s")
+        tab.get(url, headers=headers)       
+        # print(tab.cookies)
+        # print(tab.mode)
+        # print(tab.url)
+        # print(tab.html)
+        # print(tab.ele("tag:td").text)
+        # outer = tab.ele("#outer")
+        # print(outer.html)
+        tb = tab.ele('tag:table@@text():下载量')
+        # size = tb.text # 先获取表格，再获取非表头的行，再获取表格的第四列
+        # print(size)
+        # print(re.search(r"(做种积分|做種積分|Seeding Points).*?:\s*([\d,.]+)", size).group(0))
+        # user_class = outer.ele('等级').parent().ele("@tag()=img").attr("title")
+        # print(user_class)
+        # size_fi = tab.ele("tag:td@@text():下载量").text
+        # print(size_fi)
+        # print(re.search(r"([\d.]+)\s*([KMGTPE]?i?B)", size).group(0))
+        rows = tab.eles("tag:tr")
+        # print(rows.html)
+        for row in rows:
+            size = row.ele("tag:td",index=4).text
+    
+            print(size)
         
+
     except Exception as e:
         print(f"执行出错: {str(e)}")
 
