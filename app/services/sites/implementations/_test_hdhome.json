@@ -1,0 +1,12 @@
+{
+    "site_id": "hdhome",
+    "site_url": "https://hdhome.org",
+    "seeding_info": {
+        "enable_pagination": false,
+        "fields": {
+            "size": {
+                "index": 3
+            }
+        }
+    }
+}

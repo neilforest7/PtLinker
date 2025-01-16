@@ -1,11 +1,7 @@
 {
     "site_id": "hdfans",
     "site_url": "https://hdfans.org",
-    "seeding_list_config": {
-        "api_url": "/getusertorrentlistajax.php",
-        "params": {
-            "type": "seeding"
-        },
-        "response_type": "html"
+    "seeding_info": {
+        "page": "/getusertorrentlistajax.php"
     }
 }

@@ -1,0 +1,14 @@
+{
+    "site_id": "audi",
+    "site_url": "https://audiences.me",
+    "seeding_info": {
+        "page": "/usertorrentlist.php",
+        "table_selector": "tag:table@@text():实际上传@@border=1",
+        "row_selector": "tag:tr",
+        "fields": {
+            "size": {
+                "index": 3
+            }
+        }
+    }
+}

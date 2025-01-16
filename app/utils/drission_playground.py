@@ -74,7 +74,7 @@ def run_playground(command):
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
             # 'X-CSRF-Token': 'your-csrf-token',
             # 'Host': 'hhanclub.top',
-            'cookie': 'c_secure_ssl=eWVhaA%3D%3D; c_secure_uid=NTc1Mjk%3D; c_secure_pass=e444fb5e48aa5db1485a4f78dbe231a7; c_secure_tracker_ssl=eWVhaA%3D%3D; c_secure_login=bm9wZQ%3D%3D'
+            'cookie': 'domain=hdfans.org;c_secure_ssl=eWVhaA%3D%3D; c_secure_uid=NTc1Mjk%3D; c_secure_pass=e444fb5e48aa5db1485a4f78dbe231a7; c_secure_tracker_ssl=eWVhaA%3D%3D; c_secure_login=bm9wZQ%3D%3D'
         }
         # tab.get(url)
         # tab.listen.start('getusertorrentlistajax')
@@ -86,15 +86,28 @@ def run_playground(command):
         # #     print("running================")
         # #     print(packet)
         tab = browser.latest_tab
-        manual_cookies="domain=hdfans.org; c_secure_ssl=eWVhaA%3D%3D; c_secure_uid=NTc1Mjk%3D; c_secure_pass=e444fb5e48aa5db1485a4f78dbe231a7; c_secure_tracker_ssl=eWVhaA%3D%3D; c_secure_login=bm9wZQ%3D%3D",
+        manual_cookies="domain=hdfans.org;c_secure_ssl=eWVhaA%3D%3D; c_secure_uid=NTc1Mjk%3D; c_secure_pass=e444fb5e48aa5db1485a4f78dbe231a7; c_secure_tracker_ssl=eWVhaA%3D%3D; c_secure_login=bm9wZQ%3D%3D",
         # domain = "hhanclub.top"
         # cookies_list = parse_cookies(manual_cookies, domain)
         # tab.set.cookies(cookies_list)
         tab.set.cookies(manual_cookies)
         # tab.set.headers(headers)
-        url = "https://hdfans.org/getusertorrentlistajax.php?userid=57529&type=seeding&page=1"
+        # tab.set.headers(headers)
+        url = "https://hdfans.org/getusertorrentlistajax.php"
         tab.change_mode("s")
-        tab.get(url, headers=headers)       
+        params = {
+            "userid": "57529",
+            "type": "seeding",
+            "page": 0,
+            "ajax": 1
+        }
+        tab.get(url, params=params) 
+        print(tab.html)
+        print(tab.url)
+        for row in tab.ele("tag:table@@text():实际上传@@border=1").eles("tag:tr")[1:]:
+            # print(row.html)
+            size_str = row.ele("tag:td",index=3).text
+            print(re.search(r"(([\d.])+[\s\n]*([KMGTPE]?i?B))", size_str).group(0))
         # print(tab.cookies)
         # print(tab.mode)
         # print(tab.url)
@@ -102,7 +115,7 @@ def run_playground(command):
         # print(tab.ele("tag:td").text)
         # outer = tab.ele("#outer")
         # print(outer.html)
-        tb = tab.ele('tag:table@@text():下载量')
+        # tb = tab.ele('tag:table@@text():下载量')
         # size = tb.text # 先获取表格，再获取非表头的行，再获取表格的第四列
         # print(size)
         # print(re.search(r"(做种积分|做種積分|Seeding Points).*?:\s*([\d,.]+)", size).group(0))
@@ -111,12 +124,12 @@ def run_playground(command):
         # size_fi = tab.ele("tag:td@@text():下载量").text
         # print(size_fi)
         # print(re.search(r"([\d.]+)\s*([KMGTPE]?i?B)", size).group(0))
-        rows = tab.eles("tag:tr")
+        # rows = tab.eles("tag:tr")
         # print(rows.html)
-        for row in rows:
-            size = row.ele("tag:td",index=4).text
+        # for row in rows:
+        #     size = row.ele("tag:td",index=4).text
     
-            print(size)
+            # print(size)
         
 
     except Exception as e:

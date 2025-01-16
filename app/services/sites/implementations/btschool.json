@@ -140,10 +140,10 @@
         }
     ],
     "checkin_config": {
-        "checkin_url": "/attendance.php",
+        "checkin_url": "/index.php?action=addbonus",
         "checkin_button": {
             "name": "checkin_button",
-            "selector": "@href$action=addbonus"
+            "selector": "@href$addbonus"
         }
     }
 }

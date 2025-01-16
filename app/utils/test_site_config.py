@@ -34,7 +34,6 @@ logger = get_logger(__name__)
 class SiteConfigTestBase(BaseModel):
     site_id: str
     site_url: str
-    seeding_list_config: Optional[dict] = None
     login_config: Optional[dict] = None
     
 class SiteSetupTest(BaseModel):
@@ -87,7 +86,10 @@ class SiteParserConfig:
     """站点解析配置，参考MoviePilot结构"""
     def __init__(self, site_url: str):
         self.site_url = site_url
+        self._init_default_configs()
         
+    def _init_default_configs(self):
+        """初始化默认配置"""
         # 1. 用户基础信息配置
         self.user_base_info = {
             "page": "/index.php",
@@ -112,14 +114,6 @@ class SiteParserConfig:
                     selector=["@href$usercp.php",
                             "@text:控制面板"],
                     value_type="bool"
-                ),
-                "message_count": SelectorConfig(
-                    selector=[
-                        "@style$background: red@@href$messages.php",
-                        "@@tag=img@@alt=Msg",
-                        "@href$messages.php"
-                    ],
-                    pattern=r"(\d+)"
                 )
             }
         }
@@ -129,55 +123,48 @@ class SiteParserConfig:
             "page": "/userdetails.php",
             "fields": {
                 "uploaded": SelectorConfig(
-                    selector="tag:table@@text():上传量",
-                    # location="@class=outer",
-                    # relative_location="next",
-                    pattern=r"(上传量|上傳量|uploaded|Uploaded):\s*(\d+(\.\d+)?\s*[ZEPTGMKk]?i?B)"
+                    selector=["tag:table@@text():上传量",
+                            "tag:table@@text():上傳量",
+                            "tag:table@@text():uploaded",
+                            "tag:table@@text():Uploaded"],
+                    pattern=r"(上[传傳]量|uploaded|Uploaded)[：:]?\s*(\d+(\.\d+)?\s*[ZEPTGMKk]?i?B)"
                 ),
                 "downloaded": SelectorConfig(
                     selector="tag:table@@text():下载量",
-                    # location="@class=outer",
-                    # relative_location="next",
-                    pattern=r"(下[载載]量|Downloaded).+?([\d.]+ ?[ZEPTGMK]?i?B)"
+                    pattern=r"(下[载載]量|downloaded|Downloaded)[：:]?.+?([\d.]+ ?[ZEPTGMK]?i?B)"
                 ),
                 "ratio": SelectorConfig(
                     selector="tag:table@@text():分享率",
-                    # location="@class=outer",
-                    # relative_location="next",
-                    pattern=r"(分享率|Ratio):\s*([\d.]+)"
+                    pattern=r"(分享率|Ratio)[：:]?\s*([\d.]+)"
                 ),
                 "bonus": SelectorConfig(
-                    selector="tag:table@@text():魔力值",
-                    # location="@class=outer",
-                    # relative_location="next",
-                    pattern=r"(?:魔力值|Bonus Points).*?:\s*([\d,]+\.\d+)"
+                    selector=["tag:table@@text():魔力值",
+                                "tag:table@@text():爆米花",
+                                "tag:table@@text():憨豆"],
+                    pattern=r"(?:魔力值|Bonus Points|爆米花|憨豆)[：:]?.*?[：:]?\s*([\d,]+\.\d+)"
                 ),
                 "seeding_score": SelectorConfig(
                     selector="tag:table@@text():做种积分",
-                    # location="@class()=outer",
-                    # relative_location="next",
-                    pattern=r"(?:做种积分|做種積分|Seeding Points).*?:\s*([\d,.]+)"
+                    pattern=r"(?:做种积分|做種積分|Seeding Points)[：:]?.*?[：:]?\s*([\d,.]+)"
                 ),
                 "join_time": SelectorConfig(
                     selector="@text():加入日期",
-                    # location="@class()=outer",
                     relative_location="next",
                     pattern=r"(\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2})"
                 ),
                 "last_active": SelectorConfig(
                     selector="@text():最近动向",
-                    # location="@class()=outer",
                     relative_location="next",
                     pattern=r"(\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2})"
                 ),
                 "user_class": SelectorConfig(
                     selector="@@tag()=img@@alt$User",
-                    # location="@class()=outer",
                     attribute="alt",
                 )
             }
         }
         
+        # 3. 魔力值信息配置
         self.user_bonus_extend_info = {
             "page": "/mybonus.php",
             "fields": {
@@ -188,7 +175,7 @@ class SiteParserConfig:
             }
         }
         
-        # 3. 做种信息配置
+        # 4. 做种信息配置
         self.seeding_info = {
             "page": "/getusertorrentlistajax.php",
             "params": {
@@ -230,7 +217,7 @@ class SiteParserConfig:
             }
         }
         
-        # 4. 签到配置
+        # 5. 签到配置
         self.checkin_config = {
             "page": "/attendance.php",
             "button": SelectorConfig(
@@ -242,12 +229,82 @@ class SiteParserConfig:
             "success_pattern": r"已签到|签到成功|success"
         }
 
+    def merge_config(self, config_path: str):
+        """从文件合并配置"""
+        try:
+            with open(config_path, 'r', encoding='utf-8') as f:
+                site_config = json.load(f)
+                
+            # 递归合并配置
+            self._merge_dict_config(site_config)
+            logger.info(f"成功合并配置文件: {config_path}")
+            
+        except Exception as e:
+            logger.error(f"合并配置失败: {str(e)}")
+            
+    def _merge_dict_config(self, new_config: dict):
+        """递归合并字典配置"""
+        for key, value in new_config.items():
+            if not hasattr(self, key):
+                logger.warning(f"未知的配置项: {key}")
+                continue
+                
+            current_value = getattr(self, key)
+            
+            if isinstance(value, dict) and isinstance(current_value, dict):
+                # 递归合并字典
+                self._merge_dict_values(current_value, value)
+            else:
+                # 直接覆盖非字典值
+                setattr(self, key, value)
+                logger.debug(f"更新配置项: {key} = {value}")
+                
+    def _merge_dict_values(self, current_dict: dict, new_dict: dict):
+        """递归合并字典值"""
+        for key, value in new_dict.items():
+            if key in current_dict:
+                if isinstance(value, dict) and isinstance(current_dict[key], dict):
+                    # 递归合并嵌套字典
+                    self._merge_dict_values(current_dict[key], value)
+                    logger.debug(f"合并嵌套配置: {key}")
+                elif isinstance(value, dict) and isinstance(current_dict[key], SelectorConfig):
+                    # 处理SelectorConfig的情况
+                    current_dict[key] = SelectorConfig(**{
+                        **current_dict[key].__dict__,
+                        **value
+                    })
+                    logger.debug(f"更新选择器配置: {key}")
+                else:
+                    # 直接覆盖非字典值（包括URL）
+                    current_dict[key] = value
+                    logger.debug(f"覆盖配置值: {key} = {value}")
+            else:
+                # 添加新键值对
+                if isinstance(value, dict) and 'selector' in value:
+                    # 如果是选择器配置，创建SelectorConfig实例
+                    current_dict[key] = SelectorConfig(**value)
+                    logger.debug(f"添加新选择器配置: {key}")
+                else:
+                    current_dict[key] = value
+                    logger.debug(f"添加新配置项: {key} = {value}")
+
     def get_page_url(self, page_type: str) -> str:
-        """获取完整页面URL"""
+        """获取完整页面URL，优先使用站点特定配置"""
         config = getattr(self, f"{page_type}_info", None)
         if not config:
             raise ValueError(f"未知的页面类型: {page_type}")
-        return urljoin(self.site_url, config['page'])
+            
+        # 获取页面路径，优先使用配置中的值
+        page_path = config.get('page')
+        if not page_path:
+            raise ValueError(f"未找到页面路径配置: {page_type}")
+            
+        # 如果是完整URL，直接返回
+        if page_path.startswith(('http://', 'https://')):
+            return page_path
+            
+        # 否则拼接站点URL
+        return urljoin(self.site_url, page_path)
 
     def get_field_selectors(self, page_type: str) -> Dict[str, SelectorConfig]:
         """获取指定页面的字段选择器"""
@@ -475,60 +532,94 @@ class DataExtractor:
         """提取做种信息"""
         try:
             # 切换到s模式
-            tab.change_mode('s')
+            # tab.change_mode('s')
             
             # 构建请求
-            api_url = self.config.get_page_url('seeding')
+            page_url = self.config.get_page_url('seeding')
+            self.logger.warning(f"page_url: {page_url}")
             base_params = {**self.config.seeding_info['params'], 'userid': user_id}
+            self.logger.warning(f"base_params: {base_params}")
             
             total_result = {
                 'seeding_count': 0,
                 'seeding_size': 0
             }
             
-            page = 0
-            while True:
-                # 添加页码参数
-                params = {**base_params, 'page': page}
+            # 检查是否启用翻页
+            enable_pagination = self.config.seeding_info.get('enable_pagination', True)
+            if not enable_pagination:
+                # 如果禁用翻页，只请求第一页
+                page_result = await self._request_page(tab, page_url, base_params)
+                if page_result:
+                    total_result.update(page_result)
+            else:
+                # 启用翻页的情况
+                page = 0
+                last_count = None  # 用于存储上一页的数据数量
                 
-                self.logger.info(f"请求做种数据: {api_url}, 页码: {page}, params: {params}")
-                response = tab.get(api_url, params=params)
-                
-                # 处理响应
-                if response:
-                    if self.config.seeding_info['response_type'] == 'json':
-                        page_result = await self._process_json_response(tab)
-                        self.logger.info(f"处理JSON响应: {page_result}")
-                        # 检查是否有数据返回
-                        if page_result.get('seeding_count', 0) == 0:
-                            break
-                            
-                        # 累加结果
-                        total_result['seeding_count'] += page_result.get('seeding_count', 0)
-                        total_result['seeding_size'] += page_result.get('seeding_size', 0)
-                    else:  # HTML响应
-                        page_result = await self._process_html_response(tab)
-                        # self.logger.info(f"处理HTML响应: {page_result}")
-                        # 检查是否有数据返回
-                        if page_result.get('seeding_count', 0) == 0:
-                            break
-                            
-                        # 累加结果
-                        total_result['seeding_count'] += page_result.get('seeding_count', 0)
-                        total_result['seeding_size'] += page_result.get('seeding_size', 0)
-                else:
-                    self.logger.error(f"请求失败: {response}")
-                    break
-                
-                # 继续下一页
-                page += 1
+                while True:
+                    # 添加页码参数
+                    params = {**base_params, 'page': page}
+                    page_result = await self._request_page(tab, page_url, params)
+                    
+                    if not page_result:
+                        break
+                        
+                    current_count = page_result.get('seeding_count', 0)
+                    
+                    # 如果当前页的数据数量与上一页相同，说明可能是重复数据
+                    if last_count is not None and current_count == last_count:
+                        self.logger.warning(f"检测到重复数据，当前页: {page}, 数据数量: {current_count}")
+                        break
+                        
+                    # 更新结果
+                    total_result['seeding_count'] += current_count
+                    total_result['seeding_size'] += page_result.get('seeding_size', 0)
+                    
+                    # 更新上一页的数据数量
+                    last_count = current_count
+                    page += 1
                     
             self.logger.info(f"总计: {total_result['seeding_count']} 个种子，{total_result['seeding_size']:.2f} GB")
             return total_result
                 
         except Exception as e:
             self.logger.error(f"提取做种信息失败: {str(e)}")
-            return {}
+            return {
+                'seeding_count': 0,
+                'seeding_size': 0
+            }
+
+    async def _request_page(self, tab: Chromium, page_url: str, params: dict) -> Optional[Dict[str, Any]]:
+        """请求单页数据"""
+        try:
+            self.logger.info(f"请求做种数据: {page_url}, params: {params}")
+
+            params_str = "&".join([f"{k}={v}" for k, v in params.items()])
+            page_url = f"{page_url}?{params_str}"
+            # 发送请求
+            response = tab.get(page_url)
+            self.logger.debug(f"响应状态: {response}, URL: {tab.url}")
+            
+            if not response:
+                self.logger.error(f"请求失败: {response}")
+                self.logger.error(f"请求失败: {tab.url}")
+                return None
+                
+            # 处理响应
+            response_type = self.config.seeding_info.get('response_type', 'html')
+            if response_type == 'json':
+                try:
+                    return await self._process_json_response(tab)
+                except json.JSONDecodeError:
+                    self.logger.warning("JSON解析失败，尝试作为HTML处理")
+                    return await self._process_html_response(tab)
+            else:
+                return await self._process_html_response(tab)
+                
+        except Exception as e:
+            self.logger.error(f"请求页面失败: {str(e)}")
+            return None
 
     async def _process_json_response(self, tab) -> Dict[str, Any]:
         """处理JSON响应"""
@@ -536,23 +627,20 @@ class DataExtractor:
             data = tab.json
             result = {}
             
-            # 按配置的数据路径获取数据
-            for path in self.config.seeding_info['data_path'].split('.'):
-                data = data.get(path, [])
+            # 获取数据路径
+            data_path = self.config.seeding_info.get('data_path')
+            if data_path:
+                data = data.get(data_path, [])
             
             if isinstance(data, list):
                 total_size = 0
                 for item in data:
-                    # 处理每个字段
-                    for field, config in self.config.seeding_info['fields'].items():
-                        if config['path'] in item:
-                            value = item[config['path']]
-                            if 'pattern' in config:
-                                match = re.search(config['pattern'], str(value))
-                                if match:
-                                    value = match.group(0)
-                            if field == 'seeding_size':
-                                total_size += await _convert_size_to_gb(value)
+                    # 使用配置的字段映射获取数据
+                    field_mappings = self.config.seeding_info['fields']
+                    for our_field, their_field in field_mappings.items():
+                        if their_field in item:
+                            if our_field == 'size':
+                                total_size += await _convert_size_to_gb(item[their_field])
                 
                 result.update({
                     'seeding_count': len(data),
@@ -749,15 +837,20 @@ async def _clean_data(data: Dict[str, Any]) -> Dict[str, Any]:
         logger.error("数据清洗失败", {'error': str(e)})
         return data
 
-async def quick_test(site_id: str, config_path: Optional[str] = None) -> None:
+async def quick_test(site_id: str) -> None:
     """快速测试入口"""
     browser = None
     try:
         # 1. 创建站点设置
-        site_setup = await create_site_setup(site_id, config_path)
+        site_setup = await create_site_setup(site_id)
         
         # 2. 创建站点配置解析器
         site_config = SiteParserConfig(site_setup.site_config.site_url)
+        
+        # 2.1 合并站点特定配置
+        site_config_path = Path(project_root) /  "services" / "sites" / "implementations" / f"_test_{site_id}.json"
+        if site_config_path.exists():
+            site_config.merge_config(str(site_config_path))
         
         # 3. 创建数据提取器
         extractor = DataExtractor(site_config)
@@ -852,7 +945,7 @@ async def create_site_setup(site_id: str, config_path: Optional[str] = None) -> 
     """创建站点设置"""
     try:
         # 直接从文件读取配置
-        config_file = Path(project_root) /  "services" / "sites" / "implementations" / "_test_hdfans.json"
+        config_file = Path(project_root) /  "services" / "sites" / "implementations" / f"_test_{site_id}.json"
         if not config_file.exists():
             raise FileNotFoundError(f"配置文件不存在: {config_file}")
             
@@ -863,7 +956,6 @@ async def create_site_setup(site_id: str, config_path: Optional[str] = None) -> 
         site_config = SiteConfigTestBase(
             site_id=site_config_data['site_id'],
             site_url=site_config_data['site_url'],
-            seeding_list_config=site_config_data.get('seeding_list_config', {})
         )
         
         # 创建默认的爬虫配置
@@ -878,8 +970,7 @@ async def create_site_setup(site_id: str, config_path: Optional[str] = None) -> 
         crawler_credential = CrawlerCredentialBase(
             site_id=site_id,
             enable_manual_cookies=True,
-            manual_cookies="c_secure_ssl=eWVhaA%3D%3D; c_secure_uid=NTc1Mjk%3D; c_secure_pass=e444fb5e48aa5db1485a4f78dbe231a7; c_secure_tracker_ssl=eWVhaA%3D%3D; c_secure_login=bm9wZQ%3D%3D"  # 从环境变量获取cookies
-        )
+            manual_cookies=os.getenv(f"{site_id.upper()}_COOKIES"))
         
         # 创建默认的基础设置
         settings = SettingsBase()
@@ -901,5 +992,5 @@ async def create_site_setup(site_id: str, config_path: Optional[str] = None) -> 
         raise
 
 if __name__ == "__main__":
-    site_id = "hdfans"  # 替换为要测试的站点ID
-    asyncio.run(quick_test(site_id)) 
+    site_id = "hhan"  # 替换为要测试的站点ID
+    asyncio.run(quick_test(site_id))

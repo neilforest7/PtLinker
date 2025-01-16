@@ -1,0 +1,55 @@
+{
+    "site_id": "hhan",
+    "site_url": "https://hhanclub.top",
+    "user_extend_info": {
+        "fields": {
+            "uploaded": {
+                "selector": "@@id=mainContent@@text():上传量"
+            },
+            "downloaded": {
+                "selector": "@@id=mainContent@@text():下载量"
+            },
+            "ratio": {
+                "selector": "@@id=mainContent@@text():分享率"
+            },
+            "bonus": {
+                "selector": "@src$icon-bean.svg",
+                "relative_location": "parent",
+                "value_type": "text",
+                "pattern": "([\\d,.]+)"
+            },
+            "seeding_score": {
+                "selector": "@@id=mainContent@@text():做种积分"
+            },
+            "join_time": {
+                "selector": "@@id=mainContent@@text():加入日期：",
+                "relative_location": "parent"
+            },
+            "last_active": {
+                "selector": "@@id=mainContent@@text():最近动向：",
+                "relative_location": "parent"
+            },
+            "user_class": {
+                "selector": "@@tag()=b@@class$User_Name",
+                "attribute": "",
+                "value_type": "text"
+            }
+        }
+    },
+    "seeding_info": {
+        "page": "/getusertorrentlistajax.php",
+        "params": {
+            "ajax": 1
+        },
+        "response_type": "json",
+        "data_path": "data",
+        "fields": {
+            "size": "size",
+            "name": "name",
+            "upload": "uploaded",
+            "download": "downloaded",
+            "ratio": "ratio",
+            "status": "status"
+        }
+    }
+}
