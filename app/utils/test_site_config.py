@@ -1,8 +1,10 @@
 import asyncio
 import json
 import os
+import random
 import re
 import sys
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 from urllib.parse import urljoin, urlparse
@@ -19,6 +21,7 @@ sys.path.insert(0, str(project_root))
 env_path = project_root / '.env'
 load_dotenv(env_path)
 
+from utils.clouodflare_bypasser import CloudflareBypasser
 from core.logger import get_logger
 from DrissionPage import Chromium, ChromiumOptions, SessionPage
 from handlers.checkin import CheckInHandler
@@ -84,8 +87,9 @@ class PageConfig:
 # 站点配置
 class SiteParserConfig:
     """站点解析配置，参考MoviePilot结构"""
-    def __init__(self, site_url: str):
+    def __init__(self, site_url: str, site_id: str):
         self.site_url = site_url
+        self.site_id = site_id
         self._init_default_configs()
         
     def _init_default_configs(self):
@@ -322,11 +326,11 @@ class DrissionPageParser:
     def get_element_value(self, selector_config: SelectorConfig) -> Any:
         """获取元素值"""
         # 处理多选择器情况
-        self.logger.debug(f"开始获取元素值: {selector_config.selector}")
+        self.logger.trace(f"开始获取元素值: {selector_config.selector}")
         if isinstance(selector_config.selector, list):
-            self.logger.debug(f"多选择器: {selector_config.selector}")
+            self.logger.trace(f"多选择器: {selector_config.selector}")
             for selector in selector_config.selector:
-                self.logger.debug(f"尝试选择器: {selector}")
+                self.logger.trace(f"尝试选择器: {selector}")
                 value = self._try_selector(selector, selector_config)
                 if value is not None:
                     self.logger.success(f"获取到元素值: {value}")
@@ -334,7 +338,7 @@ class DrissionPageParser:
             self.logger.error(f"未获取到元素值")
             return None
         else:
-            self.logger.debug(f"单选择器: {selector_config.selector}")
+            self.logger.trace(f"单选择器: {selector_config.selector}")
             value = self._try_selector(selector_config.selector, selector_config)
             if value is not None:
                 self.logger.success(f"获取到元素值: {value}")
@@ -345,12 +349,12 @@ class DrissionPageParser:
     def _try_selector(self, selector: str, config: SelectorConfig) -> Any:
         """尝试单个选择器"""
         try:
-            self.logger.debug(f"开始尝试选择器:{config.__dict__} 中的 {selector}")
+            self.logger.trace(f"开始尝试选择器:{config.__dict__} 中的 {selector}")
             
             # 1. 处理基本选择器和父元素
             base_element = None
             if config.location:
-                self.logger.debug(f"尝试获取父元素，选择器: {config.location}")
+                self.logger.trace(f"尝试获取父元素，选择器: {config.location}")
                 if isinstance(config.location, str):
                     base_element = self.tab.ele(config.location)
                 else:
@@ -358,32 +362,32 @@ class DrissionPageParser:
                 if not base_element:
                     self.logger.error(f"未找到父元素: {config.location}")
                     return None
-                # self.logger.debug(f"成功获取父元素: {base_element}")
+                # self.logger.trace(f"成功获取父元素: {base_element}")
             else:
-                self.logger.debug("使用tab作为基础元素")
+                self.logger.trace("使用tab作为基础元素")
                 base_element = self.tab
             
             # 2. 处理索引及获取元素
-            self.logger.debug(f"开始在基础元素下查找: {selector}")
+            self.logger.trace(f"开始在基础元素下查找: {selector}")
             if hasattr(config, 'index') and config.index is not None:
-                self.logger.debug(f"使用索引 {config.index} 查找元素")
+                self.logger.trace(f"使用索引 {config.index} 查找元素")
                 element = base_element.ele(selector, index=config.index)
             else:
-                self.logger.debug("查找第一个匹配元素")
+                self.logger.trace("查找第一个匹配元素")
                 element = base_element.ele(selector)
             
             if not element:
                 self.logger.error(f"未找到匹配元素: {selector}")
                 return None
-            # self.logger.debug(f"成功找到元素: {element}")
+            # self.logger.trace(f"成功找到元素: {element}")
             
             # 3. 处理过滤器
             if hasattr(config, 'filters') and config.filters:
-                self.logger.debug(f"开始应用过滤器: {config.filters}")
+                self.logger.trace(f"开始应用过滤器: {config.filters}")
                 for filter_rule in config.filters:
                     if isinstance(filter_rule, tuple):
                         method, args = filter_rule
-                        self.logger.debug(f"应用过滤器: {method}, 参数: {args}")
+                        self.logger.trace(f"应用过滤器: {method}, 参数: {args}")
                         if method == 'filter_one':
                             element = element.filter_one.text(*args)
                         elif method == 'filter':
@@ -391,51 +395,51 @@ class DrissionPageParser:
                         if not element:
                             self.logger.error(f"过滤后未找到元素")
                             return None
-                        self.logger.debug(f"过滤后的元素: {element}")
+                        self.logger.trace(f"过滤后的元素: {element}")
                         
             # 4. 处理元素相对位置
             if config.relative_location:
-                self.logger.debug(f"开始处理相对位置: {config.relative_location}")
+                self.logger.trace(f"开始处理相对位置: {config.relative_location}")
                 original_element = element
                 if config.relative_location == 'next':
                     element = element.next()
-                    self.logger.debug(f"获取下一个元素: {element}")
+                    self.logger.trace(f"获取下一个元素: {element}")
                 elif config.relative_location == 'prev':
                     element = element.prev()
-                    self.logger.debug(f"获取上一个元素: {element}")
+                    self.logger.trace(f"获取上一个元素: {element}")
                 elif config.relative_location == 'parent':
                     element = element.parent()
-                    self.logger.debug(f"获取父元素: {element}")
+                    self.logger.trace(f"获取父元素: {element}")
                 elif config.relative_location == 'child':
                     element = element.child()
-                    self.logger.debug(f"获取子元素: {element}")
+                    self.logger.trace(f"获取子元素: {element}")
                 elif config.relative_location == 'before':
                     element = element.before()
-                    self.logger.debug(f"获取前一个元素: {element}")
+                    self.logger.trace(f"获取前一个元素: {element}")
                 elif config.relative_location == 'after':
                     element = element.after()
-                    self.logger.debug(f"获取后一个元素: {element}")
+                    self.logger.trace(f"获取后一个元素: {element}")
                     
                 if not element:
                     self.logger.error(f"未找到相对位置元素: {config.relative_location}, 原始元素: {original_element}")
                     return None
-                # self.logger.debug(f"成功获取相对位置元素: {element}")
+                # self.logger.trace(f"成功获取相对位置元素: {element}")
                     
             # 5. 获取元素值
-            self.logger.debug(f"开始获取元素值: {element}")
+            self.logger.trace(f"开始获取元素值: {element}")
             value = self._get_value(element, config)
             if not value:
                 self.logger.error("获取元素值失败")
                 return None
-            # self.logger.debug(f"获取到原始值: {value}")
+            # self.logger.trace(f"获取到原始值: {value}")
 
             # 6. 应用正则模式
             if config.pattern:
-                # self.logger.debug(f"应用正则模式: {config.pattern}")
+                # self.logger.trace(f"应用正则模式: {config.pattern}")
                 match = re.search(config.pattern, value)
                 if match:
                     value = match.group(0)
-                    self.logger.debug(f"正则匹配结果: {value}")
+                    self.logger.trace(f"正则匹配结果: {value}")
                 else:
                     self.logger.error(f"正则匹配失败: {value} 不匹配 {config.pattern}")
                     return None
@@ -473,7 +477,43 @@ class DataExtractor:
     def __init__(self, site_config: SiteParserConfig):
         self.config = site_config
         self.logger = get_logger(__name__)
+        # 新增请求控制相关属性
+        self._request_times = []  # 记录最近的请求时间
+        self._retry_count = 0     # 当前重试次数
         
+        # 根据站点ID设置不同的延迟策略
+        if site_config.site_id in ['audi']:  # 需要更保守延迟的站点
+            self._base_delay = (5500, 6000)  # 基础延迟范围改为1.5-2秒
+            self._max_requests = 25          # 降低窗口内最大请求数
+        else:
+            self._base_delay = (350, 450)    # 保持原有的延迟范围
+            self._max_requests = 30          # 保持原有的最大请求数
+            
+        self._max_delay = 30000   # 最大延迟时间(ms)
+        self._window_size = 10    # 时间窗口大小(s)
+        self._ban_time = 10000    # 封禁时间(ms)
+        
+        # 添加限流和验证页面的识别特征
+        self._rate_limit_patterns = [
+            "请求过于频繁",  # 常见中文提示
+            "Rate limit exceeded",  # 常见英文提示
+            "访问频率超限",
+            "请稍后再试",
+            "Too Many Requests",  # HTTP 429 相关提示
+            "Please slow down",
+        ]
+        
+        self._cloudflare_patterns = [
+            "Turnstile",
+            "Security check required",  # Cloudflare 安全检查页面特征
+            "cf-turnstile",  # Turnstile 元素特征
+            "Just a moment",  # Cloudflare 常见提示
+            "Checking your browser",  # Cloudflare 检查提示
+        ]
+        
+        # 添加请求超时阈值（毫秒）
+        self._request_timeout = 3000  # 5秒
+
     async def extract_all(self, tab: Chromium, user_id: str) -> Dict[str, Any]:
         """提取所有数据"""
         data = {}
@@ -555,7 +595,7 @@ class DataExtractor:
             else:
                 # 启用翻页的情况
                 page = 0
-                last_count = None  # 用于存储上一页的数据数量
+                last_page_size = None  # 记录上一页的总大小
                 
                 while True:
                     # 添加页码参数
@@ -565,21 +605,19 @@ class DataExtractor:
                     if not page_result:
                         break
                         
-                    current_count = page_result.get('seeding_count', 0)
+                    current_page_size = page_result.get('seeding_size', 0)
                     
-                    # 如果当前页的数据数量与上一页相同，说明可能是重复数据
-                    if last_count is not None and current_count == last_count:
-                        self.logger.warning(f"检测到重复数据，当前页: {page}, 数据数量: {current_count}")
+                    # 如果当前页的总大小与上一页相同，说明可能是重复数据
+                    if last_page_size is not None and abs(current_page_size - last_page_size) < 0.01:  # 允许0.01GB的误差
+                        self.logger.warning(f"检测到重复数据，当前页: {page}, 数据大小: {current_page_size:.2f} GB")
                         break
                         
-                    # 更新结果
-                    total_result['seeding_count'] += current_count
-                    total_result['seeding_size'] += page_result.get('seeding_size', 0)
+                    total_result['seeding_count'] += page_result.get('seeding_count', 0)
+                    total_result['seeding_size'] += current_page_size
                     
-                    # 更新上一页的数据数量
-                    last_count = current_count
+                    last_page_size = current_page_size
                     page += 1
-                    
+            
             self.logger.info(f"总计: {total_result['seeding_count']} 个种子，{total_result['seeding_size']:.2f} GB")
             return total_result
                 
@@ -594,18 +632,48 @@ class DataExtractor:
         """请求单页数据"""
         try:
             self.logger.info(f"请求做种数据: {page_url}, params: {params}")
-
+            
+            # 等待请求控制
+            await self._wait_for_request()
+            
+            # 记录本次请求时间
+            request_start_time = time.time()
+            self._request_times.append(request_start_time)
+            
             params_str = "&".join([f"{k}={v}" for k, v in params.items()])
             page_url = f"{page_url}?{params_str}"
+            
             # 发送请求
             response = tab.get(page_url)
-            self.logger.debug(f"响应状态: {response}, URL: {tab.url}")
+            request_duration = (time.time() - request_start_time) * 1000  # 转换为毫秒
+            self.logger.debug(f"响应状态: {response}, URL: {tab.url}, 耗时: {request_duration:.2f}ms")
+            
+            # 只有当请求时间超过阈值时才进行检查
+            if request_duration > self._request_timeout:
+                self.logger.warning(f"请求耗时 {request_duration:.2f}ms 超过阈值 {self._request_timeout}ms，进行安全检查")
+                
+                # 检查是否遇到限流
+                if await self._is_rate_limited(tab):
+                    self._retry_count += 1
+                    self.logger.warning("检测到限流响应")
+                    return None
+                    
+                # 检查是否遇到Cloudflare验证
+                if await self._is_cloudflare_present(tab):
+                    self.logger.warning("检测到Cloudflare验证页面")
+                    if not await self._handle_cloudflare(tab):
+                        self.logger.error("Cloudflare验证失败")
+                        return None
             
             if not response:
+                self._retry_count += 1
                 self.logger.error(f"请求失败: {response}")
                 self.logger.error(f"请求失败: {tab.url}")
                 return None
                 
+            # 请求成功，重置重试计数
+            self._retry_count = 0
+            
             # 处理响应
             response_type = self.config.seeding_info.get('response_type', 'html')
             if response_type == 'json':
@@ -618,6 +686,7 @@ class DataExtractor:
                 return await self._process_html_response(tab)
                 
         except Exception as e:
+            self._retry_count += 1
             self.logger.error(f"请求页面失败: {str(e)}")
             return None
 
@@ -682,9 +751,9 @@ class DataExtractor:
                     # 提取大小信息
                     size_config = self.config.seeding_info['fields']['size']
                     size_config.location = row  # 在当前行内查找
-                    self.logger.info(f"种子数据行: {row}")
+                    self.logger.trace(f"种子数据行: {row}")
                     size_text = parser.get_element_value(size_config)
-                    self.logger.info(f"提取到大小: {size_text}")
+                    self.logger.trace(f"提取到大小: {size_text}")
                     if size_text:
                         total_size += await _convert_size_to_gb(size_text)
                         
@@ -712,6 +781,100 @@ class DataExtractor:
                 'seeding_size': 0
             }
 
+    async def _wait_for_request(self) -> None:
+        """控制请求频率"""
+        try:
+            # 清理过期的请求记录
+            current_time = time.time()
+            self._request_times = [t for t in self._request_times 
+                                    if current_time - t < self._window_size]
+            
+            # 检查是否接近限制
+            if len(self._request_times) >= self._max_requests - 5:  # 预留安全边界
+                self.logger.warning("接近请求限制，增加延迟")
+                await asyncio.sleep(self._window_size / 2)  # 等待半个窗口时间
+                return
+            
+            # 计算基础延迟
+            delay = random.uniform(self._base_delay[0], self._base_delay[1]) / 1000
+            
+            # 如果有重试记录，使用指数退避
+            if self._retry_count > 0:
+                delay = min(self._ban_time * (2 ** (self._retry_count - 1)) / 1000, 
+                            self._max_delay / 1000)
+                self.logger.warning(f"第 {self._retry_count} 次重试，等待 {delay:.2f} 秒")
+            
+            await asyncio.sleep(delay)
+            
+        except Exception as e:
+            self.logger.error(f"请求控制出错: {str(e)}")
+            await asyncio.sleep(1)  # 发生错误时使用保守延迟
+            
+    async def _is_cloudflare_present(self, tab) -> bool:
+        """检查是否存在Cloudflare验证页面"""
+        try:
+            if tab.title == "Just a moment...":
+                return True
+
+            # 检查是否存在 Cloudflare 的 JavaScript 或 Turnstile 验证相关的关键元素
+            if tab.ele('script[src*="challenge-platform"]') or tab.ele('@div#challenge-error-text'):
+                return True
+
+            # 检查页面文本中是否包含 Cloudflare 验证相关提示
+            body_text = tab.text
+            if "Checking your browser before accessing" in body_text or "Verify you are human" in body_text:
+                return True
+            return False
+
+        except Exception as e:
+            self.logger.error("检查Cloudflare状态时出错", exc_info=True)
+            return False
+
+    async def _handle_cloudflare(self, tab) -> bool:
+        """处理Cloudflare验证"""
+        try:
+            # Where the bypass starts
+            self.logger.info('Starting Cloudflare bypass.')
+            cf_bypasser = CloudflareBypasser(tab)
+            # If you are solving an in-page captcha (like the one here: https://seleniumbase.io/apps/turnstile), use cf_bypasser.click_verification_button() directly instead of cf_bypasser.bypass().
+            # It will automatically locate the button and click it. Do your own check if needed.
+
+            cf_bypasser.bypass()
+
+            # 检查是否需要处理Cloudflare验证
+            self.logger.info("等待Cloudflare验证完成...")
+            # sleep(160)
+            tab.wait.load_start()
+            if not await self._is_cloudflare_present(tab):
+                self.logger.success("Cloudflare验证已完成")
+                return True
+            else:
+                self.logger.error("Cloudflare验证超时")
+                return False
+
+        except Exception as e:
+            self.logger.error("Cloudflare验证处理出错", exc_info=True)
+            return False
+
+
+    async def _is_rate_limited(self, tab: Chromium) -> bool:
+        """检查是否遇到限流"""
+        try:
+            # 检查HTTP状态码
+            # if tab.status_code == 429:
+            #     return True
+                
+            # 检查页面内容是否包含限流特征
+            page_text = tab.html
+            for pattern in self._rate_limit_patterns:
+                if pattern.lower() in page_text.lower():
+                    return True
+                    
+            return False
+        except Exception as e:
+            self.logger.error(f"检查限流状态失败: {str(e)}")
+            return False
+        
 def parse_cookies(cookies_str: str, domain: str) -> list:
     """解析cookies字符串为列表格式"""
     try:
@@ -845,7 +1008,7 @@ async def quick_test(site_id: str) -> None:
         site_setup = await create_site_setup(site_id)
         
         # 2. 创建站点配置解析器
-        site_config = SiteParserConfig(site_setup.site_config.site_url)
+        site_config = SiteParserConfig(site_setup.site_config.site_url, site_setup.site_config.site_id)
         
         # 2.1 合并站点特定配置
         site_config_path = Path(project_root) /  "services" / "sites" / "implementations" / f"_test_{site_id}.json"
@@ -908,7 +1071,7 @@ async def quick_test(site_id: str) -> None:
 def setup_browser() -> Chromium:
     """初始化浏览器"""
     options = ChromiumOptions()
-    options.headless(False)  # 使用有头模式便于调试
+    options.headless(True)  # 使用有头模式便于调试
     options.set_argument('--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
     options.set_pref('credentials_enable_service', False)
     options.set_argument('--hide-crash-restore-bubble')
@@ -962,7 +1125,7 @@ async def create_site_setup(site_id: str, config_path: Optional[str] = None) -> 
         crawler_config = CrawlerConfigBase(
             site_id=site_id,  # 添加必需的site_id字段
             browser_type='chromium',
-            headless=False,
+            headless=True,
             auto_reload=True
         )
         
@@ -992,5 +1155,5 @@ async def create_site_setup(site_id: str, config_path: Optional[str] = None) -> 
         raise
 
 if __name__ == "__main__":
-    site_id = "hhan"  # 替换为要测试的站点ID
+    site_id = "hdfans"  # 替换为要测试的站点ID
     asyncio.run(quick_test(site_id))
